@@ -1,0 +1,7 @@
+selectors 0.38.0
+Authors: The Servo Project Developers
+License declaration: MPL-2.0
+https://github.com/servo/stylo
+Exact source: https://static.crates.io/crates/selectors/selectors-0.38.0.crate
+Source revision: 572ecba2d1600e7c3d490586692a209faf703baa
+Upstream source is unmodified.

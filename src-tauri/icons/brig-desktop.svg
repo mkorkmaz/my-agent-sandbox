@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Tugboat</title>
+  <desc id="description">A blue sandbox on a pale gray background patterned with charcoal dots. A small yellow Consolas prompt sits horizontally in the center of the dark top face.</desc>
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:source xml:lang="tr">Vektör çizimine temel olan ImageGen istemi — Yalnız sarı >_ terminal işaretinin çizgi kalınlığını tam %25 azalt. > işaretinin iki kolunu ve alt çizgiyi kendi merkez çizgileri etrafında eski kalınlıklarının %75’ine indir. İşaretin toplam genişliğini, yatay hizasını, > açısını ve alt çizginin uzunluğunu koru. Kutunun geometrisi, ince beyaz kenarlar, #005e9d yan yüzler, opak #121212 üst yüzey, opak #ffe735 işaret ve dıştaki tam şeffaflık aynen kalsın.</dc:source>
+    <dc:description xml:lang="tr">Açık gri dış zeminde koyu gri noktalar düzenli aralıklarla sıralanır. Küçük sarı Consolas Regular terminal işareti kutunun koyu üst yüzeyinde yatay ve ortalı durur.</dc:description>
+  </metadata>
+
+  <rect id="background" width="1024" height="1024" fill="#F7F9FB"/>
+  <g id="dots">
+    <defs>
+      <pattern id="dot-matrix" patternUnits="userSpaceOnUse" width="48" height="48">
+        <circle cx="32" cy="32" r="4" fill="#3E3E3E"/>
+      </pattern>
+    </defs>
+    <rect width="1024" height="1024" fill="url(#dot-matrix)"/>
+  </g>
+  <g id="sandbox">
+    <path fill="#A8C7FF" d="M150 347 L512 570 V920 L150 699 Z"/>
+    <path fill="#4D8DFF" d="M512 570 L874 347 V699 L512 920 Z"/>
+    <path fill="#121212" d="M512 121 874 347 512 570 150 347Z"/>
+    <g fill="none" stroke-width="2.7" stroke-linejoin="round">
+      <path stroke="#FFFFFF" d="M150 347 L512 570 L874 347 M512 570 V920"/>
+      <path stroke="#A7A7A7" d="M512 121 874 347V699L512 920 150 699V347Z"/>
+    </g>
+    <!-- Center the ink bounds of the Consolas Regular glyphs on the top face. -->
+    <g fill="#ffe735" transform="translate(423.404 370.556) scale(0.072 -0.072)">
+      <path d="M209 995 L317 1106 L989 545 L317 -16 L209 94 L754 543 Z"/>
+      <path d="M2252 -410 H1126 V-266 H2252 Z"/>
+    </g>
+  </g>
+</svg>

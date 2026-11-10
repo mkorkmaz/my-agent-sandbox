@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "name": "Inter",
+      "version": "4.1-google-fonts",
+      "license": "OFL-1.1",
+      "repository": "https://github.com/rsms/inter",
+      "sourceRevision": "0b58fb370093f9a9f4ff785d94405710b79de67c",
+      "sourceArchive": "https://raw.githubusercontent.com/google/fonts/0b58fb370093f9a9f4ff785d94405710b79de67c/ofl/inter/Inter%5Bopsz,wght%5D.ttf",
+      "assetSha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+      "notices": [
+        "inter-google-fonts/OFL.txt"
+      ],
+      "distribution": "bundled-interface"
+    },
+    {
+      "name": "JetBrains Mono",
+      "version": "google-fonts-6e4b84c976ca",
+      "license": "OFL-1.1",
+      "repository": "https://github.com/JetBrains/JetBrainsMono",
+      "sourceRevision": "6e4b84c976cadb3c49a40fd9a1c203e4f7fcf2da",
+      "sourceArchive": "https://raw.githubusercontent.com/google/fonts/6e4b84c976cadb3c49a40fd9a1c203e4f7fcf2da/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+      "assetSha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+      "notices": [
+        "jetbrains-mono-google-fonts/OFL.txt"
+      ],
+      "distribution": "bundled-interface"
+    },
+    {
+      "name": "Lucide icons (folder, settings, chevron-down)",
+      "version": "1.71.0",
+      "license": "ISC and MIT (see notices)",
+      "repository": "https://github.com/lucide-icons/lucide",
+      "sourceRevision": "1.71.0",
+      "sourceArchive": "https://github.com/lucide-icons/lucide/tree/1.71.0",
+      "icons": {
+        "folder.svg": {
+          "url": "https://raw.githubusercontent.com/lucide-icons/lucide/1.71.0/icons/folder.svg",
+          "sha256": "f0d92b94b797a8ab7d4c4ae33c3236c47f64068351b4e14bdb5014ee42898a39",
+          "bytes": 342
+        },
+        "settings.svg": {
+          "url": "https://raw.githubusercontent.com/lucide-icons/lucide/1.71.0/icons/settings.svg",
+          "sha256": "0ae27fd0f81999229e3127ac96c5b32edfea448e291d509e76212b917551d66b",
+          "bytes": 586
+        },
+        "chevron-down.svg": {
+          "url": "https://raw.githubusercontent.com/lucide-icons/lucide/1.71.0/icons/chevron-down.svg",
+          "sha256": "66ea878e72ed3488bb3b464c39dfdccee8d1f78e560dccea40e5e12da0e87e87",
+          "bytes": 236
+        }
+      },
+      "notices": [
+        "lucide-1.71.0/LICENSE"
+      ],
+      "distribution": "bundled-interface"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+--- a/cmd/hull/run.go
++++ b/cmd/hull/run.go
+@@ -1013,15 +1013,7 @@
+ 	shareMounts := ""
+ 	var containerMounts strings.Builder
+ 	for _, sh := range shares {
+-		if vmmType == hypervisors.VzVmm || vmmType == hypervisors.HviVmm {
+-			mountOpts := ""
+-			if sh.readOnly {
+-				mountOpts = "-o ro "
+-			}
+-			shareMounts += fmt.Sprintf("mkdir -p %s\nmount -t virtiofs %s%s %s\n", sh.guest, mountOpts, sh.tag, sh.guest)
+-		} else {
+-			shareMounts += fmt.Sprintf("mkdir -p %s\nmount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 %s %s\n", sh.guest, sh.tag, sh.guest)
+-		}
++		shareMounts += shareMountCommand(sh, vmmType == hypervisors.VzVmm || vmmType == hypervisors.HviVmm)
+ 		mode := "rw"
+ 		if sh.readOnly {
+ 			mode = "ro"
+@@ -1700,12 +1692,29 @@
+ 	return nil, false, fmt.Errorf("invalid %s mode %q in %q (want ro or rw)", flag, parts[2], spec)
+ }
+ 
++// shareMountCommand keeps a guest path in one literal shell argument. Spaces
++// are valid in the TSV used by container boots and need quoting in the legacy
++// shell wrapper. Neither path may split or execute the directory name.
++func shareMountCommand(sh hostShare, virtiofs bool) string {
++	guest := "'" + strings.ReplaceAll(sh.guest, "'", "'\"'\"'") + "'"
++	if virtiofs {
++		options := ""
++		if sh.readOnly {
++			options = "-o ro "
++		}
++		return fmt.Sprintf("mkdir -p %s\nmount -t virtiofs %s%s %s\n", guest, options, sh.tag, guest)
++	}
++	return fmt.Sprintf("mkdir -p %s\nmount -t 9p -o trans=virtio,version=9p2000.L,msize=512000 %s %s\n", guest, sh.tag, guest)
++}
++
+ func validateGuestPath(guestPath string) error {
+ 	if !strings.HasPrefix(guestPath, "/") {
+ 		return fmt.Errorf("guest path %q must be absolute", guestPath)
+ 	}
+-	if strings.ContainsAny(guestPath, " \t'\"") {
+-		return fmt.Errorf("guest path %q must not contain spaces or quotes", guestPath)
++	// Tabs and line breaks delimit /urunc-mounts records. Quote support stays
++	// unchanged; ordinary spaces do not delimit a TSV field.
++	if strings.ContainsAny(guestPath, "\x00\t\r\n'\"") {
++		return fmt.Errorf("guest path %q must not contain tabs, line breaks or quotes", guestPath)
+ 	}
+ 	return nil
+ }

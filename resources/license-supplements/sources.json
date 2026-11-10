@@ -1,0 +1,6 @@
+{
+  "objc2": "https://raw.githubusercontent.com/madsmtm/objc2/d7d2fa23ceaa5e6096c923b081040e5d81b3b9df/LICENSE.md",
+  "alloc-stdlib": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
+  "selectors": "MPL-2.0 standard terms, as distributed by cssparser 0.37.0. Exact corresponding selectors source is linked in its attribution file.",
+  "tauri-plugin": "Tauri MIT terms from @tauri-apps/api 2.12.4."
+}

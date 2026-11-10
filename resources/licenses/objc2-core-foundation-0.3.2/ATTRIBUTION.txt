@@ -1,0 +1,7 @@
+objc2-core-foundation 0.3.2
+Authors: 
+License declaration: Zlib OR Apache-2.0 OR MIT
+https://github.com/madsmtm/objc2
+Exact source: https://static.crates.io/crates/objc2-core-foundation/objc2-core-foundation-0.3.2.crate
+Source revision: 7b1abfd750a2cacaea71d6a56ecfb83cb7de560b
+Upstream source is unmodified.

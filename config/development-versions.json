@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-11-10T10:34:19.358Z",
+  "target": {
+    "os": "macos",
+    "minimumVersion": "15.0",
+    "rust": "aarch64-apple-darwin",
+    "zig": "aarch64-macos.15.0",
+    "architecture": "arm64"
+  },
+  "frontend": {
+    "node": "26.12.1",
+    "npm": "11.20.0",
+    "cli": {
+      "version": "2.12.4",
+      "integrity": "sha512-JI9bHfudSRJikGOrjbXEm6RjzzvmKuLc+JixB1NE8hNzQkNlCCIC3pTES3uypkR9lxHrsbxzcnSwhI2IxBQphw=="
+    },
+    "api": {
+      "version": "2.12.4",
+      "integrity": "sha512-pVmfis+4zT8H0Qhp3xPZx9Ju7kpzvA6rr/PSJPyuwfvucTQ8sVt61NYU9KMkK703UFlYadFmjKA4HhybOtN0gg=="
+    },
+    "vite": {
+      "version": "8.3.7",
+      "integrity": "sha512-oxh0dMxrayBr33ScJvvBJ2HBQ2jc1TBrXKR2NyL/MJ9WPuX19mN2DXWUmywKdyw5RFVQBo8hmtb2FMC0LHrnng=="
+    },
+    "typescript": {
+      "version": "7.0.2",
+      "integrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA=="
+    },
+    "typescriptOptions": {
+      "target": "ES2022",
+      "module": "ESNext",
+      "moduleResolution": "Bundler",
+      "lib": [
+        "ES2022",
+        "DOM",
+        "ESNext.Disposable"
+      ]
+    }
+  },
+  "rust": {
+    "compiler": "1.99.1",
+    "cargo": "1.99.1",
+    "distribution": "Homebrew",
+    "tauri": {
+      "version": "2.12.5",
+      "rustVersion": "1.90",
+      "checksum": "5fb0244332cfb9cee7e2a568bf5da29a36ed8fdbd717f6f47a66b6b7b358c072"
+    },
+    "tauriBuild": {
+      "version": "2.7.4",
+      "rustVersion": "1.90",
+      "checksum": "adddb0e648752aaac5da9c3c3c6a68e1e87cab55e3b757b18a9441ef8c3ac614"
+    },
+    "dialog": {
+      "version": "2.7.3"
+    }
+  },
+  "ghostty": {
+    "library": "libghostty-vt",
+    "version": "1.0.0",
+    "tag": "vt-1.0.0",
+    "commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+    "source": {
+      "url": "https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0.tar.gz",
+      "sha256": "4a6ef758be721923e1969e7b81b443dcc92d8dd3fb5a39600c03a8817a753676"
+    },
+    "dependencies": {
+      "url": "https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0-deps.tar.gz",
+      "sha256": "4d5ea5e448e4c7ea8fb55ccbaa8668f2a97d44f438cee831e2b7ecd162d85c29"
+    },
+    "zig": {
+      "version": "0.17.1",
+      "tarball": "https://ziglang.org/download/0.17.1/zig-aarch64-macos-0.17.1.tar.xz",
+      "shasum": "75f1bc7a1e9852f17ec9a0c1895f767c4ec56d46bc8a834920eece1d0359dd8d",
+      "size": "54001240"
+    },
+    "buildArguments": [
+      "--system",
+      "../libghostty-vt-1.0.0-deps",
+      "--prefix",
+      "<WORK>/ghostty-install",
+      "-Demit-lib-vt",
+      "-Demit-xcframework=false",
+      "-Dtarget=aarch64-macos.15.0",
+      "-Dcpu=baseline",
+      "-Doptimize=ReleaseSafe"
+    ],
+    "cacheEnvironment": {
+      "ZIG_GLOBAL_CACHE_DIR": "<WORK>/zig-global-cache",
+      "ZIG_LOCAL_CACHE_DIR": "<WORK>/zig-local-cache"
+    },
+    "linkMode": "static",
+    "header": "ghostty/vt.h"
+  },
+  "brig": {
+    "version": "v0.5.2",
+    "commit": "1c4962a25a9e563beee9fce13eecbe7f51809780",
+    "apiVersion": "brig.sh/v1alpha1",
+    "runtime": "hull",
+    "backend": "hvi",
+    "hull": {
+      "version": "v0.1.0",
+      "commit": "7e50ac3",
+      "desktopBuild": "config/hull-compat.json"
+    },
+    "fixtureDirectory": "tests/fixtures/brig/v0.5.2"
+  },
+  "scope": {
+    "verified": [
+      "Rust Tauri dependency compile",
+      "Tauri CLI execution",
+      "TypeScript API check",
+      "Vite production build",
+      "libghostty-vt static link and VT/UTF-8 state",
+      "Brig no-boot CLI plan contract",
+      "BD-02 native macOS window, menu shortcuts and folder dialog",
+      "BD-02 packaged debug app and system light/dark appearance"
+    ],
+    "nextIntegrationTask": "BD-03"
+  }
+}

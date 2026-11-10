@@ -1,0 +1,16 @@
+{
+  "capturedAt": "2026-11-10T10:29:17.442Z",
+  "brigVersion": "v0.5.2",
+  "brigCommit": "1c4962a25a9e563beee9fce13eecbe7f51809780",
+  "apiVersion": "brig.sh/v1alpha1",
+  "host": "darwin/arm64",
+  "rootReplacement": "/fixture",
+  "cases": [
+    "version",
+    "ready",
+    "refused",
+    "missing-runtime",
+    "missing-brig"
+  ],
+  "planScope": "No-boot CLI plan. A running VM and interactive Codex are verified in later plan items."
+}

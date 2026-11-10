@@ -1,0 +1,3 @@
+Tugboat modifies hull v0.1.0 (7e50ac340d69be387312755c1f07ef6b0e9fec52) to support spaces in shared guest paths and quote those paths in legacy mount commands.
+Patch: https://github.com/brig-sh/hull/tree/7e50ac340d69be387312755c1f07ef6b0e9fec52 plus resources/runtime/hull-spaces.patch in the Tugboat source.
+The external Brig CLI and hvi/Vz runners are not modified or redistributed.

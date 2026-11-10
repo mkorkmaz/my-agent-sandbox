@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/fixture/missing-brig",
+    "--json",
+    "version"
+  ],
+  "exitCode": null,
+  "signal": null,
+  "errorCode": "ENOENT",
+  "stdout": "",
+  "stderr": ""
+}

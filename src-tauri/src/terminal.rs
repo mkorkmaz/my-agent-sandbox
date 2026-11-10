@@ -1,0 +1,651 @@
+use crate::{
+    command, projects,
+    pty::{self, Pty},
+    terminal_title,
+};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::ffi::c_void;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::os::fd::AsRawFd;
+use std::process::Command;
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+
+unsafe extern "C" {
+    fn brig_terminal_create(
+        window: *mut c_void,
+        identifier: u64,
+        input: extern "C" fn(u64, *const u8, usize),
+        resize: extern "C" fn(u64, u16, u16, u16, u16),
+    ) -> *mut c_void;
+    fn brig_terminal_layout(
+        view: *mut c_void,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        visible: bool,
+    );
+    fn brig_terminal_feed(view: *mut c_void, bytes: *const u8, length: usize);
+    fn brig_terminal_focus(view: *mut c_void);
+    fn brig_terminal_show(view: *mut c_void, visible: bool);
+    fn brig_terminal_destroy(view: *mut c_void);
+}
+
+struct Session {
+    app: AppHandle,
+    project_id: String,
+    purpose: &'static str,
+    chat: Mutex<ChatState>,
+    running: AtomicBool,
+    exit_code: Mutex<Option<i32>>,
+    process: AtomicI32,
+    view: AtomicUsize,
+    control: Mutex<File>,
+    input: mpsc::SyncSender<Vec<u8>>,
+}
+
+#[derive(Default)]
+struct ChatState {
+    conversation_id: Option<String>,
+    prefix: Option<String>,
+    busy: bool,
+}
+
+impl ChatState {
+    fn matches(&self, id: &str) -> bool {
+        if let Some(known) = &self.conversation_id {
+            return known == id;
+        }
+        self.prefix
+            .as_ref()
+            .is_some_and(|prefix| id.starts_with(prefix))
+    }
+
+    fn bind(&mut self, conversations: &[crate::conversations::Conversation]) -> bool {
+        let Some(prefix) = &self.prefix else {
+            return false;
+        };
+        let mut matches = conversations
+            .iter()
+            .filter(|conversation| conversation.id.starts_with(prefix));
+        let identity = matches.next().map(|conversation| conversation.id.clone());
+        if identity.is_none() || matches.next().is_some() || identity == self.conversation_id {
+            return false;
+        }
+        self.conversation_id = identity;
+        true
+    }
+}
+
+impl Session {
+    fn status(&self, identifier: u64) -> TerminalStatus {
+        let running = self.running.load(Ordering::SeqCst);
+        let chat = self.chat.lock().unwrap_or_else(|error| error.into_inner());
+        TerminalStatus {
+            identifier,
+            project_id: self.project_id.clone(),
+            purpose: self.purpose,
+            running,
+            exit_code: self.exit_code.lock().ok().and_then(|code| *code),
+            conversation_id: chat.conversation_id.clone(),
+            busy: running && chat.busy,
+        }
+    }
+
+    fn update_title(&self, title: terminal_title::ChatTitle) {
+        let mut chat = self.chat.lock().unwrap_or_else(|error| error.into_inner());
+        let changed_prefix = title.prefix.is_some() && title.prefix != chat.prefix;
+        if !changed_prefix && chat.busy == title.busy {
+            return;
+        }
+        if changed_prefix {
+            let prefix = title.prefix.as_ref().unwrap();
+            if crate::conversations::valid_id(prefix) {
+                chat.conversation_id = Some(prefix.clone());
+            } else if !chat
+                .conversation_id
+                .as_ref()
+                .is_some_and(|id| id.starts_with(prefix))
+            {
+                chat.conversation_id = None;
+            }
+            chat.prefix = title.prefix;
+        }
+        chat.busy = title.busy;
+        drop(chat);
+        let _ = self.app.emit("terminal-sessions-changed", &self.project_id);
+    }
+
+    fn stop(&self, signal: i32) {
+        let process = self.process.load(Ordering::SeqCst);
+        if process <= 0 {
+            return;
+        }
+        if let Ok(control) = self.control.lock() {
+            let foreground = unsafe { libc::tcgetpgrp(control.as_raw_fd()) };
+            if foreground > 0 && foreground != process {
+                unsafe {
+                    libc::kill(-foreground, signal);
+                }
+            }
+        }
+        unsafe {
+            libc::kill(-process, signal);
+        }
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalStatus {
+    pub identifier: u64,
+    pub project_id: String,
+    pub purpose: &'static str,
+    pub running: bool,
+    pub exit_code: Option<i32>,
+    pub conversation_id: Option<String>,
+    pub busy: bool,
+}
+
+pub fn is_chat(purpose: &str) -> bool {
+    ["codex", "resume"].contains(&purpose)
+}
+
+pub fn conversation_running(project_id: &str, conversation_id: &str) -> bool {
+    sessions().lock().is_ok_and(|states| {
+        states.values().any(|session| {
+            session.project_id == project_id
+                && session.running.load(Ordering::SeqCst)
+                && session
+                    .chat
+                    .lock()
+                    .is_ok_and(|chat| chat.matches(conversation_id))
+        })
+    })
+}
+
+pub fn bind_conversations(
+    project_id: &str,
+    conversations: &[crate::conversations::Conversation],
+) -> bool {
+    let Ok(states) = sessions().lock() else {
+        return false;
+    };
+    let mut changed = false;
+    for session in states
+        .values()
+        .filter(|session| session.project_id == project_id && is_chat(session.purpose))
+    {
+        if let Ok(mut chat) = session.chat.lock() {
+            changed |= chat.bind(conversations);
+        }
+    }
+    changed
+}
+
+pub fn status(project_id: &str) -> Option<TerminalStatus> {
+    status_for(project_id, None)
+}
+
+fn purpose_group(purpose: &str) -> &'static str {
+    if ["local", "environment", "login", "codex", "resume", "shell"].contains(&purpose) {
+        "primary"
+    } else {
+        "auxiliary"
+    }
+}
+
+fn status_for(project_id: &str, group: Option<&str>) -> Option<TerminalStatus> {
+    let states = sessions().lock().ok()?;
+    states
+        .iter()
+        .filter(|(_, session)| {
+            session.project_id == project_id
+                && group.is_none_or(|group| purpose_group(session.purpose) == group)
+        })
+        .max_by_key(|(identifier, session)| {
+            (
+                (session.running.load(Ordering::SeqCst) as u8) * 2
+                    + (purpose_group(session.purpose) == "primary") as u8,
+                *identifier,
+            )
+        })
+        .map(|(identifier, session)| session.status(*identifier))
+}
+
+#[tauri::command]
+pub fn terminal_status(project_id: String) -> Option<TerminalStatus> {
+    status(&project_id)
+}
+
+#[tauri::command]
+pub fn terminal_sessions(project_id: String) -> Vec<TerminalStatus> {
+    let Ok(states) = sessions().lock() else {
+        return Vec::new();
+    };
+    let mut statuses: Vec<_> = states
+        .iter()
+        .filter(|(_, session)| session.project_id == project_id)
+        .map(|(identifier, session)| session.status(*identifier))
+        .collect();
+    statuses.sort_by_key(|status| status.identifier);
+    statuses
+}
+
+#[tauri::command]
+pub fn terminal_snapshot(identifier: u64) -> Option<TerminalStatus> {
+    let session = session(identifier)?;
+    Some(session.status(identifier))
+}
+
+static SESSIONS: OnceLock<Mutex<HashMap<u64, Arc<Session>>>> = OnceLock::new();
+static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+fn sessions() -> &'static Mutex<HashMap<u64, Arc<Session>>> {
+    SESSIONS.get_or_init(Mutex::default)
+}
+fn session(identifier: u64) -> Option<Arc<Session>> {
+    sessions().lock().ok()?.get(&identifier).cloned()
+}
+
+extern "C" fn input(identifier: u64, bytes: *const u8, length: usize) {
+    if bytes.is_null() || length > 1_048_576 {
+        return;
+    }
+    if let Some(session) = session(identifier) {
+        let bytes = unsafe { std::slice::from_raw_parts(bytes, length) };
+        // Native callbacks must never block the AppKit thread.
+        if session.input.try_send(bytes.to_vec()).is_err() {
+            let _ = session.app.emit("terminal-input-error", serde_json::json!({ "identifier": identifier, "message": "The terminal input queue is full. Wait for the process and try again." }));
+        }
+    }
+}
+
+extern "C" fn resize(identifier: u64, columns: u16, rows: u16, width: u16, height: u16) {
+    if let Some(session) = session(identifier) {
+        if let Ok(control) = session.control.lock() {
+            let _ = pty::resize(&control, columns, rows, width, height);
+        }
+    }
+}
+
+pub(crate) async fn on_main<T: Send + 'static>(
+    app: AppHandle,
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (send, receive) = mpsc::sync_channel(1);
+        app.run_on_main_thread(move || {
+            let _ = send.send(work());
+        })
+        .map_err(|error| error.to_string())?;
+        receive.recv().map_err(|error| error.to_string())?
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[derive(Deserialize)]
+pub struct Layout {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+    visible: bool,
+}
+
+impl Layout {
+    fn validate(&self) -> Result<(), String> {
+        if [self.x, self.y, self.width, self.height]
+            .iter()
+            .any(|value| !value.is_finite() || *value < 0.0 || *value > 32_768.0)
+        {
+            return Err("Invalid terminal size.".into());
+        }
+        Ok(())
+    }
+}
+
+#[tauri::command]
+pub async fn terminal_start(
+    window: WebviewWindow,
+    project_id: String,
+    layout: Layout,
+) -> Result<u64, String> {
+    let project =
+        projects::Registry::load(&projects::file(window.app_handle())?)?.project(&project_id)?;
+    project.check_path()?;
+    let mut command = Command::new("/bin/zsh");
+    command
+        .args(["-f", "-i"])
+        .current_dir(&project.path)
+        .env_clear()
+        .envs(command::environment())
+        .env("TERM", "xterm-256color")
+        .env("PROMPT", "%1~ %# ");
+    start(window, project_id, "local", command, layout, None).await
+}
+
+pub async fn start(
+    window: WebviewWindow,
+    project_id: String,
+    purpose: &'static str,
+    mut command: Command,
+    layout: Layout,
+    conversation_id: Option<String>,
+) -> Result<u64, String> {
+    layout.validate()?;
+    let finished: Vec<_> = terminal_sessions(project_id.clone())
+        .into_iter()
+        .filter(|status| !status.running)
+        .map(|status| status.identifier)
+        .collect();
+    for identifier in finished {
+        terminal_close(window.app_handle().clone(), identifier).await?;
+    }
+    if let Some(previous) = status_for(&project_id, Some(purpose_group(purpose))) {
+        if previous.running && !(is_chat(purpose) && is_chat(previous.purpose)) {
+            if previous.purpose == purpose {
+                return Ok(previous.identifier);
+            }
+            return Err("This project has an open terminal. End that process first.".into());
+        }
+    }
+    let pty = Pty::open().map_err(|error| error.to_string())?;
+    let mut writer = pty.master.try_clone().map_err(|error| error.to_string())?;
+    let mut reader = pty.master.try_clone().map_err(|error| error.to_string())?;
+    let (send, receive) = mpsc::sync_channel::<Vec<u8>>(256);
+    let identifier = NEXT_ID.fetch_add(1, Ordering::SeqCst);
+    let state = Arc::new(Session {
+        app: window.app_handle().clone(),
+        project_id: project_id.clone(),
+        purpose,
+        chat: Mutex::new(ChatState {
+            conversation_id: conversation_id.clone(),
+            ..Default::default()
+        }),
+        running: AtomicBool::new(true),
+        exit_code: Mutex::new(None),
+        process: AtomicI32::new(0),
+        view: AtomicUsize::new(0),
+        control: Mutex::new(pty.master.try_clone().map_err(|error| error.to_string())?),
+        input: send,
+    });
+    {
+        let mut states = sessions().lock().map_err(|error| error.to_string())?;
+        if let Some((identifier, _)) = states.iter().find(|(_, session)| {
+            session.project_id == project_id
+                && session.running.load(Ordering::SeqCst)
+                && conversation_id
+                    .as_ref()
+                    .is_some_and(|id| session.chat.lock().is_ok_and(|chat| chat.matches(id)))
+        }) {
+            return Ok(*identifier);
+        }
+        if states.values().any(|session| {
+            session.project_id == project_id
+                && purpose_group(session.purpose) == purpose_group(purpose)
+                && !(is_chat(session.purpose) && is_chat(purpose))
+                && session.running.load(Ordering::SeqCst)
+        }) {
+            return Err("This project terminal is already starting.".into());
+        }
+        if states.len() >= 16 {
+            return Err("Close an unused terminal first.".into());
+        }
+        states.insert(identifier, state.clone());
+    }
+    let app = window.app_handle().clone();
+    let view = on_main(app.clone(), move || {
+        let pointer = unsafe {
+            brig_terminal_create(
+                window.ns_window().map_err(|error| error.to_string())?,
+                identifier,
+                input,
+                resize,
+            )
+        };
+        if pointer.is_null() {
+            return Err(
+                "Could not start the terminal. Check libghostty and the bundled terminal font."
+                    .into(),
+            );
+        }
+        unsafe {
+            brig_terminal_layout(
+                pointer,
+                layout.x,
+                layout.y,
+                layout.width,
+                layout.height,
+                false,
+            );
+        }
+        Ok(pointer as usize)
+    })
+    .await;
+    let view = match view {
+        Ok(view) => view,
+        Err(error) => {
+            if let Ok(mut states) = sessions().lock() {
+                states.remove(&identifier);
+            }
+            return Err(error);
+        }
+    };
+    state.view.store(view, Ordering::SeqCst);
+    let child = pty.spawn(&mut command);
+    if let Err(error) = child {
+        terminal_close(app, identifier).await?;
+        return Err(error.to_string());
+    }
+    let mut child = child.unwrap();
+    state.process.store(child.id() as i32, Ordering::SeqCst);
+    std::thread::spawn(move || {
+        while let Ok(bytes) = receive.recv() {
+            if writer.write_all(&bytes).is_err() {
+                break;
+            }
+        }
+    });
+    drop(pty);
+    let reader_app = app.clone();
+    let reader_state = state.clone();
+    std::thread::spawn(move || {
+        let mut buffer = [0; 32_768];
+        let mut titles = terminal_title::TitleParser::default();
+        loop {
+            let count = match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(count) => count,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(_) => break,
+            };
+            let bytes = buffer[..count].to_vec();
+            if is_chat(reader_state.purpose) {
+                for title in titles.feed(&bytes) {
+                    reader_state.update_title(title);
+                }
+            }
+            let current = reader_state.clone();
+            let (acknowledge, received) = mpsc::sync_channel(1);
+            if reader_app
+                .run_on_main_thread(move || {
+                    let pointer = current.view.load(Ordering::SeqCst);
+                    if pointer != 0 {
+                        unsafe {
+                            brig_terminal_feed(pointer as *mut c_void, bytes.as_ptr(), bytes.len());
+                        }
+                    }
+                    let _ = acknowledge.send(());
+                })
+                .is_err()
+            {
+                break;
+            }
+            if received.recv().is_err() {
+                break;
+            }
+        }
+    });
+    let _ = app.emit("terminal-sessions-changed", &state.project_id);
+    std::thread::spawn(move || {
+        let status = child.wait();
+        state.process.store(0, Ordering::SeqCst);
+        let code = status.ok().and_then(|status| status.code());
+        if let Ok(mut stored) = state.exit_code.lock() {
+            *stored = code;
+        }
+        state.running.store(false, Ordering::SeqCst);
+        let _ = app.emit(
+            "terminal-exit",
+            serde_json::json!({ "identifier": identifier, "projectId": project_id, "purpose": purpose, "code": code }),
+        );
+    });
+    Ok(identifier)
+}
+
+#[tauri::command]
+pub async fn terminal_layout(
+    app: AppHandle,
+    identifier: u64,
+    layout: Layout,
+) -> Result<(), String> {
+    layout.validate()?;
+    on_main(app, move || {
+        if layout.visible {
+            let states = sessions().lock().map_err(|error| error.to_string())?;
+            for (other_id, other) in states.iter() {
+                let pointer = other.view.load(Ordering::SeqCst);
+                if *other_id != identifier && pointer != 0 {
+                    unsafe {
+                        brig_terminal_show(pointer as *mut c_void, false);
+                    }
+                }
+            }
+        }
+        let state = session(identifier).ok_or("Terminal closed.")?;
+        let pointer = state.view.load(Ordering::SeqCst);
+        if pointer != 0 {
+            unsafe {
+                brig_terminal_layout(
+                    pointer as *mut c_void,
+                    layout.x,
+                    layout.y,
+                    layout.width,
+                    layout.height,
+                    layout.visible,
+                );
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn terminal_focus(window: WebviewWindow, identifier: u64) -> Result<(), String> {
+    on_main(window.app_handle().clone(), move || {
+        let state = session(identifier).ok_or("Terminal closed.")?;
+        let pointer = state.view.load(Ordering::SeqCst);
+        if pointer != 0 {
+            unsafe {
+                brig_terminal_focus(pointer as *mut c_void);
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn terminal_close(app: AppHandle, identifier: u64) -> Result<(), String> {
+    on_main(app, move || {
+        let state = sessions()
+            .lock()
+            .map_err(|error| error.to_string())?
+            .remove(&identifier);
+        let Some(state) = state else {
+            return Ok(());
+        };
+        state.stop(libc::SIGHUP);
+        let closing = state.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if closing.running.load(Ordering::SeqCst) {
+                closing.stop(libc::SIGKILL);
+            }
+        });
+        let pointer = state.view.swap(0, Ordering::SeqCst);
+        if pointer != 0 {
+            unsafe {
+                brig_terminal_destroy(pointer as *mut c_void);
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+pub fn shutdown() {
+    if let Ok(states) = sessions().lock() {
+        for state in states.values() {
+            state.stop(libc::SIGHUP);
+        }
+    }
+}
+
+pub fn any_running() -> bool {
+    sessions().lock().is_ok_and(|sessions| {
+        sessions
+            .values()
+            .any(|session| session.running.load(Ordering::SeqCst))
+    })
+}
+
+pub async fn close_project(app: AppHandle, project_id: &str) -> Result<(), String> {
+    let identifiers: Vec<u64> = sessions()
+        .lock()
+        .map_err(|error| error.to_string())?
+        .iter()
+        .filter(|(_, session)| session.project_id == project_id)
+        .map(|(identifier, _)| *identifier)
+        .collect();
+    for identifier in identifiers {
+        terminal_close(app.clone(), identifier).await?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn conversation(id: &str) -> crate::conversations::Conversation {
+        serde_json::from_value(
+            serde_json::json!({"id": id, "title": "Fixture chat", "updatedAt": 0}),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn shortened_titles_bind_only_to_one_matching_conversation_and_keep_known_ids() {
+        let first = "01a1c5fd-894f-7e42-b36c-bd1a0dfef8e7";
+        let second = "01a1c5fd-894f-7e42-b36c-bd1a0dfef8e8";
+        let mut chat = ChatState {
+            prefix: Some(first[..31].into()),
+            ..Default::default()
+        };
+        assert!(!chat.bind(&[conversation(second), conversation(first)]));
+        assert!(chat.conversation_id.is_none());
+        assert!(chat.bind(&[conversation(first)]));
+        assert_eq!(chat.conversation_id.as_deref(), Some(first));
+        assert!(chat.matches(first));
+        assert!(!chat.matches(second));
+        assert!(!chat.bind(&[]));
+        assert_eq!(chat.conversation_id.as_deref(), Some(first));
+    }
+}

@@ -1,0 +1,7 @@
+tauri-plugin 2.7.2
+Authors: Tauri Programme within The Commons Conservancy
+License declaration: Apache-2.0 OR MIT
+https://github.com/tauri-apps/tauri
+Exact source: https://static.crates.io/crates/tauri-plugin/tauri-plugin-2.7.2.crate
+Source revision: 59b63ab500da9859f12d8888c3298bc29bba0b92
+Upstream source is unmodified.

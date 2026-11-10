@@ -1,0 +1,16 @@
+{
+  "command": [
+    "/opt/homebrew/bin/brig",
+    "--json",
+    "plan",
+    "--network",
+    "isolated",
+    "codex@bd01-fixture",
+    "/fixture/örnek proje"
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "errorCode": null,
+  "stdout": "{\n  \"apiVersion\": \"brig.sh/v1alpha1\",\n  \"kind\": \"Plan\",\n  \"data\": {\n    \"session\": \"bd01-fixture\",\n    \"profile\": \"codex\",\n    \"sandbox\": \"brig-codex-bd01-fixture\",\n    \"runtime\": {\n      \"kind\": \"hull\",\n      \"bin\": \"/opt/homebrew/bin/hull\",\n      \"available\": true,\n      \"backend\": \"hvi\"\n    },\n    \"isolation\": \"microVM (hull, hvi backend, rootfs overlay-block)\",\n    \"home\": {\n      \"host\": \"/fixture/state/homes/brig-codex-bd01-fixture\",\n      \"guest\": \"/root\",\n      \"mode\": \"read-write\"\n    },\n    \"project\": {\n      \"host\": \"/fixture/örnek proje\",\n      \"guest\": \"/work/örnek proje\",\n      \"mode\": \"read-write\"\n    },\n    \"skills\": [],\n    \"image\": {\n      \"ref\": \"ghcr.io/brig-sh/codex-stock:root\",\n      \"pull\": \"missing\"\n    },\n    \"verify\": {\n      \"mode\": \"warn\",\n      \"policy\": \"brig\"\n    },\n    \"network\": \"unknown (no recorded posture; /opt/homebrew/bin/hull inspect brig-codex-bd01-fixture: exit status 1: error: create case-sensitive APFS store: hdiutil [create -type SPARSE -fs Case-sensitive APFS -size 200g -volname hull-store /fixture/.hull/hull-store.sparseimage]: exit status 1: hdiutil: WARNING: 'hdiutil create -size -volname ...' is deprecated. Please use 'diskutil image create from/blank -size --volumeName ...' instead.; hdiutil: create failed - Device not configured); isolated from its next boot\",\n    \"posture\": \"isolated\",\n    \"ports\": [],\n    \"policies\": [\n      \"bd01-fixture\"\n    ],\n    \"noPolicy\": false,\n    \"egress\": {\n      \"default\": \"deny\",\n      \"allow\": [\n        {\n          \"host\": \"api.openai.com\"\n        },\n        {\n          \"host\": \"auth.openai.com\"\n        },\n        {\n          \"host\": \"chatgpt.com\"\n        }\n      ],\n      \"deny\": []\n    },\n    \"credentials\": [\n      {\n        \"name\": \"GH_TOKEN\",\n        \"delivery\": \"env\",\n        \"required\": false,\n        \"state\": \"unresolved\",\n        \"reason\": \"no source in the chain has a value\"\n      }\n    ],\n    \"limits\": {\n      \"mem\": 4096,\n      \"cpus\": 4\n    },\n    \"digest\": \"sha256:596c558b3da8791085b3406f84316678130facf544367d3a909c6087a48d9b26\"\n  }\n}\n",
+  "stderr": ""
+}

@@ -1,0 +1,7 @@
+block2 0.6.2
+Authors: Mads Marquart <mads@marquart.dk>
+License declaration: MIT
+https://github.com/madsmtm/objc2
+Exact source: https://static.crates.io/crates/block2/block2-0.6.2.crate
+Source revision: b4167b582b2f75f9a1be75495c41b765344fd03c
+Upstream source is unmodified.

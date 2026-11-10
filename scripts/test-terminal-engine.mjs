@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+const root = fileURLToPath(new URL('../', import.meta.url));
+const output = path.join(root, '.build/terminal-engine-test');
+const install = path.join(root, '.build/libghostty/install');
+fs.mkdirSync(path.dirname(output), { recursive: true });
+execFileSync('/usr/bin/xcrun', ['--sdk', 'macosx', 'clang', '-std=c11', '-mmacosx-version-min=15.0', '-I', path.join(install, 'include'), path.join(root, 'tests/native/terminal.c'), path.join(install, 'lib/libghostty-vt.a'), '-lc++', '-o', output], { stdio: 'inherit', timeout: 60_000 });
+execFileSync(output, [], { stdio: 'inherit', timeout: 30_000 });
+const nativeOutput = path.join(root, '.build/terminal-composition-test');
+const native = path.join(root, 'src-tauri/native');
+execFileSync('/usr/bin/xcrun', ['--sdk', 'macosx', 'clang', '-fobjc-arc', '-mmacosx-version-min=15.0', '-I', path.join(install, 'include'), '-I', native, path.join(root, 'tests/native/composition.m'), ...['TerminalView.m', 'TerminalDrawing.m', 'TerminalInput.m'].map(file => path.join(native, file)), path.join(install, 'lib/libghostty-vt.a'), '-lc++', '-framework', 'AppKit', '-framework', 'CoreText', '-o', nativeOutput], { stdio: 'inherit', timeout: 60_000 });
+execFileSync(nativeOutput, [path.join(root, 'resources/fonts/JetBrainsMono-Variable.ttf')], { stdio: 'inherit', timeout: 30_000 });

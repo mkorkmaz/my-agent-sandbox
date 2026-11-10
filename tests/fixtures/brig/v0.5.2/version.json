@@ -1,0 +1,12 @@
+{
+  "command": [
+    "/opt/homebrew/bin/brig",
+    "--json",
+    "version"
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "errorCode": null,
+  "stdout": "{\n  \"apiVersion\": \"brig.sh/v1alpha1\",\n  \"kind\": \"Version\",\n  \"data\": {\n    \"version\": \"v0.5.2\",\n    \"commit\": \"1c4962a25a9e563beee9fce13eecbe7f51809780\",\n    \"commitTime\": \"2026-11-06T07:59:37Z\",\n    \"modified\": false,\n    \"goVersion\": \"go1.27.3\",\n    \"os\": \"darwin\",\n    \"arch\": \"arm64\"\n  }\n}\n",
+  "stderr": ""
+}
