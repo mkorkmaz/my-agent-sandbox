@@ -35,7 +35,9 @@ Brig response fixtures were captured with Brig v0.5.2 and the `brig.sh/v1alpha1`
 
 ## Build and install
 
-Install Node.js and npm, Rust and Cargo, and Xcode with its command line tools. The recorded development environment uses Node.js 26.12.1 and Rust 1.99.1.
+Download the Apple silicon DMG from [GitHub Releases](https://github.com/mkorkmaz/my-agent-sandbox/releases), open it, and drag Tugboat into Applications. The app uses ad hoc signing.
+
+To build from source, install Node.js and npm, Rust and Cargo, and Xcode with its command line tools. The recorded development environment uses Node.js 26.12.1 and Rust 1.99.1.
 
 Run these commands from the project root:
 
@@ -52,7 +54,11 @@ Open the built application:
 open "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Tugboat.app"
 ```
 
-You can also copy `Tugboat.app` to `/Applications`. Local builds use ad hoc signing.
+You can also copy `Tugboat.app` to `/Applications`.
+
+### Releases from trunk
+
+Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. After they pass, GitHub Actions builds the ARM64 DMG using the `version` in `src-tauri/tauri.conf.json` and attaches it to a release for the tested commit. Each push gets its own tag, such as `v0.1.0-build.42`. Rerunning the same workflow run keeps its original tag.
 
 ## Get started
 

@@ -1,0 +1,120 @@
+name: macOS release
+
+on:
+  push:
+    branches: [trunk]
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    name: Test and build the Apple silicon DMG
+    runs-on: macos-15
+    outputs:
+      version: ${{ steps.config.outputs.version }}
+      installer: ${{ steps.verify.outputs.installer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read application and toolchain versions
+        id: config
+        run: |
+          jq -er '.version | strings | "version=\(.)"' src-tauri/tauri.conf.json >> "$GITHUB_OUTPUT"
+          jq -r '"node=\(.frontend.node)", "rust=\(.rust.compiler)"' config/development-versions.json >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.config.outputs.node }}
+          cache: npm
+
+      - name: Install dependencies and run frontend tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Select the Rust toolchain
+        env:
+          TOOLCHAIN: ${{ steps.config.outputs.rust }}
+        run: |
+          rustup toolchain install "$TOOLCHAIN" --profile minimal
+          rustup override set "$TOOLCHAIN"
+
+      - name: Install Brig for the policy integration test
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          brew tap brig-sh/brig
+          tap=$(brew --repository brig-sh/brig)
+          # This revision packages Brig v0.5.2 with hull v0.1.0.
+          git -C "$tap" fetch --depth=1 origin b32587664ee001a9e052accdc4b1a78560715927
+          git -C "$tap" checkout --detach FETCH_HEAD
+          brew trust brig-sh/brig
+          brew install --cask brig-sh/brig/brig
+
+      - name: Run Rust, native terminal and hull tests
+        run: |
+          npm run native:prepare
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          npm run test:terminal
+          npm run test:hull
+
+      - name: Build the release installer
+        run: npm run tauri -- build --ci --target aarch64-apple-darwin --bundles app,dmg -- --locked
+
+      - name: Verify the packaged version and disk image
+        id: verify
+        env:
+          VERSION: ${{ steps.config.outputs.version }}
+        run: |
+          bundle=src-tauri/target/aarch64-apple-darwin/release/bundle
+          test "$(plutil -extract CFBundleShortVersionString raw "$bundle/macos/Tugboat.app/Contents/Info.plist")" = "$VERSION"
+          installer="Tugboat_${VERSION}_aarch64.dmg"
+          hdiutil verify "$bundle/dmg/$installer"
+          echo "installer=$installer" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-dmg
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${{ steps.verify.outputs.installer }}
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+
+  publish:
+    name: Publish the GitHub Release
+    needs: test-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-dmg
+          path: installers
+
+      - name: Publish the DMG for this push
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.test-and-build.outputs.version }}
+          INSTALLER: ${{ needs.test-and-build.outputs.installer }}
+        run: |
+          tag="v${VERSION}-build.${GITHUB_RUN_NUMBER}"
+          if release=$(gh release view "$tag" --json isDraft,targetCommitish,assets); then
+            if ! jq -e --arg sha "$GITHUB_SHA" '.targetCommitish == $sha' <<< "$release" >/dev/null; then
+              echo "Release $tag belongs to a different commit." >&2
+              exit 1
+            fi
+            if [[ $(jq -r '.isDraft' <<< "$release") == false ]]; then
+              jq -e --arg name "$INSTALLER" 'any(.assets[]; .name == $name and .state == "uploaded")' <<< "$release" >/dev/null
+              echo "Release $tag already contains $INSTALLER."
+              exit 0
+            fi
+          else
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Tugboat $VERSION (build $GITHUB_RUN_NUMBER)" --generate-notes
+          fi
+          gh release upload "$tag" "installers/$INSTALLER" --clobber
+          gh release edit "$tag" --draft=false
