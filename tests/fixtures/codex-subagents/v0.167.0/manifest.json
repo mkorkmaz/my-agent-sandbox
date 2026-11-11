@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "codexVersion": "0.167.0",
+  "provenance": "filtered-real-guest-records",
+  "syntheticScenarios": [],
+  "timestampShiftDays": -313,
+  "fixtures": [
+    {
+      "file": "primary.jsonl",
+      "role": "primary",
+      "threadId": "00000000-0000-4000-8000-000000000001",
+      "source": "vscode",
+      "rawSha256": "039d6693d442fb76ecdf140157c84fd46b3959414ef9799e0436803faf43cedd",
+      "fixtureSha256": "743c6dbe272d5ed89ff6a353497f478266cb741b25424a08a8bce88a623d8f73",
+      "sourceRecordCount": 79,
+      "retainedRecordCount": 28,
+      "tokenUsageRecords": 8,
+      "ownTokenUsageRecords": 8,
+      "taskStarted": 2,
+      "taskComplete": 2,
+      "turnAborted": 0,
+      "ownTokens": {
+        "input_tokens": 123364,
+        "cached_input_tokens": 119168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 672,
+        "reasoning_output_tokens": 166,
+        "total_tokens": 124036
+      },
+      "captureLocation": "sessions"
+    },
+    {
+      "file": "child-alpha.jsonl",
+      "role": "child-alpha",
+      "threadId": "00000000-0000-4000-8000-000000000002",
+      "source": {
+        "subagent": {
+          "thread_spawn": {
+            "parent_thread_id": "00000000-0000-4000-8000-000000000001",
+            "depth": 1,
+            "agent_path": "/root/alpha",
+            "agent_nickname": "Fixture Agent",
+            "agent_role": null
+          }
+        }
+      },
+      "rawSha256": "42a5e05d51db15856ba74794f4e92d6c038476f48336c9b2a680367de5f396ff",
+      "fixtureSha256": "b7d195f1184893d7db4514a6f96708b4dcebf2a55e2a58bb258c832a6af0882d",
+      "sourceRecordCount": 55,
+      "retainedRecordCount": 21,
+      "tokenUsageRecords": 5,
+      "ownTokenUsageRecords": 5,
+      "taskStarted": 2,
+      "taskComplete": 2,
+      "turnAborted": 0,
+      "ownTokens": {
+        "input_tokens": 75317,
+        "cached_input_tokens": 67712,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 567,
+        "reasoning_output_tokens": 366,
+        "total_tokens": 75884
+      },
+      "captureLocation": "sessions"
+    },
+    {
+      "file": "child-beta.jsonl",
+      "role": "child-beta",
+      "threadId": "00000000-0000-4000-8000-000000000003",
+      "source": {
+        "subagent": {
+          "thread_spawn": {
+            "parent_thread_id": "00000000-0000-4000-8000-000000000001",
+            "depth": 1,
+            "agent_path": "/root/beta",
+            "agent_nickname": "Fixture Agent",
+            "agent_role": null
+          }
+        }
+      },
+      "rawSha256": "82d01daea202b88d510047e7e70cdeb55991c72b73135beea64a6343fd2a19f9",
+      "fixtureSha256": "297c9e56e9fb7e2cfc91a822fed601be750f231f7ccc68bbe5c8135ad6bcd0a6",
+      "sourceRecordCount": 20,
+      "retainedRecordCount": 8,
+      "tokenUsageRecords": 1,
+      "ownTokenUsageRecords": 1,
+      "taskStarted": 1,
+      "taskComplete": 1,
+      "turnAborted": 0,
+      "ownTokens": {
+        "input_tokens": 14611,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 165,
+        "reasoning_output_tokens": 158,
+        "total_tokens": 14776
+      },
+      "captureLocation": "sessions"
+    },
+    {
+      "file": "grandchild-gamma.jsonl",
+      "role": "grandchild-gamma",
+      "threadId": "00000000-0000-4000-8000-000000000004",
+      "source": {
+        "subagent": {
+          "thread_spawn": {
+            "parent_thread_id": "00000000-0000-4000-8000-000000000002",
+            "depth": 2,
+            "agent_path": "/root/alpha/gamma",
+            "agent_nickname": "Fixture Agent",
+            "agent_role": null
+          }
+        }
+      },
+      "rawSha256": "4765c6987d34fa2b34e6662a24ee94989392f5760ec67139d3f9c9a640cc1c43",
+      "fixtureSha256": "851af59cfbfbda8b868845f52f1833bbd5b3389a7870231482819b359bd6569a",
+      "sourceRecordCount": 20,
+      "retainedRecordCount": 8,
+      "tokenUsageRecords": 1,
+      "ownTokenUsageRecords": 1,
+      "taskStarted": 1,
+      "taskComplete": 1,
+      "turnAborted": 0,
+      "ownTokens": {
+        "input_tokens": 14601,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 54,
+        "reasoning_output_tokens": 47,
+        "total_tokens": 14655
+      },
+      "captureLocation": "sessions"
+    },
+    {
+      "file": "normal-fork.jsonl",
+      "role": "normal-fork",
+      "threadId": "00000000-0000-4000-8000-000000000005",
+      "source": "vscode",
+      "rawSha256": "27da0767f17a9e05c009890218d1e205ff10b33339032bec5069cee47b4fcf11",
+      "fixtureSha256": "6d2cb21661ed73748728854b4b5022736f812f2626d92fe092b84e62a5f0119d",
+      "sourceRecordCount": 13,
+      "retainedRecordCount": 8,
+      "tokenUsageRecords": 1,
+      "ownTokenUsageRecords": 1,
+      "taskStarted": 1,
+      "taskComplete": 1,
+      "turnAborted": 0,
+      "ownTokens": {
+        "input_tokens": 15877,
+        "cached_input_tokens": 12288,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 15882
+      },
+      "captureLocation": "sessions"
+    },
+    {
+      "file": "guest-cli-baseline.jsonl",
+      "role": "guest-cli-baseline",
+      "threadId": "00000000-0000-4000-8000-000000000007",
+      "source": "cli",
+      "rawSha256": "af020755c3fbff821a5a2791352b878ff1b420842bdb79edb722801abeb25cd1",
+      "fixtureSha256": "650fa3896f59bbb4c249a78076804267de549d316dc81659380d3c14f08d0694",
+      "sourceRecordCount": 156,
+      "retainedRecordCount": 70,
+      "tokenUsageRecords": 16,
+      "ownTokenUsageRecords": 16,
+      "taskStarted": 9,
+      "taskComplete": 6,
+      "turnAborted": 3,
+      "ownTokens": {
+        "input_tokens": 265477,
+        "cached_input_tokens": 248320,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1310,
+        "reasoning_output_tokens": 21,
+        "total_tokens": 266787
+      },
+      "captureLocation": "previous-guest-cli-acceptance"
+    }
+  ]
+}

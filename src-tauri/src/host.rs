@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::State;
 
+pub const SUPPORTED_BRIG_VERSION: &str = "v0.5.2";
+
 #[derive(Default)]
 pub struct Inspection(pub Mutex<Option<Arc<AtomicBool>>>);
 
@@ -107,6 +109,64 @@ pub fn query(
     )
 }
 
+enum InspectionFailure {
+    Cancelled,
+    Timeout,
+    Invalid(String),
+    Failed(String),
+}
+impl InspectionFailure {
+    fn status(&self) -> &str {
+        match self {
+            Self::Cancelled => "cancelled",
+            Self::Timeout => "timed-out",
+            Self::Invalid(_) => "invalid-response",
+            Self::Failed(_) => "error",
+        }
+    }
+    fn message(self) -> String {
+        match self {
+            Self::Cancelled => "The Mac check was cancelled. Run it again when ready.".into(),
+            Self::Timeout => "The Mac check timed out. Try checking again.".into(),
+            Self::Invalid(message) | Self::Failed(message) => message,
+        }
+    }
+}
+
+fn inspection_output(
+    output: Result<CommandOutput, String>,
+    kind: &str,
+) -> Result<Value, InspectionFailure> {
+    let output = output.map_err(InspectionFailure::Failed)?;
+    if output.cancelled {
+        return Err(InspectionFailure::Cancelled);
+    }
+    if output.timed_out {
+        return Err(InspectionFailure::Timeout);
+    }
+    if output.output_exceeded {
+        return Err(InspectionFailure::Invalid(
+            "The Brig response exceeded the size limit.".into(),
+        ));
+    }
+    if output.exit_code != Some(0) {
+        return Err(InspectionFailure::Failed(
+            "The Brig check command failed. Review the CLI path and retry.".into(),
+        ));
+    }
+    let value = envelope(&output, kind).map_err(InspectionFailure::Invalid)?;
+    if kind == "Version"
+        && !value["data"]["version"]
+            .as_str()
+            .is_some_and(|version| !version.trim().is_empty())
+    {
+        return Err(InspectionFailure::Invalid(
+            "The Brig version response is missing its version.".into(),
+        ));
+    }
+    Ok(value)
+}
+
 fn inspect(configured: Option<String>, cancel: &AtomicBool) -> HostStatus {
     let tools = Tools {
         brig: discover("brig", configured.as_deref()),
@@ -138,32 +198,30 @@ fn inspect(configured: Option<String>, cancel: &AtomicBool) -> HostStatus {
             Some("Brig was not found. Edit the CLI path or install it with Homebrew.".into());
         return result;
     };
-    let version =
-        query(brig, &["--json", "version"], cancel).and_then(|output| envelope(&output, "Version"));
+    let version = inspection_output(query(brig, &["--json", "version"], cancel), "Version");
     let version = match version {
         Ok(version) => version,
         Err(error) => {
-            result.brig_status = "incompatible".into();
-            result.message = Some(error);
+            result.brig_status = error.status().into();
+            result.message = Some(error.message());
             return result;
         }
     };
     result.version = Some(version.clone());
-    if version["data"]["version"] != "v0.5.2" {
+    if version["data"]["version"] != SUPPORTED_BRIG_VERSION {
         result.brig_status = "incompatible".into();
         result.message =
             Some("This app was verified with Brig v0.5.2. Select a compatible version.".into());
         return result;
     }
-    match query(brig, &["--json", "doctor"], cancel).and_then(|output| envelope(&output, "Doctor"))
-    {
+    match inspection_output(query(brig, &["--json", "doctor"], cancel), "Doctor") {
         Ok(doctor) => {
             result.doctor = Some(doctor);
             result.brig_status = "installed".into();
         }
         Err(error) => {
-            result.brig_status = "error".into();
-            result.message = Some(error);
+            result.brig_status = error.status().into();
+            result.message = Some(error.message());
         }
     }
     result
@@ -202,11 +260,92 @@ mod tests {
     use super::*;
 
     #[test]
+    fn inspection_preserves_cancellation_timeout_and_invalid_response_causes() {
+        for (cancelled, timed_out, body, expected) in [
+            (true, false, "", "cancelled"),
+            (false, true, "", "timed-out"),
+            (false, false, "not json", "invalid-response"),
+            (
+                false,
+                false,
+                r#"{"apiVersion":"brig.sh/v1alpha1","kind":"Version","data":{}}"#,
+                "invalid-response",
+            ),
+        ] {
+            let result = inspection_output(
+                Ok(CommandOutput {
+                    stdout: body.into(),
+                    stderr: String::new(),
+                    exit_code: Some(0),
+                    cancelled,
+                    timed_out,
+                    output_exceeded: false,
+                }),
+                "Version",
+            );
+            assert_eq!(result.err().unwrap().status(), expected);
+        }
+    }
+
+    #[test]
+    fn a_cancelled_slow_version_check_can_be_retried_and_only_a_known_mismatch_is_incompatible() {
+        use std::fs;
+        let root =
+            std::env::temp_dir().join(format!("tugboat-inspect-cancel-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let executable = root.join("brig");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+root=${0%/*}
+if test "$2" = version; then
+  if test -e "$root/slow"; then : > "$root/started"; /bin/sleep 60; fi
+  cat "$root/version.json"
+else
+  printf '{"apiVersion":"brig.sh/v1alpha1","kind":"Doctor","data":[]}'
+fi
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let version = |value: &str| {
+            serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Version","data":{"version":value}}).to_string()
+        };
+        fs::write(root.join("version.json"), version(SUPPORTED_BRIG_VERSION)).unwrap();
+        fs::write(root.join("slow"), "1").unwrap();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let stopping = cancel.clone();
+        let path = executable.to_string_lossy().into_owned();
+        let worker = std::thread::spawn(move || inspect(Some(path), &stopping));
+        let started = std::time::Instant::now();
+        while !root.join("started").is_file() && started.elapsed() < Duration::from_secs(3) {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        cancel.store(true, Ordering::SeqCst);
+        let result = worker.join().unwrap();
+        assert_eq!(result.brig_status, "cancelled");
+        assert!(root.join("started").is_file());
+        fs::remove_file(root.join("slow")).unwrap();
+        let check = || {
+            inspect(
+                Some(executable.to_string_lossy().into_owned()),
+                &AtomicBool::new(false),
+            )
+        };
+        assert_eq!(check().brig_status, "installed");
+        fs::write(root.join("version.json"), version("v9.9.9")).unwrap();
+        assert_eq!(check().brig_status, "incompatible");
+        fs::write(root.join("version.json"), "not json").unwrap();
+        assert_eq!(check().brig_status, "invalid-response");
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn missing_and_incompatible_installations_are_distinct() {
         let missing = inspect(Some("/not-present/brig".into()), &AtomicBool::new(false));
         assert_eq!(missing.brig_status, "missing");
         let incompatible = inspect(Some("/usr/bin/true".into()), &AtomicBool::new(false));
-        assert_eq!(incompatible.brig_status, "incompatible");
+        assert_eq!(incompatible.brig_status, "invalid-response");
         assert!(discover("brig", Some("relative/path")).is_none());
     }
 

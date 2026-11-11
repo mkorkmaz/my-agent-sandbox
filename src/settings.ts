@@ -23,6 +23,8 @@ function renderTelemetry(status: TelemetryStatus): void {
 }
 
 export async function initializeSettings(): Promise<void> {
+  try { document.getElementById('application-version')!.textContent = await invoke<string>('application_version'); }
+  catch { document.getElementById('application-version')!.textContent = 'Unavailable'; }
   const status = document.getElementById('settings-status')!;
   const save = document.getElementById('save-settings') as HTMLButtonElement;
   const fields = document.getElementById('settings-fields') as HTMLFieldSetElement;
@@ -43,7 +45,8 @@ export async function initializeSettings(): Promise<void> {
   const network = select('network-preference');
   const networkHint = document.getElementById('network-hint')!;
   function updateNetworkHint(): void {
-    networkHint.textContent = network.value === 'offline' ? 'Sign-in and online Codex sessions are unavailable in offline mode.' : 'Uses hvi. Only destinations allowed by the policy can be reached.';
+    const guest = network.value === 'offline' ? 'Offline blocks guest command traffic. Sign-in and online Codex sessions are unavailable.' : 'Brig/hvi allows guest command traffic only to destinations permitted by the policy.';
+    networkHint.textContent = guest + ' Hosted Codex tools, including web search, have a separate scope. Tugboat does not read or set the web search mode.';
   }
   network.addEventListener('change', updateNetworkHint);
   updateNetworkHint();

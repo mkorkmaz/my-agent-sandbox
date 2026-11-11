@@ -3,6 +3,113 @@ use std::io;
 use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+// Starting and stopping share a gate so a cancelled, reserved terminal cannot fork later.
+static START_STOP: Mutex<()> = Mutex::new(());
+
+pub struct Process {
+    pid: AtomicI32,
+    running: AtomicBool,
+    closing: AtomicBool,
+    control: Mutex<File>,
+}
+
+impl Process {
+    pub fn new(pty: &Pty) -> io::Result<Self> {
+        Ok(Self {
+            pid: AtomicI32::new(0),
+            running: AtomicBool::new(true),
+            closing: AtomicBool::new(false),
+            control: Mutex::new(pty.master.try_clone()?),
+        })
+    }
+
+    pub fn running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
+    }
+
+    pub fn spawn(&self, pty: &Pty, command: &mut Command) -> io::Result<Child> {
+        let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
+        if self.closing.load(Ordering::SeqCst) {
+            return Err(io::Error::new(
+                io::ErrorKind::Interrupted,
+                "Terminal start was cancelled.",
+            ));
+        }
+        let child = pty.spawn(command)?;
+        self.pid.store(child.id() as i32, Ordering::SeqCst);
+        Ok(child)
+    }
+
+    fn signal(&self, signal: i32) {
+        let pid = self.pid.load(Ordering::SeqCst);
+        if pid <= 0 {
+            return;
+        }
+        if let Ok(control) = self.control.lock() {
+            let foreground = unsafe { libc::tcgetpgrp(control.as_raw_fd()) };
+            if foreground > 0 && foreground != pid {
+                unsafe {
+                    libc::kill(-foreground, signal);
+                }
+            }
+        }
+        unsafe {
+            libc::kill(-pid, signal);
+        }
+    }
+
+    pub fn stop(&self, signal: i32) {
+        let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
+        self.closing.store(true, Ordering::SeqCst);
+        self.signal(signal);
+        if self.pid.load(Ordering::SeqCst) == 0 {
+            self.running.store(false, Ordering::SeqCst);
+        }
+    }
+
+    pub fn exited(&self) {
+        let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
+        // A shell can exit while its foreground job still owns the terminal.
+        self.signal(libc::SIGKILL);
+        self.pid.store(0, Ordering::SeqCst);
+        self.running.store(false, Ordering::SeqCst);
+    }
+
+    pub fn resize(&self, columns: u16, rows: u16, width: u16, height: u16) {
+        if let Ok(control) = self.control.lock() {
+            let _ = resize(&control, columns, rows, width, height);
+        }
+    }
+}
+
+pub fn terminate(processes: &[Arc<Process>], grace: Duration) -> Result<(), String> {
+    for process in processes {
+        process.stop(libc::SIGHUP);
+    }
+    let started = Instant::now();
+    while processes.iter().any(|process| process.running()) && started.elapsed() < grace {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    for process in processes.iter().filter(|process| process.running()) {
+        process.stop(libc::SIGKILL);
+    }
+    let started = Instant::now();
+    while processes.iter().any(|process| process.running())
+        && started.elapsed() < Duration::from_secs(3)
+    {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    if processes.iter().any(|process| process.running()) {
+        return Err(
+            "A terminal process has not exited. The app is still open; retry closing it.".into(),
+        );
+    }
+    Ok(())
+}
 
 pub struct Pty {
     pub master: File,
@@ -98,6 +205,64 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::os::unix::process::ExitStatusExt;
+
+    #[test]
+    fn shutdown_waits_for_final_writes_and_kills_stubborn_processes() {
+        for stubborn in [false, true] {
+            let pty = Pty::open().unwrap();
+            let process = Arc::new(Process::new(&pty).unwrap());
+            let path = std::env::temp_dir().join(format!(
+                "tugboat-pty-exit-{}-{stubborn}",
+                std::process::id()
+            ));
+            let mut command = Command::new("/bin/sh");
+            let script = if stubborn {
+                "trap '' HUP; printf ready; while :; do sleep 1; done"
+            } else {
+                "trap 'printf final > \"$1\"; exit 0' HUP; printf ready; while :; do read line; done"
+            };
+            command.args(["-c", script, "fixture"]).arg(&path);
+            let mut child = process.spawn(&pty, &mut command).unwrap();
+            let mut reader = pty.master.try_clone().unwrap();
+            let mut ready = [0; 5];
+            reader.read_exact(&mut ready).unwrap();
+            drop(pty);
+            let drain = std::thread::spawn(move || {
+                let _ = reader.read_to_end(&mut Vec::new());
+            });
+            let waiting = process.clone();
+            let waiter = std::thread::spawn(move || {
+                let status = child.wait().unwrap();
+                waiting.exited();
+                status
+            });
+            terminate(std::slice::from_ref(&process), Duration::from_millis(70)).unwrap();
+            assert!(!process.running());
+            let status = waiter.join().unwrap();
+            if stubborn {
+                assert_eq!(status.signal(), Some(libc::SIGKILL));
+            } else {
+                assert_eq!(std::fs::read_to_string(&path).unwrap(), "final");
+                std::fs::remove_file(&path).unwrap();
+            }
+            drain.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn stopped_reservation_cannot_start_a_process() {
+        let pty = Pty::open().unwrap();
+        let process = Arc::new(Process::new(&pty).unwrap());
+        terminate(std::slice::from_ref(&process), Duration::ZERO).unwrap();
+        assert_eq!(
+            process
+                .spawn(&pty, &mut Command::new("/bin/true"))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::Interrupted
+        );
+        assert!(!process.running());
+    }
 
     #[test]
     fn child_has_a_controlling_terminal_and_shared_stdio() {

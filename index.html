@@ -18,7 +18,7 @@
             <small class="app-subtitle">Agent Sandbox</small>
           </span>
         </p>
-        <button class="navigation-item" id="project-navigation" aria-current="page"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span id="project-navigation-label">Projects</span></button>
+        <button class="navigation-item" id="project-navigation" aria-current="page"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span id="project-navigation-label">Projects</span></button>
         <div class="sidebar-projects" id="sidebar-projects">
           <ul id="sidebar-project-list" class="sidebar-list" aria-label="Projects"></ul>
           <section id="sidebar-project-context" hidden aria-label="Selected project">
@@ -26,9 +26,13 @@
             <div class="session-list-heading"><h2>Sessions</h2><button id="refresh-sessions" class="sidebar-text-button">Refresh</button></div>
             <p id="session-list-status" class="sidebar-support" role="status"></p>
             <ul id="sidebar-session-list" class="sidebar-list" aria-label="Saved sessions"></ul>
+            <div id="sidebar-terminals" hidden>
+              <div class="session-list-heading"><h2>Terminals</h2></div>
+              <ul id="sidebar-terminal-list" class="sidebar-list" aria-label="Process terminals and results"></ul>
+            </div>
           </section>
         </div>
-        <button class="navigation-item settings-navigation" id="settings-navigation"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
+        <button class="navigation-item settings-navigation" id="settings-navigation"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
       </nav>
       <main>
         <section id="project-view" class="project-view" aria-labelledby="project-heading">
@@ -38,12 +42,14 @@
               <p id="project-meta" hidden><span id="selected-folder"></span><span aria-hidden="true"> · </span><span id="project-reference"></span></p>
             </div>
             <div class="workspace-header-actions">
-              <button class="primary-button icon-label-button" id="choose-folder" title="Add new project (⌘O)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add new project</span></button>
-              <button class="icon-button" id="project-settings-button" title="Project settings" aria-label="Project settings" hidden><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></button>
+              <button class="primary-button icon-label-button" id="choose-folder" title="Add new project (⌘O)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Add new project</span></button>
+              <button class="icon-button" id="project-settings-button" title="Project settings" aria-label="Project settings" hidden><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></button>
             </div>
           </header>
           <div class="project-content">
             <p id="folder-error" class="error-message" role="alert" hidden></p>
+            <div id="project-plan-feedback" hidden><p id="project-plan-status" class="support-text" role="status"></p><button id="retry-project-plan" class="secondary-button" hidden>Retry setup</button></div>
+            <button id="resume-removal" class="secondary-button" hidden>Review incomplete removal…</button>
             <p id="project-description">Choose where Brig &amp; Codex will work.</p>
             <section id="recent-projects" hidden aria-label="Projects, most recently opened first">
               <div class="table-scroll"><table class="data-table project-table"><colgroup><col class="project-name-column"><col class="project-branch-column"><col class="project-opened-column"></colgroup><thead><tr><th scope="col">Project</th><th scope="col">Branch</th><th scope="col">Last opened</th></tr></thead><tbody id="recent-project-list"></tbody></table></div>
@@ -51,7 +57,7 @@
             <section id="empty-projects"><h2>Your projects, in one place</h2><p>Add a project folder to start working with Brig and Codex.</p></section>
             <section id="project-dashboard" hidden aria-label="Project overview">
               <div id="project-setup" class="project-setup" hidden>
-                <button class="setup-settings-button" id="setup-project"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Set up environment</span></button>
+                <button class="setup-settings-button" id="setup-project"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Set up environment</span></button>
                 <p>Prepare this project's environment to start a chat.</p>
               </div>
               <div id="project-overview" hidden>
@@ -59,10 +65,15 @@
                 <p id="usage-note" class="support-text usage-note">API equivalent in USD · OpenAI rates from 10 Nov 2026. ChatGPT subscription billing is separate.</p>
                 <div class="dashboard-toolbar">
                   <div class="session-tabs" role="group" aria-label="Session view"><button class="session-tab" data-session-state="active" aria-pressed="true">Sessions</button><button class="session-tab" data-session-state="archived" aria-pressed="false">Archived</button><button class="session-tab" data-session-state="deleted" aria-pressed="false">Trash</button></div>
-                  <div class="action-row"><button class="secondary-button" id="return-to-terminal" hidden>Return to chat</button><button class="primary-button icon-label-button" id="start-codex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New Chat</span></button></div>
+                  <div class="action-row"><button class="secondary-button" id="return-to-terminal" hidden>Return to chat</button><button class="primary-button icon-label-button" id="start-codex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New Chat</span></button></div>
                 </div>
                 <p id="dashboard-session-status" class="support-text" role="status"></p>
                 <div class="table-scroll"><table id="session-table" class="data-table session-table"><thead><tr><th scope="col">Session</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">API cost</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="session-table-body"></tbody></table></div>
+                <section id="unlinked-subagents" class="unlinked-subagents" aria-labelledby="unlinked-subagents-heading" hidden>
+                  <h2 id="unlinked-subagents-heading">Unlinked subagents</h2>
+                  <p class="support-text">Read-only recorded usage. These agents could not be linked to a main session. Open usage to inspect their own requests.</p>
+                  <div class="table-scroll"><table class="data-table session-table" aria-labelledby="unlinked-subagents-heading"><thead><tr><th scope="col">Subagent</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">API cost</th><th scope="col"><span class="visually-hidden">Details</span></th></tr></thead><tbody id="unlinked-subagent-body"></tbody></table></div>
+                </section>
               </div>
             </section>
           </div>
@@ -77,7 +88,7 @@
           <dl class="settings-group">
             <div><dt>Appearance</dt><dd>Dark sidebar · Light workspace</dd></div>
             <div><dt>Application</dt><dd>Tugboat</dd></div>
-            <div><dt>Version</dt><dd>0.1.0</dd></div>
+            <div><dt>Version</dt><dd id="application-version">Loading…</dd></div>
           </dl>
           <hr class="settings-divider">
           <h2>Brig and Mac checks</h2>
@@ -96,7 +107,7 @@
           <label class="field-label" for="network-preference">Network</label>
           <select id="network-preference" class="text-field" aria-describedby="network-hint"><option value="isolated">Access allowed by policy</option><option value="offline">Offline</option></select>
           <p id="network-hint" class="support-text field-help"></p>
-          <label class="field-label" for="allowed-hosts">Allowed hosts for new policies<span>Enter one host per line. Other destinations are denied. Add hosts if sign-in requires them.</span></label>
+          <label class="field-label" for="allowed-hosts">Allowed guest hosts for new policies<span>Enter one host per line. Other guest command destinations are denied. Add hosts if sign-in requires them.</span></label>
           <textarea id="allowed-hosts" class="text-field" rows="4" spellcheck="false"></textarea>
           <label class="checkbox-field"><input type="checkbox" id="telemetry-preference"> Enable Brig usage telemetry</label>
           <p id="telemetry-status" class="support-text" role="status"></p>
@@ -119,7 +130,7 @@
       </main>
     </div>
     <dialog id="project-settings-dialog" class="project-settings-dialog" aria-labelledby="project-settings-heading">
-      <header class="dialog-header"><h2 id="project-settings-heading">Project settings</h2><button id="close-project-settings" class="icon-button" title="Close settings" aria-label="Close project settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+      <header class="dialog-header"><h2 id="project-settings-heading">Project settings</h2><button id="close-project-settings" class="icon-button" title="Close settings" aria-label="Close project settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
       <div class="dialog-content">
         <form id="project-preferences"><fieldset id="project-preference-fields" disabled>
           <label class="field-label" for="project-name">Project name</label><input id="project-name" class="text-field" maxlength="120" required>
@@ -138,7 +149,7 @@
                 <div class="action-row"><button class="secondary-button" id="codex-login">Sign in with ChatGPT</button><button class="secondary-button" id="check-login">Check sign-in status</button></div>
                 <p class="support-text" id="login-hint">Open the official address shown in the terminal in your Mac browser, then enter the device code.</p>
                 <details class="advanced-actions"><summary>File and network boundaries</summary>
-                  <p class="support-text">The check creates temporary files inside and outside the shared project, then compares an allowed host with example.com.</p>
+                  <p class="support-text">The check tests file sharing and selects guest network probes from the active mode and policy. Offline and deny-all plans expect blocked traffic. A policy without a verified comparison is reported as inconclusive.</p>
                   <button class="secondary-button" id="run-boundary-tests">Check Brig boundaries</button>
                   <p id="boundary-status" class="support-text" role="status"></p><ul id="boundary-results" class="probe-results"></ul>
                   <p class="support-text">Paste the inner sandbox check into the same Codex conversation. Project writes should work. Writes under /etc and network access from commands should be blocked. Review the results and approval requests in the terminal.</p>
@@ -150,11 +161,12 @@
               <div class="action-row" id="prepare-controls"><button class="primary-button" id="prepare-environment" hidden>Prepare environment</button><button class="secondary-button" id="refresh-plan" hidden>Refresh plan</button></div>
               <details id="sharing-plan" hidden><summary>Sharing and execution plan</summary><dl id="sharing-plan-values" class="plan-values"></dl></details>
               <details class="advanced-actions"><summary>Project network policy</summary>
+                <p class="support-text">Allowed hosts control network connections from guest commands. Hosted Codex tools, including web search, have a separate scope. Tugboat does not read or set the web search mode.</p>
                 <button class="secondary-button" id="read-project-policy">Read or refresh policy</button>
                 <p id="project-policy-status" class="support-text" role="status"></p>
                 <pre id="project-policy-document" class="policy-document"></pre>
                 <fieldset id="project-policy-fields" disabled>
-                  <label class="field-label" for="project-policy-hosts">Allowed hosts for this project</label>
+                  <label class="field-label" for="project-policy-hosts">Allowed guest hosts for this project</label>
                   <textarea id="project-policy-hosts" class="text-field" rows="4" spellcheck="false"></textarea>
                   <div class="action-row"><button class="secondary-button" id="save-project-policy">Save allowed hosts</button><button class="secondary-button" id="attach-project-policy">Attach to this session</button><button class="secondary-button" id="detach-project-policy">Detach from this session</button></div>
                   <button class="secondary-button" id="accept-project-policy">Accept this policy version</button>
@@ -162,7 +174,9 @@
               </details>
               <details class="advanced-actions"><summary>Changes and environment management</summary>
                 <button class="secondary-button" id="start-terminal">Open local terminal</button>
-                <div class="action-row"><button class="secondary-button" id="git-status">Git status</button><button class="secondary-button" id="git-diff">Git diff</button><button class="secondary-button" id="project-tests">Run project tests</button></div>
+                <p id="local-terminal-status" class="support-text" role="status"></p>
+                <p class="support-text">Reopen test and diagnostic output from Terminals in the sidebar. This app session keeps up to 32 completed outputs; the oldest are then closed. Close output discards only that terminal view.</p>
+                <div class="action-row"><button class="secondary-button" id="git-status">Git status</button><button class="secondary-button" id="git-diff">Working tree diff</button><button class="secondary-button" id="git-staged-diff">Staged diff</button><button class="secondary-button" id="project-tests">Run project tests</button></div>
                 <p class="support-text">Runs the configured npm, Composer, Cargo or pytest tests. The running Codex session stays open in its own terminal.</p>
                 <div class="action-row"><button class="secondary-button" id="project-doctor">Brig doctor</button><button class="secondary-button" id="project-info">Session info</button><button class="secondary-button" id="project-policy">Policy bindings</button><button class="secondary-button" id="project-logs">Recent logs</button></div>
                 <div class="action-row"><button class="secondary-button" id="stop-project">Stop Brig environment</button><button class="secondary-button destructive-button" id="preview-removal">Preview removal…</button></div>
@@ -171,8 +185,15 @@
             </section>
       </div>
     </dialog>
+    <dialog id="forget-project-dialog" aria-labelledby="forget-project-heading">
+      <h2 id="forget-project-heading">Forget this project record?</h2>
+      <p id="forget-project-name"></p>
+      <p class="support-text">Only the Tugboat library record will be removed. Project files, Brig environments, guest homes and saved usage stay on disk. To reconnect a moved folder, cancel and choose Add new project.</p>
+      <p id="forget-project-error" class="error-message" role="alert"></p>
+      <div class="action-row"><button id="cancel-forget-project" class="secondary-button">Cancel</button><button id="confirm-forget-project" class="secondary-button destructive-button">Forget record</button></div>
+    </dialog>
     <dialog id="session-usage-dialog" class="session-usage-dialog" role="dialog" aria-modal="true" aria-labelledby="session-usage-heading">
-      <header class="dialog-header"><h2 id="session-usage-heading">Session usage</h2><button id="close-session-usage" class="icon-button" aria-label="Close session usage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+      <header class="dialog-header"><h2 id="session-usage-heading">Session usage</h2><button id="close-session-usage" class="icon-button" aria-label="Close session usage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
       <div class="dialog-content"><p id="session-usage-title" class="usage-session-title"></p><p id="session-usage-status" class="support-text" role="status"></p><div id="session-usage-details"></div></div>
     </dialog>
     <template id="prompt-usage-template">

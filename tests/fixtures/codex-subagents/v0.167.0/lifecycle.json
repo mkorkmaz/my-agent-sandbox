@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "provenance": "filtered-real-guest-app-server-observations",
+  "primary": "00000000-0000-4000-8000-000000000001",
+  "firstRootTurn": "10000000-0000-4000-8000-000000000001",
+  "secondRootTurn": "10000000-0000-4000-8000-000000000002",
+  "normalFork": {
+    "id": "00000000-0000-4000-8000-000000000005",
+    "sessionId": "00000000-0000-4000-8000-000000000005",
+    "forkedFromId": "00000000-0000-4000-8000-000000000001",
+    "ephemeral": false,
+    "source": "vscode",
+    "threadSource": null,
+    "cwd": "/work/fixture-project",
+    "hasRolloutPath": true,
+    "storageDirectory": "sessions"
+  },
+  "ephemeralFork": {
+    "id": "00000000-0000-4000-8000-000000000006",
+    "sessionId": "00000000-0000-4000-8000-000000000006",
+    "forkedFromId": "00000000-0000-4000-8000-000000000001",
+    "ephemeral": true,
+    "source": "vscode",
+    "threadSource": null,
+    "cwd": "/work/fixture-project",
+    "hasRolloutPath": false,
+    "storageDirectory": null
+  },
+  "ephemeralHasRolloutFileAfterServerExit": false,
+  "ephemeralReadAfterServerExit": {
+    "notPersisted": true
+  },
+  "archivedBeforeUnarchive": [
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "sessionId": "00000000-0000-4000-8000-000000000004",
+      "forkedFromId": null,
+      "ephemeral": false,
+      "source": {
+        "subAgent": {
+          "thread_spawn": {
+            "parent_thread_id": "00000000-0000-4000-8000-000000000002",
+            "depth": 2,
+            "agent_path": "/root/alpha/gamma",
+            "agent_nickname": "Fixture Agent",
+            "agent_role": null
+          }
+        }
+      },
+      "threadSource": null,
+      "cwd": "/work/fixture-project",
+      "hasRolloutPath": true,
+      "storageDirectory": "archived_sessions"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "sessionId": "00000000-0000-4000-8000-000000000003",
+      "forkedFromId": null,
+      "ephemeral": false,
+      "source": {
+        "subAgent": {
+          "thread_spawn": {
+            "parent_thread_id": "00000000-0000-4000-8000-000000000001",
+            "depth": 1,
+            "agent_path": "/root/beta",
+            "agent_nickname": "Fixture Agent",
+            "agent_role": null
+          }
+        }
+      },
+      "threadSource": null,
+      "cwd": "/work/fixture-project",
+      "hasRolloutPath": true,
+      "storageDirectory": "archived_sessions"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "sessionId": "00000000-0000-4000-8000-000000000002",
+      "forkedFromId": null,
+      "ephemeral": false,
+      "source": {
+        "subAgent": {
+          "thread_spawn": {
+            "parent_thread_id": "00000000-0000-4000-8000-000000000001",
+            "depth": 1,
+            "agent_path": "/root/alpha",
+            "agent_nickname": "Fixture Agent",
+            "agent_role": null
+          }
+        }
+      },
+      "threadSource": null,
+      "cwd": "/work/fixture-project",
+      "hasRolloutPath": true,
+      "storageDirectory": "archived_sessions"
+    }
+  ],
+  "archiveNotifications": [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000004",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000002"
+  ],
+  "unarchiveNotifications": [],
+  "activeAfterUnarchive": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "sessionId": "00000000-0000-4000-8000-000000000005",
+      "forkedFromId": null,
+      "ephemeral": false,
+      "source": "vscode",
+      "threadSource": null,
+      "cwd": "/work/fixture-project",
+      "hasRolloutPath": true,
+      "storageDirectory": "sessions"
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "sessionId": "00000000-0000-4000-8000-000000000001",
+      "forkedFromId": null,
+      "ephemeral": false,
+      "source": "vscode",
+      "threadSource": null,
+      "cwd": "/work/fixture-project",
+      "hasRolloutPath": true,
+      "storageDirectory": "sessions"
+    }
+  ],
+  "archivedAfterRootUnarchive": [],
+  "filesystemAfterServerExit": [
+    {
+      "threadId": "00000000-0000-4000-8000-000000000001",
+      "storageDirectory": "sessions"
+    },
+    {
+      "threadId": "00000000-0000-4000-8000-000000000002",
+      "storageDirectory": "sessions"
+    },
+    {
+      "threadId": "00000000-0000-4000-8000-000000000003",
+      "storageDirectory": "sessions"
+    },
+    {
+      "threadId": "00000000-0000-4000-8000-000000000004",
+      "storageDirectory": "sessions"
+    },
+    {
+      "threadId": "00000000-0000-4000-8000-000000000005",
+      "storageDirectory": "sessions"
+    }
+  ],
+  "rootUnarchiveSucceeded": true,
+  "ephemeralTokenUsageUpdates": [
+    {
+      "thread_id": "00000000-0000-4000-8000-000000000006",
+      "turn_id": "10000000-0000-4000-8000-000000000017",
+      "tokenUsage": {
+        "total": {
+          "totalTokens": 139918,
+          "inputTokens": 139241,
+          "cachedInputTokens": 131456,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 677,
+          "reasoningOutputTokens": 166
+        },
+        "last": {
+          "totalTokens": 15882,
+          "inputTokens": 15877,
+          "cachedInputTokens": 12288,
+          "cacheWriteInputTokens": 0,
+          "outputTokens": 5,
+          "reasoningOutputTokens": 0
+        },
+        "modelContextWindow": 475000
+      }
+    }
+  ]
+}

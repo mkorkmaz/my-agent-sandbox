@@ -111,10 +111,22 @@ fn prepare(
     identifier: &str,
     chosen: Option<&str>,
 ) -> Result<Preparation, String> {
+    let _file_guard = storage::lock(registry_file)?;
     let mut project = Registry::load(registry_file)?.project(identifier)?;
-    let environment_was_ready = project.stage == "environment-ready";
+    if project.removal_pending() {
+        return Ok(Preparation { project, plan: None, candidates: Vec::new(), message: Some("Removal is incomplete. Review the removal preview to continue. Project setup is paused.".into()), fingerprint: None });
+    }
     project.check_path()?;
     project.check_guest_path()?;
+    if project.policy_detached {
+        return Ok(Preparation {
+            project,
+            plan: None,
+            candidates: Vec::new(),
+            message: Some("Policy detached. Read the policy and choose Attach to this session before preparing the environment.".into()),
+            fingerprint: None,
+        });
+    }
     brig.validate_codex_profile(&project.profile)?;
     if project.policy.is_none() && project.stage == "selected" {
         let matches = candidates(brig, &project)?;
@@ -164,10 +176,20 @@ fn prepare(
         }
     }
     if project.policy.is_none() {
-        let name = format!("bd-{}", project.id);
-        if brig.policy(&name)?.is_some() {
-            return Err("This project policy name is already in use. The existing policy was preserved. Check the Brig policy list.".into());
+        let base = format!("bd-{}", project.id);
+        let mut available = None;
+        for index in 0..32 {
+            let candidate = if index == 0 {
+                base.clone()
+            } else {
+                format!("{base}-{}", index + 1)
+            };
+            if brig.policy(&candidate)?.is_none() {
+                available = Some(candidate);
+                break;
+            }
         }
+        let name = available.ok_or("Could not find a free project policy name. Existing policies were preserved; review unused policies in Brig.")?;
         project.policy = Some(Policy {
             name,
             owned: true,
@@ -268,7 +290,21 @@ fn prepare(
     }
     let plan = brig.plan(&project, settings)?;
     brig::validate_plan(&plan, &project, settings)?;
-    project.stage = if environment_was_ready {
+    let running = match crate::environment::is_running(brig, &project, &plan) {
+        Ok(running) => running,
+        Err(message) => {
+            project.stage = "environment-unverified".into();
+            save(registry_file, &project)?;
+            return Ok(Preparation {
+                project,
+                plan: None,
+                candidates: Vec::new(),
+                message: Some(message),
+                fingerprint: None,
+            });
+        }
+    };
+    project.stage = if running && project.environment_verified == Some(true) {
         "environment-ready"
     } else {
         "ready"
@@ -332,6 +368,33 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
+    fn reopening_incomplete_removal_never_runs_setup_or_changes_progress() {
+        let root =
+            std::env::temp_dir().join(format!("tugboat-removing-open-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("projects.json");
+        let mut registry = Registry::load(&file).unwrap();
+        let mut project = registry.register(&root, "codex").unwrap();
+        project.stage = "removing".into();
+        registry.update(project.clone()).unwrap();
+        storage::write(&file, &registry).unwrap();
+        let before = fs::read(&file).unwrap();
+        let brig = Brig {
+            executable: "/missing/brig-must-not-run".into(),
+            environment: Default::default(),
+        };
+        for _ in 0..2 {
+            let result = prepare(&brig, &file, &Settings::default(), &project.id, None).unwrap();
+            assert_eq!(result.project.stage, "removing");
+            assert!(result.plan.is_none());
+            assert!(result.fingerprint.is_none());
+            assert!(result.project.require_active().is_err());
+            assert_eq!(fs::read(&file).unwrap(), before);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn real_brig_policy_preparation_resumes_and_preserves_external_edits() {
         let root = std::env::temp_dir().join(format!("brig-preparation-{}", std::process::id()));
         fs::create_dir_all(root.join("sample-project")).unwrap();
@@ -366,6 +429,16 @@ mod tests {
         assert_eq!(first.project.stage, "ready");
         let second = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
         assert_eq!(first.project.reference(), second.project.reference());
+        let mut stale_ready = second.project.clone();
+        stale_ready.stage = "environment-ready".into();
+        save(&registry_file, &stale_ready).unwrap();
+        assert_eq!(
+            prepare(&brig, &registry_file, &settings, &project.id, None)
+                .unwrap()
+                .project
+                .stage,
+            "ready"
+        );
         let absent_preview = crate::operations::preview(&brig, &second.project).unwrap();
         assert!(!absent_preview.has_environment);
         assert!(absent_preview.description.contains("will be preserved"));
@@ -448,7 +521,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(detached.stage, "policy-detached");
-        let attached = crate::project_policy::change(
+        for _ in 0..2 {
+            let reopened = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+            assert_eq!(reopened.project.stage, "policy-detached");
+            assert!(reopened.project.policy_detached);
+            assert!(reopened.plan.is_none());
+            assert!(reopened.fingerprint.is_none());
+            assert!(brig.plan(&detached, &settings).unwrap()["data"]["policies"]
+                .as_array()
+                .unwrap()
+                .is_empty());
+        }
+        let saved_detached = crate::project_policy::change(
             &brig,
             &registry_file,
             &settings,
@@ -460,11 +544,30 @@ mod tests {
                 .fingerprint
                 .as_ref()
                 .unwrap(),
+            crate::project_policy::Action::Save,
+            settings.allowed_hosts.clone(),
+        )
+        .unwrap();
+        assert!(saved_detached.policy_detached);
+        assert_eq!(saved_detached.stage, "policy-detached");
+        let attached = crate::project_policy::change(
+            &brig,
+            &registry_file,
+            &settings,
+            &project.id,
+            saved_detached
+                .policy
+                .as_ref()
+                .unwrap()
+                .fingerprint
+                .as_ref()
+                .unwrap(),
             crate::project_policy::Action::Attach,
             Vec::new(),
         )
         .unwrap();
         assert!(attached.owns_binding);
+        assert!(!attached.policy_detached);
         crate::project_policy::change(
             &brig,
             &registry_file,
@@ -506,6 +609,60 @@ mod tests {
         fs::write(&file, &edited).unwrap();
         assert!(prepare(&brig, &registry_file, &settings, &project.id, None).is_err());
         assert_eq!(fs::read_to_string(&file).unwrap(), edited);
+        let preview = crate::operations::preview(&brig, &first.project).unwrap();
+        let removed = crate::operations::continue_removal(
+            &brig,
+            &registry_file,
+            &project.id,
+            &preview.fingerprint,
+            &project.reference(),
+            false,
+        )
+        .unwrap();
+        assert!(removed.contains("preserved"));
+        assert_eq!(fs::read_to_string(&file).unwrap(), edited);
+        let mut registry = Registry::load(&registry_file).unwrap();
+        assert!(registry.projects.is_empty());
+        let readded = registry.register(&project.path, "codex").unwrap();
+        assert_eq!(readded.id, project.id);
+        storage::write(&registry_file, &registry).unwrap();
+        let replacement = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+        let new_name = replacement.project.policy.as_ref().unwrap().name.clone();
+        assert_ne!(new_name, policy_name);
+        assert!(replacement.project.policy.as_ref().unwrap().owned);
+        assert!(replacement.plan.is_some());
+        assert_eq!(fs::read_to_string(&file).unwrap(), edited);
+        let mut interrupted = replacement.project.clone();
+        interrupted.stage = "creating-policy".into();
+        interrupted.policy.as_mut().unwrap().fingerprint = None;
+        save(&registry_file, &interrupted).unwrap();
+        for _ in 0..2 {
+            let retried = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+            assert_eq!(retried.project.policy.as_ref().unwrap().name, new_name);
+        }
+        assert_eq!(
+            fs::read_dir(root.join("policies"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|entry| entry.file_name().to_string_lossy().starts_with("bd-"))
+                .count(),
+            2
+        );
+        let preview = crate::operations::preview(&brig, &replacement.project).unwrap();
+        crate::operations::continue_removal(
+            &brig,
+            &registry_file,
+            &project.id,
+            &preview.fingerprint,
+            &project.reference(),
+            false,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&file).unwrap(), edited);
+        assert!(!root
+            .join("policies")
+            .join(format!("{new_name}.yaml"))
+            .exists());
         fs::remove_dir_all(root).unwrap();
     }
 }

@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Tugboat · Alt ajan kullanım takibi planı</title>
+<style>
+:root{color-scheme:light;--ink:#19313a;--muted:#4c626b;--line:#ccd8d7;--paper:#fff;--canvas:#f3f6f4;--accent:#235d50;--tint:#e5efea;--amber:#735217;--amber-bg:#fcf2dc;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.6}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--canvas);color:var(--ink)}
+header,main,footer{width:min(1200px,100%);margin:auto;padding-inline:clamp(18px,4vw,60px)}
+header{padding-top:clamp(36px,6vw,72px);padding-bottom:28px}h1,h2,h3,p{margin:0}h1{max-width:19ch;font-size:clamp(34px,5.5vw,64px);line-height:1.06;letter-spacing:-.045em}h2{font-size:clamp(25px,3vw,34px);line-height:1.2;letter-spacing:-.025em;margin-bottom:16px}h3{font-size:1.19rem;line-height:1.4;margin-bottom:10px}
+p+p{margin-top:12px}a{color:#1b5a76;text-underline-offset:3px;overflow-wrap:anywhere}a:hover{text-decoration-thickness:2px}a:focus-visible,button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #176a9c;outline-offset:4px}
+.kicker{font-size:.78rem;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}.lead{max-width:75ch;font-size:1.13rem;margin-top:22px}.meta{margin-top:18px;color:var(--muted);font-size:.86rem}.tag{display:inline-block;padding:3px 9px;border:1px solid #b4c9bd;border-radius:4px;font-size:.8rem;font-weight:700;background:var(--tint);color:#214c3e;margin-right:7px;margin-bottom:6px}
+.navigation{display:flex;flex-wrap:wrap;gap:9px 22px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:15px 0;margin-top:26px;font-size:.9rem;font-weight:650}.navigation a{text-decoration:none}.navigation a:hover{text-decoration:underline}
+main>section{margin:10px 0 48px;scroll-margin-top:20px}.section-number{display:block;color:var(--accent);font-size:.77rem;font-weight:750;letter-spacing:.09em;margin-bottom:7px}.intro,.notice{padding:22px 25px;border-left:4px solid var(--accent);background:var(--tint);border-radius:0 7px 7px 0;margin-bottom:22px}.notice{background:var(--amber-bg);border-color:#b48636}.notice strong{color:var(--amber)}.intro p,.notice p{max-width:90ch}
+.small{font-size:.87rem;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:22px 0}.panel{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:20px}.panel .label{font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:6px}.panel p{font-size:.95rem}
+code,kbd,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86em}code{overflow-wrap:anywhere}p code,li code,td code,dd code{background:#eaf0ef;border-radius:3px;padding:1px 4px}pre{overflow:auto;padding:18px;background:#edf2f1;border:1px solid var(--line);border-radius:6px;line-height:1.7;white-space:pre;tab-size:2;margin:16px 0}pre code{padding:0;background:none}
+.table-scroll{overflow:auto;border:1px solid var(--line);border-radius:7px;margin:18px 0;background:var(--paper)}table{border-collapse:collapse;width:100%;font-size:.92rem;text-align:left}th,td{padding:13px 15px;border-bottom:1px solid #dce4e1;vertical-align:top}thead th{background:#e8efeb;font-size:.8rem;color:#3c565b}tbody th{font-weight:650;text-align:left}tbody tr:last-child>*{border-bottom:0}.evidence-table{min-width:720px}.evidence-table th:first-child{width:70px}.evidence-table td:nth-child(2){width:39%}.numbers{font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}.sum>*{background:var(--tint);font-weight:700}.comparison{min-width:700px}.matrix{min-width:760px}.matrix td:first-child{white-space:nowrap;font-weight:700}.sources-table td:first-child{width:70px;font-weight:700}
+ul,ol{padding-left:23px;margin:12px 0}li+li{margin-top:7px}dl{margin:0}dt{font-weight:650}dd{margin:3px 0 16px}.rules{counter-reset:rule;list-style:none;padding:0;display:grid;grid-template-columns:1fr 1fr;gap:12px}.rules li{counter-increment:rule;background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:17px 18px;margin:0}.rules li::before{content:counter(rule,decimal-leading-zero);color:var(--accent);font-weight:750;font-size:.8rem;display:block;margin-bottom:5px}.rules strong{display:block}.rules p{font-size:.92rem;margin-top:4px}
+.task-tools{display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:wrap;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:20px 0}.task-tools p{font-size:.88rem}.task-tools strong{display:block;font-size:1rem}button{border:1px solid #a9beb3;background:var(--paper);color:var(--ink);border-radius:5px;padding:9px 14px;font:inherit;font-size:.88rem;cursor:pointer}button:hover{background:var(--tint)}progress{width:180px;height:9px;accent-color:var(--accent);vertical-align:middle}
+.phase-title{margin-top:32px;margin-bottom:14px}.phase-title .small{font-weight:400;margin-top:3px}.task{background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:clamp(18px,3vw,26px);margin:13px 0;scroll-margin-top:20px}.task:target{border-color:var(--accent);box-shadow:0 0 0 2px #d3e3d9}.task-top{display:flex;align-items:flex-start;gap:12px}.task-top h3{margin:0}.task input[type=checkbox]{accent-color:var(--accent);width:19px;height:19px;margin:4px 0 0;flex:none}.task-id{display:inline-block;font-size:.75rem;font-weight:750;color:var(--accent);letter-spacing:.04em;margin-right:8px}.task-meta{font-size:.81rem;color:var(--muted);margin:9px 0 12px;padding-left:31px}.task ol{font-size:.94rem;margin-bottom:16px}.acceptance{font-size:.92rem;background:#f0f5f1;padding:12px 15px;border-left:2px solid #85aa96}.acceptance strong{display:block;color:#265342;font-size:.8rem;margin-bottom:3px}.task[data-done=true]{border-color:#94b6a1}.task[data-done=true] .task-id::after{content:" · Doğrulandı"}.record{margin-top:13px;font-size:.83rem;color:var(--muted)}.record label{display:block;margin-bottom:5px}.record input{width:100%;padding:8px 10px;background:#fbfcfb;border:1px solid #b6c6c0;border-radius:4px;font:inherit;color:var(--ink)}.record input::placeholder{color:#62736a}
+.source-list{font-size:.9rem}.source-list li{margin-bottom:12px}.path{display:block;font-size:.81rem;overflow-wrap:anywhere;margin-top:4px}.split{display:grid;grid-template-columns:1fr 1fr;gap:22px}.status-line{padding-top:14px;border-top:1px solid var(--line);margin-top:16px}.mono{font-family:ui-monospace,monospace;font-size:.8rem}.checklist{padding:0;list-style:none}.checklist li{padding-left:24px;position:relative}.checklist li::before{content:"□";position:absolute;left:0;color:var(--accent)}footer{border-top:1px solid var(--line);padding-block:22px 40px;font-size:.84rem;color:var(--muted)}
+@media(max-width:760px){.grid,.split,.rules{grid-template-columns:1fr}.grid{gap:10px}.panel{padding:17px}.task-meta{padding-left:0}.intro,.notice{padding:18px}.navigation{gap:9px 16px}.table-scroll{margin-inline:0}th,td{padding:11px 12px}.task-tools{gap:12px}header{padding-bottom:20px}main>section{margin-bottom:36px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{body{background:white;font-size:10pt}header,main,footer{width:100%;padding-inline:0}header{padding-top:0}h1{font-size:32pt}h2{font-size:21pt}h3{font-size:13pt}.navigation,.task-tools button{display:none}.task,.panel,.intro,.notice{box-shadow:none;break-inside:avoid}.table-scroll{overflow:visible}table,.evidence-table,.comparison,.matrix{min-width:0!important;font-size:8pt}th,td{padding:7px;overflow-wrap:anywhere}.numbers{white-space:normal}pre{white-space:pre-wrap;font-size:8pt}.record input{border:0;padding:2px 0}.grid{gap:8px}.rules{gap:8px}a{color:inherit}section{break-before:auto}thead{display:table-header-group}footer{padding-bottom:0}}
+.implementation-record{padding:10px 14px;background:#edf3ef;border-left:3px solid #739e84;font-size:.88rem;margin:13px 0;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<header>
+  <p class="kicker">Tugboat / Teknik uygulama planı</p>
+  <h1>Alt ajan kullanımını oturumda izleme</h1>
+  <p class="lead">Alt ajanların token ve API eşdeğeri maliyetini ana oturumun altında göster. Her isteği proje toplamında bir kez say; mevcut kullanım geçmişini koru.</p>
+  <p class="meta"><span class="tag">İnceleme tamamlandı</span><span class="tag">Uygulama tamamlandı</span><br>11 Kasım 2026 · Tugboat 0.1.0 · Taban commit <code>6266700</code> ve mevcut yerel değişiklikler</p>
+  <p class="meta" id="implementation-overview"><strong>Uygulama kaydı: 14 / 14 madde doğrulandı.</strong> <a href="#p14">P14 · Doğrulandı</a></p>
+  <p class="meta" id="pause-notice"><strong>Tamamlandı:</strong> 14 adımın tamamı kabul kanıtlarıyla doğrulandı. Native kontroller ve bağımsız son görünüm incelemesi (<code>ship</code>) tamamlandı; README ve PRODUCT güncel. <a href="../artifacts/subagent-usage/p14-evidence.json">P14 kabul kanıtları</a> · <a href="../artifacts/subagent-usage/p14-finish-review.md">Son inceleme</a></p>
+  <nav class="navigation" aria-label="İçindekiler">
+    <a href="#bulgular">01 Bulgular</a><a href="#davranis">02 Hedef davranış</a><a href="#hesap">03 Hesaplama</a><a href="#veri">04 Veri sözleşmesi</a><a href="#plan">05 Uygulama adımları</a><a href="#testler">06 Test matrisi</a><a href="#gecis">07 Geçiş ve kabul</a><a href="#kaynaklar">08 Kaynaklar</a>
+  </nav>
+</header>
+<main>
+<section id="bulgular" aria-labelledby="bulgular-title">
+  <span class="section-number">01 / BAŞLANGIÇ BULGULARI</span>
+  <h2 id="bulgular-title">Başlangıçta üst oturumla bağ kurulmamıştı.</h2>
+  <div class="intro"><p><strong>Uygulama öncesindeki bulgu:</strong> Tugboat, seçilen oturumun kendi kayıtlarını gösteriyordu. Alt ajan ilişkisini okuyup kaydetmiyordu. Aynı konuk proje yolunda bulunan alt ajan dosyaları ayrı oturumlar olarak hesaba girebilir; ana oturum detayına eklenmez. Farklı çalışma yolundaki alt ajanlar mevcut yol filtresinde dışarıda kalabilir.</p></div>
+  <div class="grid">
+    <div class="panel"><p class="label">DOĞRULANDI</p><h3>Uygulama tarafındaki eksik</h3><p>Tarama, ledger ve detay komutunda üst oturum kimliği yok. Proje özeti, oturumların ayrı ayrı hesaplanan kullanımını topluyor.</p></div>
+    <div class="panel"><p class="label">ÖRNEKTE GÖZLENDİ</p><h3>Codex ilişki bilgisi</h3><p>Masaüstü alt ajan kaydında <code>parent_thread_id</code>; kullanım kayıtlarında <code>thread_id</code>, <code>root_turn_id</code> ve <code>response_id</code> bulunuyor.</p></div>
+    <div class="panel"><p class="label">İLK UYGULAMA KAPISI</p><h3>Konuk sürüm doğrulaması</h3><p>Konuk Codex 0.167.0 için normal oturum kaydı incelendi. Bu sürümde gerçek alt ajan akışı ve bağlam kopyalama davranışı henüz doğrulanmadı.</p></div>
+  </div>
+  <div class="table-scroll"><table class="evidence-table">
+    <caption class="small" style="text-align:left;padding:12px 15px">Uygulama öncesi kod incelemesinde doğrulanan noktalar</caption>
+    <thead><tr><th scope="col">Bulgu</th><th scope="col">Kanıt</th><th scope="col">Sonuç</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">F01</th><td><code>rollout()</code>, başlıktan yalnız kimlik ve çalışma yolunu alıyor. <a href="#c01">C01 · 95–142</a></td><td><code>source.subagent.thread_spawn.parent_thread_id</code> işlenmiyor. Yol dışındaki alt ajanlar ilişkiyle geri alınamıyor.</td></tr>
+      <tr><th scope="row">F02</th><td><code>SessionRecord</code> ve <code>Conversation</code> ilişki alanı taşımıyor; ledger sürümü 1. <a href="#c01">C01 · 18–34, 274–310</a></td><td>Yeniden başlatma veya kaynak dosyanın kaybolması sonrasında ana–alt bağı korunamıyor.</td></tr>
+      <tr><th scope="row">F03</th><td><code>synchronize()</code>, her oturumun <code>summarize(&amp;record.turns)</code> sonucunu proje toplamına ekliyor. <a href="#c01">C01 · 410–502</a></td><td>Birleşik ana oturum özetini aynı döngüde toplamak çift sayıma yol açar. Proje katkısı her ajanın kendi kullanımı olmalı.</td></tr>
+      <tr><th scope="row">F04</th><td><code>conversation_usage()</code>, yalnız seçilen <code>SessionRecord.turns</code> dizisini döndürüyor. <a href="#c01">C01 · 620–640</a></td><td>Alt ajan sayısı, listesi, ayrı özetleri ve birleşik toplam detay yanıtında yok.</td></tr>
+      <tr><th scope="row">F05</th><td><code>usage::Cursor::consume()</code>, <code>turn_context</code> ve <code>event_msg</code> kayıtlarını kullanıyor. Diğer kayıt türlerini atlıyor. <a href="#c02">C02 · 420–505</a></td><td><code>token_usage_record</code> içindeki kaynak istek kimliği ve ana prompt bağlantısı şu anda saklanmıyor.</td></tr>
+      <tr><th scope="row">F06</th><td>Detay ekranı <code>TurnUsage[]</code> bekliyor. Canlı dashboard olayı, açık detay içeriğini yeniden yüklemiyor. <a href="#c03">C03</a> <a href="#c04">C04 · 216–266, 613–624</a></td><td>Rust ve TypeScript sözleşmesi birlikte güncellenmeli. Alt ajandan gelen kullanım, açık detayda da görünmeli.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>İncelenen gerçek kayıtlar neyi kanıtlıyor?</h3>
+  <ul>
+    <li><strong>Masaüstü Codex 0.167.0-alpha.3.2:</strong> bir ana oturum ve ona bağlı tamamlanmış bir alt ajan kaydı incelendi. Alt ajanın 10 ayrı <code>response_id</code> kaydı var. Bu isteklerin toplamı <strong>694.489 token</strong> ve alt ajanın son sayacıyla aynı; ana oturumdaki istek kimlikleriyle kesişim yok. <a href="#e01">E01</a></li>
+    <li>Ana oturumun, alt ajanın çalıştığı zaman aralığını kapsayan kapalı bir kesitinde 7 kendi isteğinin toplamı <strong>2.567.409 token</strong>. Aynı kesitte ana sayacın artışı da aynı. <strong>Bu örnekte</strong> ana sayaç alt ajan kullanımını içermiyor; bu bulgu bütün sürümler için sözleşme sayılmamalı. <a href="#e01">E01</a></li>
+    <li><strong>Konuk Codex 0.167.0:</strong> önceki yerel kabul çalışmasından kalan normal oturumda 16 <code>token_usage_record</code> ve 16 <code>token_count</code> olayı var. <code>thread_token_usage</code> ile <code>info.total_token_usage</code> anlık değerleri 16/16 eşleşiyor. Konuk kaydı kaynak istek kimliğini sağlayabiliyor; bu örnek alt ajan içermez. <a href="#e02">E02</a></li>
+  </ul>
+  <div class="notice"><p><strong>Henüz doğrulanmayan sınır:</strong> Konuk Codex’te alt ajan oluşturma, alt ajana ikinci prompt’tan takip işi verme ve geçmişi kopyalanmış oturumlar kontrol edilmeden birleşik kullanımın doğruluğu tamamlanmış sayılmamalı. <a href="#p01">P01</a> ve <a href="#p02">P02</a> bu koşulları kapatır. Bu plan hazırlanırken yeni model isteği veya konuk alt ajan çalışması başlatılmadı.</p></div>
+  <p class="small">Resmî belgeler alt ajanların ayrı agent thread’lerinde çalıştığını açıklıyor. App Server belgeleri doğrudan çocuk ve tüm torunlar için ayrı filtreler, ayrıca normal fork ilişkisi tanımlıyor. Bunlar ilişki modelini destekler; JSONL alanlarını ve bütün sürümlerdeki sayaç kapsamını garanti etmez. <a href="#o01">O01</a> <a href="#o02">O02</a></p>
+</section>
+
+<section id="davranis" aria-labelledby="davranis-title">
+  <span class="section-number">02 / ÜRÜN DAVRANIŞI</span>
+  <h2 id="davranis-title">Ana ajan, alt ajanlar ve toplam ayrı görünmeli.</h2>
+  <div class="split">
+    <div><h3>Oturum listesi ve kenar çubuğu</h3><ul>
+      <li>Bağı doğrulanmış alt ajanları bağımsız sohbet satırları yerine ana oturum detayında göster.</li>
+      <li>Ana oturum satırında birleşik kullanım ve “alt ajanlar dahil” açıklaması; yanında tüm alt seviyeleri kapsayan alt ajan sayısı göster.</li>
+      <li>Üstü bulunamayan alt ajanı gizleme. “Bağlanamayan alt ajanlar” alanında kendi kullanımını ve ilişki uyarısını göster.</li>
+      <li>Normal fork’u ayrı kullanıcı oturumu olarak tut. Yalnız <code>forked_from_id</code> bulunması alt ajan ilişkisi kurmak için yeterli değil.</li>
+    </ul></div>
+    <div><h3>Oturum kullanım detayı</h3><ul>
+      <li>Üstte <strong>Ana ajan</strong>, <strong>Alt ajanlar</strong>, <strong>Birleşik toplam</strong> özetleri göster. Alt ajan özeti tüm doğrulanmış torunları içerir.</li>
+      <li>Her ajan için ad/yol, kendi istekleri, model, hizmet katmanı, tokenlar ve kayıtlı fiyatları açılabilir bölümlerde sun.</li>
+      <li>Ana prompt’a bağ güvenilir <code>root_turn_id</code> ile kurulabiliyorsa ilgili kullanımı orada da göster. Yoksa “Prompt’a bağlanamayan alt ajan kullanımı” bölümünde tut.</li>
+      <li>Eksik dosya, eksik cache bilgisi, bilinmeyen fiyat ve doğrulanamayan kullanım kapsamını görünür belirt.</li>
+    </ul></div>
+  </div>
+  <p class="status-line"><strong>Arşiv ve Çöp:</strong> Ana oturumun durumu, bağlı grubun hangi listede görüneceğini belirler. Alt ajanların eski yerel durumları migration sırasında korunur; ana oturum işlemi bu kayıtları topluca yeniden yazmaz. Detayda geçmiş kullanım okunabilir kalır. Proje toplamı, mevcut davranıştaki gibi arşivlenmiş ve silinmiş oturumları içerir.</p>
+  <p><strong>Kapsam:</strong> Bu iş kullanım takibini ekler. Alt ajan oluşturma/durdurma arayüzü, App Server’a geçiş veya yeni bir fiyat kataloğu gerektirmez. Alt ajanlar Tugboat’tan bağımsız “Resume” eylemi almaz; ana oturumun mevcut terminal ve süreç kuralları korunur.</p>
+</section>
+
+<section id="hesap" aria-labelledby="hesap-title">
+  <span class="section-number">03 / HESAPLAMA KURALLARI</span>
+  <h2 id="hesap-title">Her fiziksel model isteğini bir kez say.</h2>
+  <ol class="rules">
+    <li><strong>Kendi kullanımını temel al.</strong><p><code>own(S)</code>, S ajanının kendisine ait tekil model isteklerinin toplamıdır. Çocukların özetleri ve kopyalanmış geçmiş bu kümeye eklenmez.</p></li>
+    <li><strong>Alt ağacı tekil kimliklerle gez.</strong><p><code>descendants(S)</code> tüm derinliklerdeki doğrulanmış alt ajanların kümesidir. <code>combined(S) = own(S) + Σ own(descendants)</code>. Bir çocuğun birleşik özetini yeniden toplama.</p></li>
+    <li><strong>Proje katkısını ayrı hesapla.</strong><p><code>project = Σ own(projectSessions)</code>. Ana oturumların birleşik toplamını ve alt ajanları birlikte toplama. Sahipsiz alt ajanların güvenilir kendi kullanımı proje katkısına bir kez girer.</p></li>
+    <li><strong>İki olay türünü iki istek sayma.</strong><p>P02 kanıtına göre geçerli <code>token_usage_record.usage</code>, isteğin miktarını ve kaynak kimliğini sağlar. Eşleşen <code>token_count</code> aynı isteğin bildirimi ve kümülatif tabanıdır; ikinci kullanım üretmez. Exact kanıtı olmayan eski girdiler legacy/unknown olarak korunur.</p></li>
+    <li><strong>Kopyalanmış bağlamı yeni harcama sayma.</strong><p>Üst oturumdan taşınan eski istekleri kaynak <code>thread_id</code> / <code>response_id</code> ile ayırt et. Aynı metin, zaman, model veya token sayısı benziyor diye iki bağımsız isteği birleştirme.</p></li>
+    <li><strong>Cache yüzdesini ağırlıklı hesapla.</strong><p><code>100 × Σ cached / Σ input</code>. Cached input her yerde sayı ve parantez içinde yüzdeyle görünür. İlgili kapsamda cache-read bilinmiyorsa kesin yüzde verme; bilinen tutar ve eksik bilgi açıklaması göster.</p></li>
+    <li><strong>Alt kümeleri yeniden ekleme.</strong><p>Toplam token <code>input + output</code>. Cached input zaten input içinde, reasoning zaten output içindedir. Cache write ve bilinmeyen sınıflar mevcut ayrımlarıyla korunur.</p></li>
+    <li><strong>Fiyatı istekten al.</strong><p>İstek üzerindeki tarihli fiyat, model ve hizmet katmanını koru. Özetlerde kayıtlı tutarları topla; bütün alt ajanları ana ajanın güncel fiyatıyla yeniden fiyatlama. Eksik tutarı sıfır maliyet diye sunma.</p></li>
+  </ol>
+  <h3>Örnek: iç içe alt ajanlarda doğru toplam</h3>
+  <p class="small">Aşağıdaki sayılar hesaplama kuralını açıklayan örnek veridir. Birleşik kullanım sütunu yalnız görünüm içindir; proje katkısı sütunu toplanır.</p>
+  <div class="table-scroll"><table class="comparison">
+    <thead><tr><th scope="col">Ajan / ilişki</th><th scope="col" class="numbers">Kendi input</th><th scope="col" class="numbers">Kendi cached input</th><th scope="col" class="numbers">Kendi output</th><th scope="col" class="numbers">Proje katkısı</th><th scope="col" class="numbers">Birleşik token</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Ana ajan R</th><td class="numbers">10.000</td><td class="numbers">8.000 (%80)</td><td class="numbers">1.000</td><td class="numbers">11.000</td><td class="numbers">24.200</td></tr>
+      <tr><th scope="row">A · üstü R</th><td class="numbers">4.000</td><td class="numbers">2.000 (%50)</td><td class="numbers">400</td><td class="numbers">4.400</td><td class="numbers">6.600</td></tr>
+      <tr><th scope="row">B · üstü R</th><td class="numbers">6.000</td><td class="numbers">3.000 (%50)</td><td class="numbers">600</td><td class="numbers">6.600</td><td class="numbers">6.600</td></tr>
+      <tr><th scope="row">C · üstü A</th><td class="numbers">2.000</td><td class="numbers">1.000 (%50)</td><td class="numbers">200</td><td class="numbers">2.200</td><td class="numbers">2.200</td></tr>
+      <tr class="sum"><th scope="row">Proje / R grubu</th><td class="numbers">22.000</td><td class="numbers">14.000 (%63,6)</td><td class="numbers">2.200</td><td class="numbers">24.200</td><td class="numbers">24.200</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Kontrol eşitliği:</strong> Ana ajan 11.000 + bütün alt ajanların kendi kullanımı 13.200 = 24.200 token. Birleşik sütunun bütün satırlarını toplamak 39.600 üretir ve yanlıştır. Cache oranı %63,6’dır; ajan yüzdelerinin aritmetik ortalaması kullanılmaz.</p>
+  <p><strong>Eksik veri:</strong> “Tam”, “Kısmi” ve “Doğrulanamıyor” kapsam durumlarını token/fiyat bilinirliliğinden ayrı tut. Bağlantısı bilinen fakat kaydı gelmeyen bir ajan, “kullanımı sıfır” demek değildir. Dosyalarda hiç iz bırakmamış ajanları otomatik keşfetme garantisi verme.</p>
+</section>
+
+<section id="veri" aria-labelledby="veri-title">
+  <span class="section-number">04 / VERİ VE ENTEGRASYON</span>
+  <h2 id="veri-title">Ham kullanım ve ilişki bilgisini ayrı sakla.</h2>
+  <p>Proje kayıtları <code>projects.json</code> içinde kalır. Yeni ilişki alanları mevcut <code>conversation-ledgers/&lt;projectId&gt;.json</code> kayıtlarına eklenir. Birleşik toplamlar ledger’da ikinci bir harcama kaydı olarak tutulmaz; doğrulanmış ilişkilerden türetilir.</p>
+  <div class="table-scroll"><table>
+    <thead><tr><th scope="col">Katman</th><th scope="col">Önerilen değişiklik</th><th scope="col">Uyumluluk kuralı</th></tr></thead>
+    <tbody>
+      <tr><th scope="row">Rollout metadata</th><td><code>id</code>, <code>cwd</code>, <code>cli_version</code>, kaynak türü; thread-spawn için üst kimlik, ajan yolu ve görünen ad.</td><td>İlişkiyi yalnız açık ve geçerli kaynak alanından kur. Adı, dosya adı, ortak klasör veya <code>depth</code> tek başına ilişki kanıtı değildir.</td></tr>
+      <tr><th scope="row">SessionRecord</th><td>İsteğe bağlı <code>lineage</code>: <code>kind</code> (primary/subagent/unknown), <code>parentSessionId</code>, <code>agentPath</code>, <code>nickname</code>, <code>sourceVersion</code>; bu yapının içinde <code>lineageVersion</code>.</td><td>İlk migration’da ilişki yoksa unknown. Dosyası bulunan eski kayıtlara metadata geri doldurulur. Kök kimliği ilişkiden türetilir; ikinci kalıcı ağaç kopyası tutulmaz.</td></tr>
+      <tr><th scope="row">RequestUsage</th><td>Kanıt varsa <code>source</code> içinde guest/provider kapsamı, <code>originThreadId</code>, <code>originTurnId</code>, <code>rootTurnId</code>, <code>responseId</code>; miktar düzeltmesinde <code>amountCorrection</code>.</td><td>Mevcut <code>key</code>, fiyat snapshot’ı ve düzeltme geçmişi korunur. Eski istekler kaynak olayla kesin eşleşirse zenginleştirilir; eşleşmiyorsa işaretlenir.</td></tr>
+      <tr><th scope="row">Conversation DTO</th><td>İlişki alanları, <code>relationStatus</code> (root/resolved/orphan/invalid/unknown), <code>subagentCount</code>, <code>familyUsage</code>, kapsam durumu ve canlı detay için <code>usageRevision</code>.</td><td><code>usage</code> kendi kullanım anlamını korur. Ana satır görünümü açıkça <code>familyUsage</code> kullanır. Proje özeti bu alanı toplamaz.</td></tr>
+      <tr><th scope="row">Detay DTO</th><td><code>ConversationUsageDetails</code>: seçili/kök kimlik, own/descendant/combined özetleri, kapsam durumu, uyarılar, <code>agents[]</code> içinde her ajanın kendi özet ve turn’leri.</td><td><code>conversation_usage</code> yanıtı Rust, TS ve testlerde aynı değişiklikte yenilenir. Aynı turn kimliği başka ajanda bulunabilir; arayüz kimliği ajan+turn birleşimi olur.</td></tr>
+      <tr><th scope="row">Ledger v2</th><td>Sürüm 1’den atomik ve tekrar çalıştırılabilir geçiş. Ham istekler oturum başına tutulmaya devam eder.</td><td>Yeni uygulama v1 ve v2 okur; daha yeni sürümü açık hatayla reddeder. Eski uygulamanın v2’yi reddetmesi veri alanlarını sessizce silmesini önler.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Gözlenen alan biçimi</h3>
+  <p class="small">Gerçek kayıtların sadeleştirilmiş şeması; kimlik değerleri yer tutucudur. İlk blok masaüstü alt ajan örneğinden, ikinci blok hem masaüstü hem konuk kayıtlarında gözlenen alanlardan gelir.</p>
+  <pre><code>session_meta.payload.source.subagent.thread_spawn = {
+  parent_thread_id: "&lt;parent-session-id&gt;",
+  depth: 1,
+  agent_path: "/root/reviewer",
+  agent_nickname: "Reviewer"
+}
+
+token_usage_record.payload = {
+  thread_id: "&lt;origin-thread-id&gt;",
+  turn_id: "&lt;origin-turn-id&gt;",
+  session_id: "&lt;root-session-id&gt;",
+  root_turn_id: "&lt;root-turn-id&gt;",
+  response_id: "&lt;response-id&gt;",
+  usage: { /* bu isteğin tokenları */ },
+  thread_token_usage: { /* ajan için kümülatif sayaç */ }
+}</code></pre>
+  <p><strong>P02 ile doğrulanan eşleştirme kuralı:</strong> <code>token_usage_record.thread_token_usage</code> ile <code>token_count.info.total_token_usage</code> değerlerini kaynak thread ve turn bağlamıyla birlikte eşleştir. Tekil <code>response_id</code> kaynak kimliğini, <code>usage</code> kesin istek miktarını eklesin; kümülatif sayacı yeni istek tokenı olarak kullanma. İlk owner başlığını sabitle; kopyalanmış yabancı metadata/lifecycle sonrasında açık owner-thread ayarıyla kendi akışına dön. Olay sırası, aynı timestamp veya alan adının benzerliği tek başına yeterli değil. Sıfır tokenlı ve tekrar bildirilmiş olaylar P02 kapsamındadır.</p>
+  <div class="notice"><p><strong>Kaynak sınırı:</strong> Tarama seçilen Brig konuk home’u içinde kalmalı. Mevcut kanonik yol ve symlink kontrolleri korunmalı. Önce güvenli alandaki metadata indeksini çıkar; projeye yoluyla kabul edilen köklerden açık ilişkiyle erişilen alt ajanları ekle. Böylece farklı çalışma dizinindeki çocuk alınabilir; bağımsız başka proje kaydı içeri çekilmez. Önceden başka projeye bağlanmış veya çelişkili kök belirten kayıt “çatışma” olarak bırakılır.</p></div>
+  <p><strong>Bağ kuralları:</strong> UUID biçimini, self-parent durumunu ve döngüyü doğrula. Geçersiz bağda kendi kullanımını koru, birleşik özete ekleme ve uyarı üret. Çocuk ebeveynden önce gelirse pending/orphan olarak sakla, sonraki taramada tekrar çöz. Metadata yokluğu, daha önce doğrulanmış ilişkiyi silmemeli. Güvenilir yeni metadata eski ilişkiyle çelişirse sessizce başka köke taşıma.</p>
+  <p><strong>Performans:</strong> Her yenilemede her ana oturum için ayrı dosya taraması yapma. Metadata indeksi ve ajanın kendi özeti bir kez oluşturulsun; ağaç özetleri ziyaret işaretleriyle hesaplansın. Token içeriği mevcut cursor ile artımlı okunsun. Arşivlenmiş Codex dosyalarının konumu desteklenen sürümde ayrıca doğrulansın; yeni bir dizin taraması aynı konuk sınırlarıyla açıkça tanımlansın.</p>
+</section>
+
+<section id="plan" aria-labelledby="plan-title">
+  <span class="section-number">05 / SIRALI UYGULAMA PLANI</span>
+  <h2 id="plan-title">14 adım, her adım için somut kabul kanıtı.</h2>
+  <p>Uygulamaya başlarken mevcut yerel değişiklikler yeniden okunmalı. İlgisiz dosyalar ve kullanıcı çalışmaları korunmalı. Her davranış değişikliği, kendi regresyon testiyle birlikte ilerlemeli; son test aşamasına ertelenmemeli.</p>
+  <div class="task-tools">
+    <p><strong id="progress-label">14 / 14 adım doğrulandı</strong><span id="storage-status">İşaretler ve kanıt notları bu tarayıcıda saklanır; proje ledger’ını değiştirmez.</span></p>
+    <progress id="plan-progress" value="14" max="14" aria-labelledby="progress-label"></progress>
+    <button type="button" id="print-plan">Yazdır / PDF kaydet</button>
+  </div>
+  <noscript><p class="small">Plan JavaScript olmadan da okunabilir. İlerleme işaretleri JavaScript kapalıyken kaydedilmez.</p></noscript>
+
+  <div class="phase-title"><h3>A · Veri doğrulaması ve sözleşme</h3><p class="small">P01–P03 tamamlanmadan üretim toplamları değiştirilmez.</p></div>
+  <article class="task" id="p01" data-task="P01" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p01" aria-labelledby="title-p01" checked><h3 id="title-p01"><span class="task-id">P01</span>Konuk Codex kayıt sözleşmesini doğrula</h3></div>
+    <p class="task-meta">Bağımlılık: yok · Hedef: konuk test ortamı, sürümlü ve anonim test girdileri</p>
+    <ol><li>Tugboat’ın kullandığı konuk Codex sürümünü kaydet; mevcut 0.167.0 örneğini referansla. Metadata ve olay türlerini desteklenen sürüm için çıkar.</li><li>İzole test projesinde ana ajan, iki çocuk, bir torun ve sonraki prompt’ta aynı alt ajana takip işi örneği oluştur veya eşdeğer mevcut kaydı kullan.</li><li>Üst kimliği, cwd, kaynak türü, tamamlanma/iptal, kalıcı ve geçici kayıt davranışını doğrula. Kimlik/token dışında prompt, cevap ve kimlik doğrulama verilerini fixture’a taşıma.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Konuk sürüm tablosu + en az bir gerçek alt ajan örneği + anonim, yeniden oynatılabilir fixture. Masaüstü örneği tek başına bu adımı tamamlamaz.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> Gerçek Brig Linux konuk Codex 0.167.0; iki çocuk, bir torun ve ikinci prompt’ta aynı çocuğa takip işi doğrulandı. 6 anonim fixture, 143 kayıt, 32 token_usage_record ve 32 token_count kontrolü geçti. Kanıt: artifacts/subagent-usage/p01-evidence.json ve p01-contract.md; bağımsız hash/içerik incelemesi başarılı. App Server/source=vscode ve CLI baseline ayrımı raporda açık.</p>
+    <div class="record"><label for="note-p01">Kanıt / test / commit</label><input id="note-p01" data-note="P01" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p02" data-task="P02" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p02" aria-labelledby="title-p02" checked><h3 id="title-p02"><span class="task-id">P02</span>Sayaç kapsamını ve istek kimliğini uzlaştır</h3></div>
+    <p class="task-meta">Bağımlılık: P01 · Hedef: kullanım sözleşmesi, parser fixture’ları</p>
+    <ol><li>Konuk ana sayacının çocukları içerip içermediğini tekil kaynak isteklerle karşılaştır. Ana/çocuk istek kümelerinin kesişimini ve kapalı zaman aralıklarını kontrol et.</li><li>İki olay türünün eşleşmesini, tekrar bildirimlerini, sayaç sıfırlamasını ve sıfır tokenlı kayıtları kanıtla. İstek başına model ve hizmet katmanı bağını koru.</li><li>Bağlamı devralan alt ajan ve normal fork’ta eski token olayları kopyalanıyor mu kontrol et. Hangi isteklerin yeni harcama olduğunu kaynak thread/response kimliğiyle belirle; ana prompt ilişkisini takip işiyle sına.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Girdi → beklenen tekil istekler → own/descendant/project toplamları için mutabakat tablosu. Doğrulanamayan sürümde ilişki gösterilir ama birleşik kullanım “Doğrulanamıyor” olur; tahmini tutar kesin toplam gibi sunulmaz.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 37 gerçek kaynak istek/bildirim eşleşmesi ve 6 açıkça sentetik sınır senaryosu geçti. Gerçek full-history çocukta kopyalanmış iki ebeveyn turu dışlandı. Fork 139918 kümülatif yerine 15882 yeni token kullanıyor; mevcut üretim parser’ında hata bağımsız probe ile yeniden üretildi. P02 sözleşmesi: artifacts/subagent-usage/p02-contract.md; expected.json sayısal mutabakatı doğru.</p>
+    <div class="record"><label for="note-p02">Kanıt / test / commit</label><input id="note-p02" data-note="P02" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p03" data-task="P03" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p03" aria-labelledby="title-p03" checked><h3 id="title-p03"><span class="task-id">P03</span>Veri ve görünüm sözleşmesini sabitle</h3></div>
+    <p class="task-meta">Bağımlılık: P02 · Hedef: Rust/TS tipleri, migration ve API örnekleri</p>
+    <ol><li>Lineage, kaynak istek alanları, detay DTO’su ve tam/kısmi/doğrulanamıyor durumlarını örnek JSON’larla tanımla.</li><li>Kendi kullanım, birleşik kullanım, proje katkısı ve kullanıcı prompt sayısını ayır. Alt ajan turn sayısını kullanıcı prompt sayısına ekleme.</li><li>Legacy/unknown, orphan, normal fork, arşiv ve silinmiş grup davranışlarını bu belgedeki kurallarla eşleştir. P02 sonucuna göre eşleştirme destek tablosunu tamamla.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Alt ajan içermeyen eski oturum ile iç içe alt ajanlı oturum için beklenen dashboard ve detay yanıtları. Aynı kimliğin iki kez sayılmadığı sayısal örnek.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> Sabitlenen v2 sözleşmesi: 8 DTO örneği ve 1 fiyat sınıfı düzeltme sınırı geçti. Örnek ağaç planla uyumlu: A6600, R24200; gerçek boş tur/zero request ayrımı, seçili subtree, request ref bölümü ve usageRevision doğrulandı. Tip/örnekler: tests/fixtures/codex-subagents/contracts/; kanıt: artifacts/subagent-usage/p03-evidence.json.</p>
+    <div class="record"><label for="note-p03">Kanıt / test / commit</label><input id="note-p03" data-note="P03" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+
+  <div class="phase-title"><h3>B · Güvenli keşif ve kalıcı kayıt</h3><p class="small">Projeye aidiyet, ilişki çözümü ve eski ledger’ların korunması.</p></div>
+  <article class="task" id="p04" data-task="P04" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p04" aria-labelledby="title-p04" checked><h3 id="title-p04"><span class="task-id">P04</span>Metadata okuyucusunu ve taramayı genişlet</h3></div>
+    <p class="task-meta">Bağımlılık: P03 · Hedef: C01 / rollout, scan_history</p>
+    <ol><li>Başlıktan kaynak ve üst oturum alanlarını türleriyle çıkar. Mevcut 1 MiB başlık sınırı, UUID, mutlak yol, kanonik yol ve symlink kontrollerini koru.</li><li>Keşfi metadata indeksi ve proje üyeliği çözümü olarak ayır. Aynı güvenilir konuk home’unda, kabul edilmiş köke açık bağla ulaşan farklı cwd çocuklarını dahil et.</li><li>Desteklenen sürümde kalıcı arşiv yolunu P01 kanıtına göre ekle. Diğer proje kökü, host geçmişi, ephemeral ve bilinmeyen kaynak biçimlerini açık durumlarla ele al.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Aynı proje ve ilişkili farklı cwd çocukları bulunur. Bağımsız diğer proje, dış symlink ve geçersiz kimlik içeri alınmaz. Bir hasarlı dosya sağlıklı dosyaları engellemez.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 74/74 Rust testi geçti. İlk owner başlığı, arşiv geçmişi ve symlink sınırı doğrulandı. Malformed/future child rolü korunuyor; source eksilmesi doğrulanmış bağı silmiyor; typed problem kaynak kaybı ve restart sonrasında ledger’da kalıyor. Kanıt: artifacts/subagent-usage/p04-evidence.json; kaynak incelemesi kabul edildi.</p>
+    <div class="record"><label for="note-p04">Kanıt / test / commit</label><input id="note-p04" data-note="P04" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p05" data-task="P05" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p05" aria-labelledby="title-p05" checked><h3 id="title-p05"><span class="task-id">P05</span>Ana–alt ilişkilerini çöz</h3></div>
+    <p class="task-meta">Bağımlılık: P04 · Hedef: C01 / ilişki çözümleme işlevleri</p>
+    <ol><li>Kimlik tabanlı ebeveyn/çocuk indeksini kur; root/attached/orphan/invalid durumlarını üret. Sıralamayı dosya keşif sırasından bağımsız tut.</li><li>Döngü, self-parent, çelişen metadata ve proje aidiyeti çatışmasını reddet. Her torunu bir kez ziyaret et; aşırı derinlikte açık hata ve kısmi kapsam üret.</li><li>Geç gelen ebeveynle orphan’ı yeniden bağla. Kaynak kaybolunca ledger’da bilinen ilişkiyi ve kendi kullanımı koru. Normal fork’u otomatik çocuk yapma.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>R→A→C ve R→B ağacı bütün giriş sıralarında aynı sonucu verir. Döngüde sonsuz dolaşım veya kullanım silinmesi olmaz; uyarı ilgili kayıtta görünür.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 82/82 Rust testi geçti. Farklı cwd çocukları açık ebeveyn bağıyla keşfediliyor; başka proje/guest dışarıda kalıyor. Ledger’daki kayıp ebeveyn, late-parent, cycle/self-parent/depth ve negatif kök çelişkisi testleri geçti. Graph/membership kaynak incelemesi kabul edildi. Kanıt: artifacts/subagent-usage/p05-evidence.json.</p>
+    <div class="record"><label for="note-p05">Kanıt / test / commit</label><input id="note-p05" data-note="P05" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p06" data-task="P06" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p06" aria-labelledby="title-p06" checked><h3 id="title-p06"><span class="task-id">P06</span>Ledger v2 geçişini ve geri doldurmayı ekle</h3></div>
+    <p class="task-meta">Bağımlılık: P03, P04, P05 · Hedef: C01 / SessionRecord, load_ledger, synchronize; C06 / storage</p>
+    <ol><li>İlk v1→v2 geçişinden önce değişmeyen bir v1 yedeği oluştur. Mevcut dosya kilidi içinde geçiş yap; atomik yazma düzenini kullan.</li><li>Turn’leri, istek anahtarlarını, cache bilinirliliğini, fiyat snapshot’larını, fiyat düzeltmelerini ve arşiv/çöp durumlarını aynen taşı. Metadata geri doldurmayı token parser sürümünden ayrı izle.</li><li>Kaynağı olan kaydı artımlı zenginleştir. Tekrar okuma gerekirse mevcut isteğe birleştir; replay ikinci istek üretmesin. Kaynağı olmayan legacy kayıtta eski kullanım ve unknown ilişkisi kalsın.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Aynı ledger’a iki kez geçiş ve yeniden başlatma aynı sonucu verir. İşlem kesilince geçerli v1 veya v2 kalır. Fiyatlar/durumlar değişmez; yeni sürüm ve hasarlı ledger anlaşılır hatayla reddedilir.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 85/85 Rust testi geçti. Read-only v1 okuma değişmiyor; ilk v2 yazımından önce byte-exact, atomik ve değişmeyen .v1.backup oluşturuluyor. Çökme/tekrar deneme, iki yazıcı, farklı yedek, gelecek schema ve symlink testleri geçti. İstek anahtarları, fiyat snapshot’ları, tokenlar ve durumlar korunuyor. Kanıt: artifacts/subagent-usage/p06-evidence.json.</p>
+    <div class="record"><label for="note-p06">Kanıt / test / commit</label><input id="note-p06" data-note="P06" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+
+  <div class="phase-title"><h3>C · Hesaplama ve detay servisi</h3><p class="small">Kendi kullanımını tek kaynak tut; ilişki toplamlarını görünümde üret.</p></div>
+  <article class="task" id="p07" data-task="P07" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p07" aria-labelledby="title-p07" checked><h3 id="title-p07"><span class="task-id">P07</span>Kaynak istekleri ve kapsam toplamlarını hesapla</h3></div>
+    <p class="task-meta">Bağımlılık: P02, P05, P06 · Hedef: C02 / Cursor, RequestUsage, Summary; C01 / synchronize</p>
+    <ol><li>P02’de kanıtlanan kuralla kaynak istek kimliklerini mevcut token olaylarına bağla. Kopyalanmış geçmişi kaynak ajana ait tut; tekrar bildirimleri ek kullanım üretmesin.</li><li>Oturum başına own özetlerini hesapla; alt ajan ve birleşik özeti doğrulanmış tekil alt ağaçtan türet. Proje özeti yalnız kendi kullanım katkılarını toplasın.</li><li>Unknown fiyat/cache, varsayılan hizmet katmanı, eksik kaynak ve doğrulanamayan provenance uyarılarını yeni kapsamların tamamına taşı. Ağırlıklı cache oranını kullan.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Örnek ağaçta proje ve R toplamı 24.200, A toplamı 6.600; cache %63,6. Aynı log replay’i, dosya rotasyonu ve yeniden başlatma bu toplamları artırmaz.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 97/97 Rust testi geçti; 37 gerçek fiziksel istek ve 6 sentetik sınır doğrulandı. Gerçek proje 320782 token / 21 istek, fork 139918→15882; eski anahtar ve fiyat kanıtları korunuyor. Copied-prefix, sayaç tekrarı/sıra/tier, scope/revision ve kaynak kaybıyla geç bulunan yabancı ebeveyn testleri geçti. Kaynak hashleri checkpoint ile eşleşiyor. Kanıt: artifacts/subagent-usage/p07-evidence.json ve p07-cargo.log. Kullanıcı isteğiyle bu maddeden sonra duruldu; P08 ve sonrası uygulanmadı.</p>
+    <div class="record"><label for="note-p07">Kanıt / test / commit</label><input id="note-p07" data-note="P07" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p08" data-task="P08" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p08" aria-labelledby="title-p08" checked><h3 id="title-p08"><span class="task-id">P08</span>Detay komutunu ve DTO’ları güncelle</h3></div>
+    <p class="task-meta">Bağımlılık: P07 · Hedef: C01 / conversation_usage, Dashboard; C03 / tipler; C04 / invoke</p>
+    <ol><li>Detay yanıtında ajan listesini, kendi turn’lerini, üç kapsam özetini ve uyarıları döndür. Aynı istek birden fazla özetin parçası olabilir; ham ajan listesinde bir kez bulunsun.</li><li>Proje kimliği ve oturum aidiyeti kontrollerini koru. Dışarıdan verilen üst kimlikle başka projenin ledger’ına geçme. Kaybolan kaynak için ledger detayını okunabilir tut.</li><li>Rust/TS sözleşmesini ve tüm mock yanıtlarını aynı değişiklikte güncelle. Terminal bağlamasının ihtiyaç duyduğu bütün kimlikleri backend listesinde koru.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Tek ajan, çok seviyeli grup, orphan ve yanlış proje isteği için sözleşme testleri. Aynı yerel turn kimliğine sahip iki ajanın detayları çakışmaz.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 101/101 Rust testi, 73/73 frontend testi ve üretim derlemesi geçti. 8 sabit DTO örneği, seçili çocuk subtree, aynı yerel turn kimliği, eksik kaynak ve yanlış proje/dışlama sınırları doğrulandı. Rust yanıtı ve TS çağıranları birlikte güncellendi. Kanıt: artifacts/subagent-usage/p08-evidence.json.</p>
+    <div class="record"><label for="note-p08">Kanıt / test / commit</label><input id="note-p08" data-note="P08" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+
+  <div class="phase-title"><h3>D · Arayüz ve canlı güncelleme</h3><p class="small">Mevcut İngilizce ürün dili ve native macOS düzeni korunur; bu plan Türkçedir.</p></div>
+  <article class="task" id="p09" data-task="P09" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p09" aria-labelledby="title-p09" checked><h3 id="title-p09"><span class="task-id">P09</span>Oturum listesini ve yaşam döngüsünü ilişkiye göre göster</h3></div>
+    <p class="task-meta">Bağımlılık: P08 · Hedef: C03 / renderDashboard, renderConversations; C04 / seçim ve durum değişikliği; C05 / resume sınırı</p>
+    <ol><li>Tablo ve kenar çubuğunda aynı kök filtresini kullan. Ana satırda alt ajan sayısı ve birleşik kullanım göster; orphan kayıtları ayrı, salt okunur kullanım alanında sun.</li><li>Arşiv/Çöp/Geri yükleme grubun görünümünü ana oturumun durumuyla değiştirsin. Proje toplamını ve çocukların eski ledger durumlarını değiştirmesin.</li><li>Alt ajan için bağımsız resume eylemi üretme; backend sınırını da buna göre doğrula. Mevcut çalışan terminal, OSC kimlik bağlama ve ana oturum süreç kontrollerini koru.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Bir kök ve üç alt ajan tek sohbet satırı oluşturur; toplam üç alt ajanı belirtir. Arşiv/çöp/geri yüklemede kullanım sabit, aktif terminal kısıtları geçerlidir.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 107/107 Rust, 77/77 frontend testi ve üretim derlemesi geçti. Kök/3 çocuk tek sohbet görünümü; arşiv/çöp/geri yükleme çocuk durumları ve harcamayı koruyor. Cached/orphan/future child resume ve durum değişimi engellendi; OSC kök bağı ve çalışan aile süreç kısıtı doğrulandı. Kanıt: artifacts/subagent-usage/p09-evidence.json.</p>
+    <div class="record"><label for="note-p09">Kanıt / test / commit</label><input id="note-p09" data-note="P09" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p10" data-task="P10" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p10" aria-labelledby="title-p10" checked><h3 id="title-p10"><span class="task-id">P10</span>Kullanım detayını ajan ve prompt bazında göster</h3></div>
+    <p class="task-meta">Bağımlılık: P08, P09 · Hedef: C03 / renderUsageDetails; C07 / detay şablonları ve stil</p>
+    <ol><li>Own/descendant/combined özetlerini, açılabilir ajan bölümlerini ve hiyerarşi bilgisini ekle. Ajan adlarını <code>textContent</code> ile bas; metaveriyi HTML olarak çalıştırma.</li><li>İstek satırlarında mevcut model, hizmet katmanı, cache read/write, yüzde, tarihli fiyat ve unknown davranışını koru. Alt ajan başlıklarını ana prompt numarasıyla karıştırma.</li><li>Kesin ana prompt ilişkisi varsa kaynak isteği o prompt altında etiketle; yoksa ayrı ilişkilendirilemeyen bölümde göster. Kısmi toplamı tam veri görünümüyle sunma.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Tek ajan görünümü çalışır; torunlar, uzun adlar ve farklı fiyatlar okunur. Klavye ile bölüm açma/kapama, erişilebilir başlıklar ve dar/geniş pencere kontrolleri geçer.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 84/84 frontend testi ve üretim derlemesi geçti. Üç kapsam, ajan disclosure’ları, prompt/unassigned kaynak bağlantıları, tekil istek satırları, Unicode/aynı yerel turn kimliği, yüzde/unknown ve iki düzeltme geçmişi doğrulandı. Native genişlik/klavye kabulü P14’te ayrıca yapılacak. Kanıt: artifacts/subagent-usage/p10-evidence.json.</p>
+    <div class="record"><label for="note-p10">Kanıt / test / commit</label><input id="note-p10" data-note="P10" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p11" data-task="P11" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p11" aria-labelledby="title-p11" checked><h3 id="title-p11"><span class="task-id">P11</span>Açık detayda canlı kullanım ve yarış korumasını ekle</h3></div>
+    <p class="task-meta">Bağımlılık: P10 · Hedef: C01 / monitor; C04 / dashboard olayları ve kullanım isteği koruması</p>
+    <ol><li>Alt ajanın yeni isteği veya sonradan çözülen bağı dashboard değişikliği olarak yayımlansın. Metadata değişimi token sayısı aynıyken de görünür olsun.</li><li>Açık detayın seçili grubunu ilgili değişiklikte yenile; aynı anda gereksiz tekrar istek üretme. Proje/oturum değişimi ve kapanışta eski yanıtları mevcut request korumasıyla ele.</li><li>Açık bölümleri, odak ve kaydırmayı koru. Hata durumunda son iyi veriyi uyarıyla tut; hatayı sıfır kullanıma dönüştürme. Proje kaldırıldığında observer iptalini koru.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Yalnız çocuk dosyasına eklenen kullanım açık detayda görünür. Geç dönen eski yanıt veya hata, yeni proje/oturumun ekranını değiştiremez.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 91/91 frontend testi ve üretim derlemesi geçti. Seçili subtree (legacy ebeveynin doğrulanmış child bağı dahil), unrelated root, birleşen yenileme, geç yanıt/hata, proje/oturum kapanış yarışı ve son iyi veri testleri başarılı. Disclosure, odak ve scroll korunuyor. Kanıt: artifacts/subagent-usage/p11-evidence.json; canlı native kabul P14’te.</p>
+    <div class="record"><label for="note-p11">Kanıt / test / commit</label><input id="note-p11" data-note="P11" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+
+  <div class="phase-title"><h3>E · Regresyon, gerçek ortam ve devir</h3><p class="small">Birim testleri gerçek konuk ve native arayüz kabulünden ayrı raporlanır.</p></div>
+  <article class="task" id="p12" data-task="P12" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p12" aria-labelledby="title-p12" checked><h3 id="title-p12"><span class="task-id">P12</span>Backend regresyon matrisini tamamla</h3></div>
+    <p class="task-meta">Bağımlılık: P06, P07, P08, P09 · Hedef: C01/C02 testleri, anonim sürümlü fixture’lar</p>
+    <ol><li>T01–T12 senaryolarını sınayan testleri bir arada değerlendir. Özellikle kopyalanan geçmiş, legacy migration, döngü ve farklı cwd sınırlarını kapsa.</li><li>Artımlı okuma, yarım son satır, dosya rotasyonu, parser replay’i, kayıp kaynak ve kilitli eşzamanlı yazma mevcut testlerini yeni şemayla çalıştır.</li><li>Çok sayıda oturum içeren deterministik girdide tek tarama/tekil ziyaret davranışını doğrula; gerçek dışı kesin hız iddiası yerine ölçümü kaydet.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Rust test sonucu ve her kritik senaryonun test adı. <code>cargo test --manifest-path src-tauri/Cargo.toml --locked</code> başarılı; gerekli native bağımlılıklar mevcut değilse önkoşul ayrıca kaydedilir.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 110/110 Rust testi geçti. T01–T12 test adlarıyla eşlendi; gerçek prompt toplamları 166475/62876, child subtree ve referans bölümü doğrulandı. Exact yarım satır/restart/rotasyon testleri başarılı. Konuk namespace’leri arası yanlış bağ yeniden üretildi ve düzeltildi; geçmiş harcamalar korundu. 512 kaynak/512 tekil ziyaret: yerel ölçüm 51864 µs; hız garantisi değil. Kanıt: artifacts/subagent-usage/p12-evidence.json ve p12-matrix.json.</p>
+    <div class="record"><label for="note-p12">Kanıt / test / commit</label><input id="note-p12" data-note="P12" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p13" data-task="P13" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p13" aria-labelledby="title-p13" checked><h3 id="title-p13"><span class="task-id">P13</span>Frontend akışlarını ve üretim derlemesini doğrula</h3></div>
+    <p class="task-meta">Bağımlılık: P09, P10, P11 · Hedef: C08 / frontend-flow.test.mjs; TS derlemesi</p>
+    <ol><li>Toplam, alt ajan sayısı, yüzde, unknown/unpriced, eski tek ajan, orphan ve normal fork görünümü için anlamlı akış testleri ekle.</li><li>Canlı child güncellemesi, kapalı detay, hızlı oturum/proje değişimi ve geç yanıt/hata senaryolarını sına. Klavye odağı ve uzun Unicode başlıklarını kapsa.</li><li><code>npm test</code>, <code>npm run build</code> ve <code>git diff --check</code> çalıştır. Mevcut ilişkisiz değişiklik kaynaklı sorun varsa ayrı raporla.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Akış testleri ve TS/Vite üretim derlemesi başarılı. Değişiklikler incelendiğinde yalnız bu davranışa ait dosya/alanların eklendiği görülebilir.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> 92/92 frontend testi, TS/Vite üretim derlemesi ve git diff --check geçti. Ayrı-konuk orphan kaydının açık kök yenilemesini genişletmesi önce yeniden üretildi, ardından rootSessionId kapsam kontrolüyle düzeltildi. Önceki legacy/unknown-parent ve yarış testleri korunuyor. Kanıt: artifacts/subagent-usage/p13-evidence.json.</p>
+    <div class="record"><label for="note-p13">Kanıt / test / commit</label><input id="note-p13" data-note="P13" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+  <article class="task" id="p14" data-task="P14" data-implementation="verified">
+    <div class="task-top"><input type="checkbox" id="done-p14" aria-labelledby="title-p14" checked><h3 id="title-p14"><span class="task-id">P14</span>Gerçek konuk kabulünü ve dokümantasyonu tamamla</h3></div>
+    <p class="task-meta">Bağımlılık: P12, P13 · Hedef: native Tugboat, izole konuk proje, C09 / ürün belgeleri</p>
+    <ol><li>P01 girdisini native uygulamada aç. Ana/alt/birleşik/proje toplamlarını kayıtlarla mutabık hale getir; dar ve geniş pencerede ekranı kontrol et.</li><li>Yeni alt ajan kullanımı, takip prompt’u, yeniden başlatma, arşiv/çöp/geri yükleme ve kaynak kaybolması akışlarını doğrula. Test ledger’ında v1 yedeğinden geri dönüşü dene.</li><li>README ve PRODUCT içindeki kullanım/oturum açıklamalarını yeni davranışa göre güncelle. Desteklenen sürümleri, eksik ilişki durumlarını, test komutlarını ve kalan kısıtları kaydet.</li></ol>
+    <div class="acceptance"><strong>Kabul kanıtı</strong>Gerçek konuk mutabakatı + native UI görüntüleri + yeniden başlatma/geri dönüş kanıtı. Statik veya fixture kontrolü gerçek ortam testi yerine geçmez. Uygulama bu aşamadan sonra yerel olarak tamamlanmış sayılır.</div>
+    <p class="implementation-record"><strong>Doğrulandı:</strong> Gerçek native kabul ve bağımsız son inceleme tamamlandı (ship; material fix yok). 29 tekil istek / 500658 proje; ana 272699 + alt ajanlar 136528 = 409227. Yeni CLI alt ajan/takip, çalışan terminal koruması, Arşiv→Çöp→Geri yükleme, kaynak kaybında korunmuş tutar/odak/disclosure, byte-exact kaynak dönüşü ve yeniden açılışta aynı anahtar/fiyat/durumlar doğrulandı. Minimum/Standard/wide görüntüler incelendi. Gerçek v1→v2 geçiş ve değişmez yedek; özel kopyalarda atomik geri dönüş kanıtlandı. 110/110 Rust, 93/93 frontend testi ve build başarılı; README/PRODUCT son kontrolü geçti. QA uygulaması/konuk kapatıldı, veriler korundu. Kanıt: artifacts/subagent-usage/p14-evidence.json; inceleme: p14-finish-review.json; belgeler: p14-documentation.json.</p>
+    <div class="record"><label for="note-p14">Kanıt / test / commit</label><input id="note-p14" data-note="P14" placeholder="Henüz uygulanmadı" autocomplete="off"></div>
+  </article>
+</section>
+
+<section id="testler" aria-labelledby="testler-title">
+  <span class="section-number">06 / KABUL VE REGRESYON MATRİSİ</span>
+  <h2 id="testler-title">Doğruluk yalnız toplamın büyümesi değildir.</h2>
+  <div class="table-scroll"><table class="matrix">
+    <thead><tr><th scope="col">Test</th><th scope="col">Senaryo</th><th scope="col">Beklenen sonuç</th><th scope="col">Kanıt</th></tr></thead>
+    <tbody>
+      <tr><td>T01</td><td>Alt ajansız mevcut oturum</td><td>Token, maliyet, yüzde ve prompt görünümü öncekiyle aynı; boş alt ajan toplamı yanlış uyarı üretmez.</td><td>Rust + UI</td></tr>
+      <tr><td>T02</td><td>İki çocuk ve bir torun</td><td>Own 11.000; descendants 13.200; combined ve project 24.200. Alt ajan sayısı 3.</td><td>Rust + UI</td></tr>
+      <tr><td>T03</td><td>İki olay türü, tekrar olay, replay ve sayaç sıfırlama</td><td>Bir fiziksel istek bir kez sayılır. Aynı token değerli iki farklı kaynak istek korunur.</td><td>Parser</td></tr>
+      <tr><td>T04</td><td>Geçmişi devralan çocuk ve normal fork</td><td>Kopyalanmış eski istek yeni harcama değildir. Fork alt ajan grubuna katılmaz.</td><td>Konuk + parser</td></tr>
+      <tr><td>T05</td><td>Çocuk ebeveynden önce; metadata geç geliyor</td><td>Önce orphan uyarısı; sonra doğru bağ. Proje katkısı yeniden sayılmaz, güncelleme yayımlanır.</td><td>Rust + olay</td></tr>
+      <tr><td>T06</td><td>Self-parent, döngü, çelişkili kimlik, aşırı derinlik</td><td>Sonsuz dolaşım yok. Yanlış birleşik toplam yok. Kendi kayıtları ve açık uyarı korunur.</td><td>Rust</td></tr>
+      <tr><td>T07</td><td>Farklı cwd/worktree; başka proje; host veya symlink kaçışı</td><td>Yalnız açık bağla doğrulanmış aynı konuk alt ajanı dahil edilir. Diğer proje ve dış kaynak reddedilir.</td><td>Dosya sistemi</td></tr>
+      <tr><td>T08</td><td>Eksik/silinmiş kaynak, yarım satır, bozuk başlık, rotasyon</td><td>Son güvenilir kullanım kaybolmaz. Onarım sonrası replay tekildir; sağlıklı oturumlar okunur.</td><td>Rust</td></tr>
+      <tr><td>T09</td><td>v1 ledger, tekrarlı migration, yarıda kesilme, eşzamanlı yazma</td><td>Fiyatlar/durumlar korunur; geçerli atomik dosya ve kullanılabilir yedek kalır; hiçbir yazıcı diğerini ezmez.</td><td>Migration</td></tr>
+      <tr><td>T10</td><td>Arşiv, Çöp, Geri yükleme, çalışan ana terminal</td><td>Grup görünümü kökü izler. Kullanım sabit kalır. Mevcut aktif süreç koruması uygulanır.</td><td>Rust + native UI</td></tr>
+      <tr><td>T11</td><td>Farklı model/katman; eksik fiyat; cache read/write bilinmiyor</td><td>İstek snapshot’ları korunur. Eksik maliyet/cache görünür; kesin yüzde veya sıfır harcama uydurulmaz.</td><td>Parser + UI</td></tr>
+      <tr><td>T12</td><td>İki ana prompt ve aynı alt ajana takip işi; ilişki eksikliği</td><td>Yalnız güvenilir kaynak kimliğiyle prompt ataması. Atanamayan kullanım ayrı bölümde; kullanıcı prompt sayısı şişmez.</td><td>Konuk + UI</td></tr>
+      <tr><td>T13</td><td>Çocuk güncellemesi; açık detay; hızlı proje değişimi; geç hata</td><td>Son seçimin verisi kalır. Eski yanıt ekrana yazılmaz. Son iyi veri ve odak korunur.</td><td>Akış + native UI</td></tr>
+      <tr><td>T14</td><td>Boş geçmiş; legacy unknown; desteklenmeyen konuk sürüm</td><td>Boş ekran çalışır. Eski toplam korunur. Doğrulanamayan kapsam açıkça belirtilir.</td><td>Rust + UI</td></tr>
+      <tr><td>T15</td><td>Dar/geniş pencere, uzun ad, Unicode, HTML içeren metadata</td><td>Yatay kaydırma yalnız gerekli tabloda; anlamlı başlık/odak; metadata metin olarak güvenli gösterilir.</td><td>UI + native görüntü</td></tr>
+      <tr><td>T16</td><td>Codex arşiv kaydı ve kalıcı olmayan/erişilemeyen alt ajan</td><td>Desteklenen arşiv yolu güvenle okunur. Kalıcı kayıt yoksa kullanımın tam olduğu iddia edilmez.</td><td>Sürümlü fixture + konuk</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="gecis" aria-labelledby="gecis-title">
+  <span class="section-number">07 / GEÇİŞ VE TAMAMLANMA</span>
+  <h2 id="gecis-title">Geçmiş harcamayı yeniden üretmeden geçiş yap.</h2>
+  <div class="split">
+    <div><h3>Yerel geçiş sırası</h3><ol>
+      <li>P01/P02 kanıtını ve desteklenen kaynak biçimlerini tamamla.</li>
+      <li>Test ledger’ında v1 yedeği al; v2 geçişi, yeniden başlatma ve tekrar oynatmayı doğrula.</li>
+      <li>Backend/TS/UI sözleşmesini birlikte tamamla. Üç kapsam toplamını eski kayıtlarla karşılaştır.</li>
+      <li>Native konuk kabulünü kapat; belgeleri ve kanıtları kaydet.</li>
+    </ol></div>
+    <div><h3>Geri dönüş ve sınırlamalar</h3><ul>
+      <li>Eski sürüme dönülecekse uygulama yazıcılarını durdur, güncel v2 dosyasını ayrıca koru, doğrulanmış v1 yedeğini atomik olarak geri koy.</li>
+      <li>Yedekten sonra biriken kullanım/durum değişiklikleri v1 yedeğinde bulunmaz. Kaynak loglar yerindeyse kullanım yeniden okunabilir; kayıp kaynak ve yeni durumlar için otomatik tam geri dönüş sözü verme.</li>
+      <li>Ledger’ı sıfırlamak, fiyatları güncel tarifeyle yeniden hesaplamak veya başka proje kayıtlarını taşımak geçiş yöntemi değildir.</li>
+    </ul></div>
+  </div>
+  <h3>Tamamlandı demek için</h3>
+  <ul class="checklist">
+    <li>Konuk Codex alt ajan ve token kapsamı fixture ve gerçek örnekle doğrulanmış olmalı.</li>
+    <li>Ana/alt/birleşik ve proje toplamları tekil isteklerle mutabık olmalı; yeniden başlatma ve replay bu sonucu değiştirmemeli.</li>
+    <li>Cache yüzdeleri, fiyat snapshot’ları, bilinmeyen değerler ve eski durumlar korunmalı.</li>
+    <li>Üstü olmayan, bozuk ilişkili ve kaynağı kayıp kayıtlar görünür ve dürüst durumlarla ele alınmalı.</li>
+    <li>İlgili backend/frontend testleri, üretim derlemesi ve native konuk kabulü geçmeli; kalan kısıtlar açıkça kaydedilmeli.</li>
+  </ul>
+  <p class="small status-line">Bu dosya inceleme ve uygulama planı ile adım bazında uygulama kanıtlarını içerir. Kullanıcı, 11 Kasım 2026 tarihinde planın uygulanmasını istedi. Adımlar yalnız kabul kanıtları tamamlandığında doğrulandı olarak işaretlenir. Mevcut çalışma ağacı başka yerel değişiklikler içerdiğinden kod referansları uygulamaya başlarken yeniden doğrulanmalıdır.</p>
+</section>
+
+<section id="kaynaklar" aria-labelledby="kaynaklar-title">
+  <span class="section-number">08 / İNCELEME KAYNAKLARI</span>
+  <h2 id="kaynaklar-title">Kod, yerel kayıt ve resmî belge ayrımı.</h2>
+  <div class="table-scroll"><table class="sources-table">
+    <thead><tr><th scope="col">Kaynak</th><th scope="col">İncelenen dosya ve ilgili bölüm</th></tr></thead>
+    <tbody>
+      <tr id="c01"><td>C01</td><td>Oturum tarama, ledger, toplamlar, detay komutu ve regresyon testleri.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src-tauri/src/conversations.rs</code><span class="small">18–34 · 95–142 · 155–255 · 274–310 · 410–502 · 530–545 · 620–640</span></td></tr>
+      <tr id="c02"><td>C02</td><td>Token parser v2, kaynak istek kaydı, tarihli fiyatlar ve özetleme.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src-tauri/src/usage.rs</code><span class="small">11 · 185–205 · 278–365 · 420–520 · 602 ve sonrası testler</span></td></tr>
+      <tr id="c03"><td>C03</td><td>Dashboard/istek detayları, cache yüzdesi, TS oturum tipi ve kenar çubuğu.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src/dashboard.ts</code><code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src/projects.ts</code></td></tr>
+      <tr id="c04"><td>C04</td><td>Detay komutu çağrısı, istek yarış korumaları, modal kapanışı ve canlı kullanım olayları.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src/main.ts</code><span class="small">216–266 · 595–597 · 613–624</span></td></tr>
+      <tr id="c05"><td>C05</td><td>Resume kimlik kontrolü ve terminal-oturum bağlama.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src-tauri/src/codex.rs</code><code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src-tauri/src/terminal.rs</code></td></tr>
+      <tr id="c06"><td>C06</td><td>İşlemler arası dosya kilidi ve atomik JSON yazımı.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src-tauri/src/storage.rs</code><span class="small">18–49 · 64–90</span></td></tr>
+      <tr id="c07"><td>C07</td><td>Kullanım modalı, prompt şablonu ve ürün stilleri.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/index.html</code><code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/src/style.css</code></td></tr>
+      <tr id="c08"><td>C08</td><td>Mevcut dashboard, cache ve geç yanıt akış testleri.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/tests/frontend-flow.test.mjs</code></td></tr>
+      <tr id="c09"><td>C09</td><td>Ürün davranışı ve mevcut doğrulama komutları.<code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/PRODUCT.md</code><code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/README.md</code><code class="path">/Volumes/MK/Projects/HGM-LABS/brig-desktop/package.json</code></td></tr>
+    </tbody>
+  </table></div>
+  <ol class="source-list">
+    <li id="e01"><strong>E01 · Masaüstü ana/alt oturum örneği.</strong> Sürüm 0.167.0-alpha.3.2. Yalnız metadata, kaynak kimlikleri ve token alanları incelendi. Ana oturumun kapalı karşılaştırma aralığı 10 Kasım 2026, 21:42:22.153Z–21:44:20.943Z. Ana dosya etkin olduğundan bütün dosyaya ait hareketli son toplam yerine bu sabit kesit kullanıldı.<code class="path">/Users/mehmet/.codex/sessions/2026/11/10/rollout-2026-11-10T12-49-28-01a1c4dc-d21a-7723-af3c-be48907017c8.jsonl</code><code class="path">/Users/mehmet/.codex/sessions/2026/11/11/rollout-2026-11-11T00-42-22-01a1c769-7e30-7b61-ad32-adda1c28b64f.jsonl</code></li>
+    <li id="e02"><strong>E02 · Konuk normal oturum örneği.</strong> Sürüm 0.167.0, kaynak cli. Önceki yerel kabul çalışmasının geçici dosyası; kalıcı fixture değildir. Gözlenen 16/16 eşleşme alt ajan özelliğinin gerçek konuk kabulü yerine geçmez.<code class="path">/private/tmp/brig-bd15-mCHq6N/state/homes/brig-codex-bd-32674743fda6f35b/.codex/sessions/2026/11/10/rollout-2026-11-10T15-04-49-01a1c5fd-894f-7e42-b36c-bd1a0dfef8e7.jsonl</code></li>
+    <li id="o01"><strong>O01 · Resmî OpenAI Subagents belgesi.</strong> Ayrı ajan thread’leri, ana oturumda sonuçların toplanması ve ilave token kullanımı açıklanıyor. <a href="https://learn.chatgpt.com/docs/agent-configuration/subagents">Subagents</a> · Erişim: 11 Kasım 2026.</li>
+    <li id="o02"><strong>O02 · Resmî OpenAI Codex App Server belgesi.</strong> <code>thread/list</code> için doğrudan çocuk/torun filtreleri ve kaynak türleri; <code>thread/fork</code> için ayrı fork ilişkisi; thread kullanım olayları açıklanıyor. <a href="https://learn.chatgpt.com/docs/app-server">Codex App Server</a> · Erişim: 11 Kasım 2026. Bu plan App Server entegrasyonu önermiyor; belge ilişki kavramlarını karşılaştırmak için kullanıldı.</li>
+  </ol>
+  <p class="small">Yerel JSONL alanları sürüme bağlı gözlemlerdir. Ürün davranışı, kod kanıtı ve henüz uygulanmamış öneriler bu belgede ayrı belirtilmiştir. Harici font, görsel veya script gerektirmez; dosya çevrimdışı okunabilir ve yazdırılabilir.</p>
+</section>
+</main>
+<footer>Tugboat · Alt ajan kullanım takibi · İnceleme ve uygulama planı · 11 Kasım 2026</footer>
+<script>
+(() => {
+  const key = 'tugboat-subagent-usage-plan-v1';
+  const tasks = [...document.querySelectorAll('[data-task]')];
+  const notes = [...document.querySelectorAll('[data-note]')];
+  let state = {};
+  let storageAvailable = true;
+  const unavailable = () => {
+    storageAvailable = false;
+    document.getElementById('storage-status').textContent = 'Tarayıcı kaydı kullanılamıyor. İşaretler ve notlar yalnız bu açık sayfada tutulur.';
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem(key) || '{}');
+    if (saved && typeof saved === 'object' && !Array.isArray(saved)) state = saved;
+  } catch { unavailable(); }
+  const update = () => {
+    let done = 0;
+    for (const task of tasks) {
+      const checked = task.querySelector('input[type=checkbox]').checked;
+      task.dataset.done = String(checked);
+      if (checked) done++;
+    }
+    document.getElementById('progress-label').textContent = done + ' / ' + tasks.length + ' adım doğrulandı';
+    document.getElementById('plan-progress').value = done;
+  };
+  const save = () => {
+    if (!storageAvailable) return;
+    try { localStorage.setItem(key, JSON.stringify(state)); } catch { unavailable(); }
+  };
+  for (const task of tasks) {
+    const input = task.querySelector('input[type=checkbox]');
+    input.checked = task.dataset.implementation === 'verified' || state[task.dataset.task]?.done === true;
+    input.addEventListener('change', () => {
+      const id = task.dataset.task;
+      state[id] = { ...state[id], done: input.checked };
+      update(); save();
+    });
+  }
+  for (const note of notes) {
+    const id = note.dataset.note;
+    if (typeof state[id]?.note === 'string') note.value = state[id].note;
+    note.addEventListener('input', () => { state[id] = { ...state[id], note: note.value }; save(); });
+  }
+  document.getElementById('print-plan').addEventListener('click', () => window.print());
+  update();
+})();
+</script>
+</body>
+</html>

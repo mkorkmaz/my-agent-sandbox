@@ -34,6 +34,7 @@
       "repository": "https://github.com/lucide-icons/lucide",
       "sourceRevision": "1.71.0",
       "sourceArchive": "https://github.com/lucide-icons/lucide/tree/1.71.0",
+      "modifications": "Interface icon SVG stroke widths are set to 1.5.",
       "icons": {
         "folder.svg": {
           "url": "https://raw.githubusercontent.com/lucide-icons/lucide/1.71.0/icons/folder.svg",

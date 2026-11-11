@@ -1,0 +1,185 @@
+{
+  "contractId": "tugboat-subagent-usage-v2",
+  "contractVersion": 1,
+  "ledgerSchemaVersion": 2,
+  "lineageVersion": 1,
+  "wireCase": "camelCase",
+  "scope": "verified recorded sources; not account billing completeness",
+  "types": {
+    "Lineage": {
+      "kind": [
+        "primary",
+        "subagent",
+        "unknown"
+      ],
+      "parentSessionId": "string|null",
+      "agentPath": "string|null",
+      "nickname": "string|null",
+      "sourceVersion": "string|null",
+      "lineageVersion": 1
+    },
+    "RelationStatus": [
+      "root",
+      "resolved",
+      "orphan",
+      "invalid",
+      "unknown"
+    ],
+    "Coverage": [
+      "complete",
+      "partial",
+      "unknown"
+    ],
+    "RequestSource": {
+      "guestNamespace": "verified canonical guest context",
+      "modelProvider": "validated source provider",
+      "originThreadId": "string",
+      "originTurnId": "string|null",
+      "rootTurnId": "string|null",
+      "responseId": "string"
+    },
+    "AmountCorrection": {
+      "previousTokens": "Tokens",
+      "previousCostUsd": "number|null",
+      "previousPartial": "boolean",
+      "previousUnpricedReason": "string|null",
+      "reason": "string"
+    },
+    "RequestRef": {
+      "sessionId": "string",
+      "turnId": "string",
+      "requestKey": "immutable RequestUsage.key"
+    },
+    "TurnRef": {
+      "sessionId": "string",
+      "turnId": "string"
+    }
+  },
+  "persistedAdditions": {
+    "SessionRecord": {
+      "lineage": "Lineage(default unknown)"
+    },
+    "RequestUsage": {
+      "source": "RequestSource|null(default null)",
+      "amountCorrection": "AmountCorrection|null(default null)"
+    },
+    "TurnUsage": {
+      "originThreadId": "string|null(default null)",
+      "rootTurnId": "string|null(default null)",
+      "parentTurnId": "string|null(default null)"
+    }
+  },
+  "derivedAdditions": {
+    "Summary": {
+      "unmeasuredTurns": "u64(default0): genuine owned turns with no requests"
+    },
+    "Conversation": {
+      "lineage": "Lineage",
+      "relationStatus": "RelationStatus",
+      "rootSessionId": "string|null",
+      "subagentCount": "u64",
+      "familyUsage": "UsageSummary",
+      "coverage": "Coverage",
+      "usageRevision": "opaque stable hash of own cursor state/offsets + parserVersion + lineage + own warning/availability + verified namespace"
+    },
+    "Dashboard": {
+      "coverage": "Coverage"
+    },
+    "ConversationUsageDetails": {
+      "sessionId": "selected node id",
+      "rootSessionId": "resolved ancestor id|null",
+      "ownUsage": "UsageSummary",
+      "descendantsUsage": "UsageSummary",
+      "combinedUsage": "UsageSummary",
+      "coverage": "Coverage",
+      "warnings": "string[]",
+      "agents": "AgentUsageDetails[]",
+      "userPromptCount": "u64|null",
+      "agentTurnCount": "u64",
+      "prompts": "PromptUsage[]",
+      "unassigned": "UnassignedUsage"
+    }
+  },
+  "defaults": {
+    "legacyLineage": {
+      "kind": "unknown",
+      "parentSessionId": null,
+      "agentPath": null,
+      "nickname": null,
+      "sourceVersion": null,
+      "lineageVersion": 1
+    },
+    "legacyRequestSource": null,
+    "legacyAmountCorrection": null,
+    "legacyTurnOrigin": null
+  },
+  "notPersisted": [
+    "rootSessionId",
+    "relationStatus",
+    "subagentCount",
+    "familyUsage",
+    "project family tree",
+    "prompt spending copies",
+    "ConversationUsageDetails",
+    "usageRevision"
+  ],
+  "physicalIdentity": [
+    "guestNamespace",
+    "modelProvider",
+    "originThreadId",
+    "responseId"
+  ],
+  "newRequestKey": "source:[\"guestNamespace\",\"modelProvider\",\"originThreadId\",\"responseId\"]",
+  "existingRequestKey": "immutable, retain existing value when attaching source/correction",
+  "selection": {
+    "details": "selected node plus accepted descendant subtree",
+    "rootSessionId": "ancestor information only",
+    "agents": "flat selected-first preorder, children ordered by agentPath then id",
+    "uiRows": "roots, legacy unknown single nodes and unresolved/orphan/invalid detached nodes",
+    "resolvedChildResume": false,
+    "terminalIdentity": "retain all IDs; map a resolved child OSC ID to its resolved root; never bind by arbitrary child title"
+  },
+  "coverage": {
+    "complete": "all available accepted recorded sources have verified ownership/relations and measured own turns",
+    "partial": "some reliable data exists with a material attribution/source/measurement gap",
+    "unknown": "no supported attribution proof or no measured amount for the known owned work",
+    "pricingIndependent": true,
+    "cacheKnownnessIndependent": true,
+    "emptyHistory": "complete zero when source is healthy and no owned turns exist",
+    "legacySingle": "unknown source coverage without an invented child warning"
+  },
+  "migration": {
+    "acceptedReadVersions": [
+      1,
+      2
+    ],
+    "futureVersions": "reject without rewriting",
+    "lock": "existing ledger file lock, held across read/backup/migrate/write",
+    "backup": "immutable byte-exact v1 snapshot, atomically created with create-once semantics before replacement",
+    "backupExisting": "reuse only if same bytes; otherwise preserve both inputs and fail without replacing either",
+    "schemaUpgrade": "retain all keys,tokens,prices,corrections,states; add defaults only",
+    "replay": "retain old entries; uniquely attach source/correction; never append a matched second request",
+    "pricingCorrection": "use saved rates only; if corrected historical pricing class cannot be proven, preserve snapshot and leave cost unpriced"
+  },
+  "copiedOwnership": {
+    "owner": "first valid session_meta.id pinned",
+    "inheritedHeader": "foreign session_meta matching declared fork origin is context only",
+    "boundary": "thread_settings_applied.thread_id equals pinned owner",
+    "missingOrConflict": "unknown ownership; preserve trustworthy exact usage and suppress unproven owned lifecycle",
+    "timeOrOrdinalInference": false
+  },
+  "liveDetail": {
+    "signal": "Conversation.usageRevision",
+    "publish": "Dashboard comparison includes revision and metadata",
+    "selectedFingerprint": [
+      "subtree membership",
+      "id",
+      "usageRevision",
+      "relationStatus",
+      "rootSessionId",
+      "coverage"
+    ],
+    "unrelatedRootRefresh": false,
+    "hashAllRequestHistory": false
+  }
+}

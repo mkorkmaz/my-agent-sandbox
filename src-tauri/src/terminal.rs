@@ -4,13 +4,11 @@ use crate::{
     terminal_title,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
-use std::fs::File;
 use std::io::{Read, Write};
-use std::os::fd::AsRawFd;
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
@@ -40,11 +38,9 @@ struct Session {
     project_id: String,
     purpose: &'static str,
     chat: Mutex<ChatState>,
-    running: AtomicBool,
     exit_code: Mutex<Option<i32>>,
-    process: AtomicI32,
+    process: Arc<pty::Process>,
     view: AtomicUsize,
-    control: Mutex<File>,
     input: mpsc::SyncSender<Vec<u8>>,
 }
 
@@ -53,6 +49,7 @@ struct ChatState {
     conversation_id: Option<String>,
     prefix: Option<String>,
     busy: bool,
+    identities: HashMap<String, Option<String>>,
 }
 
 impl ChatState {
@@ -66,24 +63,78 @@ impl ChatState {
     }
 
     fn bind(&mut self, conversations: &[crate::conversations::Conversation]) -> bool {
+        use crate::{conversation_graph::Status, lineage::Kind};
+        let roots: HashSet<_> = conversations
+            .iter()
+            .filter(|conversation| {
+                conversation.lineage.kind != Kind::Subagent
+                    && conversation.relation_status == Status::Root
+            })
+            .map(|conversation| conversation.id.as_str())
+            .collect();
+        self.identities = conversations
+            .iter()
+            .map(|conversation| {
+                let identity = match (&conversation.lineage.kind, &conversation.relation_status) {
+                    (_, Status::Invalid) => None,
+                    (Kind::Subagent, Status::Resolved) => conversation
+                        .root_session_id
+                        .clone()
+                        .filter(|root| roots.contains(root.as_str())),
+                    (Kind::Subagent, _) => None,
+                    _ => Some(conversation.id.clone()),
+                };
+                (conversation.id.clone(), identity)
+            })
+            .collect();
+        self.resolve_prefix()
+    }
+
+    fn resolve_prefix(&mut self) -> bool {
         let Some(prefix) = &self.prefix else {
             return false;
         };
-        let mut matches = conversations
+        let mut matches = self
+            .identities
             .iter()
-            .filter(|conversation| conversation.id.starts_with(prefix));
-        let identity = matches.next().map(|conversation| conversation.id.clone());
-        if identity.is_none() || matches.next().is_some() || identity == self.conversation_id {
+            .filter(|(id, _)| id.starts_with(prefix));
+        let Some((_, identity)) = matches.next() else {
+            return false;
+        };
+        if matches.next().is_some() || *identity == self.conversation_id {
             return false;
         }
-        self.conversation_id = identity;
+        self.conversation_id = identity.clone();
         true
+    }
+
+    fn update_title(&mut self, title: terminal_title::ChatTitle) -> bool {
+        let changed_prefix = title.prefix.is_some() && title.prefix != self.prefix;
+        let changed = changed_prefix || self.busy != title.busy;
+        if changed_prefix {
+            self.prefix = title.prefix;
+            // Retain an established root until trusted metadata resolves a new title.
+            // A full child UUID is not an independent chat identity.
+            self.resolve_prefix();
+        }
+        self.busy = title.busy;
+        changed
+    }
+
+    fn matches_any(&self, ids: &[String]) -> bool {
+        ids.iter().any(|id| {
+            self.matches(id)
+                || self
+                    .prefix
+                    .as_ref()
+                    .is_some_and(|prefix| id.starts_with(prefix))
+        })
     }
 }
 
 impl Session {
     fn status(&self, identifier: u64) -> TerminalStatus {
-        let running = self.running.load(Ordering::SeqCst);
+        let running = self.process.running();
         let chat = self.chat.lock().unwrap_or_else(|error| error.into_inner());
         TerminalStatus {
             identifier,
@@ -98,44 +149,11 @@ impl Session {
 
     fn update_title(&self, title: terminal_title::ChatTitle) {
         let mut chat = self.chat.lock().unwrap_or_else(|error| error.into_inner());
-        let changed_prefix = title.prefix.is_some() && title.prefix != chat.prefix;
-        if !changed_prefix && chat.busy == title.busy {
+        if !chat.update_title(title) {
             return;
         }
-        if changed_prefix {
-            let prefix = title.prefix.as_ref().unwrap();
-            if crate::conversations::valid_id(prefix) {
-                chat.conversation_id = Some(prefix.clone());
-            } else if !chat
-                .conversation_id
-                .as_ref()
-                .is_some_and(|id| id.starts_with(prefix))
-            {
-                chat.conversation_id = None;
-            }
-            chat.prefix = title.prefix;
-        }
-        chat.busy = title.busy;
         drop(chat);
         let _ = self.app.emit("terminal-sessions-changed", &self.project_id);
-    }
-
-    fn stop(&self, signal: i32) {
-        let process = self.process.load(Ordering::SeqCst);
-        if process <= 0 {
-            return;
-        }
-        if let Ok(control) = self.control.lock() {
-            let foreground = unsafe { libc::tcgetpgrp(control.as_raw_fd()) };
-            if foreground > 0 && foreground != process {
-                unsafe {
-                    libc::kill(-foreground, signal);
-                }
-            }
-        }
-        unsafe {
-            libc::kill(-process, signal);
-        }
     }
 }
 
@@ -155,15 +173,15 @@ pub fn is_chat(purpose: &str) -> bool {
     ["codex", "resume"].contains(&purpose)
 }
 
-pub fn conversation_running(project_id: &str, conversation_id: &str) -> bool {
+pub fn conversations_running(project_id: &str, conversation_ids: &[String]) -> bool {
     sessions().lock().is_ok_and(|states| {
         states.values().any(|session| {
             session.project_id == project_id
-                && session.running.load(Ordering::SeqCst)
+                && session.process.running()
                 && session
                     .chat
                     .lock()
-                    .is_ok_and(|chat| chat.matches(conversation_id))
+                    .is_ok_and(|chat| chat.matches_any(conversation_ids))
         })
     })
 }
@@ -209,7 +227,7 @@ fn status_for(project_id: &str, group: Option<&str>) -> Option<TerminalStatus> {
         })
         .max_by_key(|(identifier, session)| {
             (
-                (session.running.load(Ordering::SeqCst) as u8) * 2
+                (session.process.running() as u8) * 2
                     + (purpose_group(session.purpose) == "primary") as u8,
                 *identifier,
             )
@@ -244,8 +262,51 @@ pub fn terminal_snapshot(identifier: u64) -> Option<TerminalStatus> {
 
 static SESSIONS: OnceLock<Mutex<HashMap<u64, Arc<Session>>>> = OnceLock::new();
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+pub(crate) fn reserve_identifier() -> u64 {
+    NEXT_ID.fetch_add(1, Ordering::SeqCst)
+}
 fn sessions() -> &'static Mutex<HashMap<u64, Arc<Session>>> {
     SESSIONS.get_or_init(Mutex::default)
+}
+
+const LIVE_LIMIT: usize = 16;
+const FINISHED_LIMIT: usize = 32;
+
+fn retention(statuses: &[(u64, bool)]) -> (bool, Vec<u64>) {
+    let can_start = statuses.iter().filter(|(_, running)| *running).count() < LIVE_LIMIT;
+    let mut finished: Vec<_> = statuses
+        .iter()
+        .filter(|(_, running)| !running)
+        .map(|(id, _)| *id)
+        .collect();
+    finished.sort_unstable();
+    finished.truncate(finished.len().saturating_sub(FINISHED_LIMIT));
+    (can_start, finished)
+}
+
+fn trim_finished(app: &AppHandle) {
+    let _ = app.run_on_main_thread(move || {
+        let Ok(mut states) = sessions().lock() else {
+            return;
+        };
+        let statuses: Vec<_> = states
+            .iter()
+            .map(|(id, state)| (*id, state.process.running()))
+            .collect();
+        for id in retention(&statuses).1 {
+            if let Some(state) = states.remove(&id) {
+                let pointer = state.view.swap(0, Ordering::SeqCst);
+                if pointer != 0 {
+                    unsafe {
+                        brig_terminal_destroy(pointer as *mut c_void);
+                    }
+                }
+                let _ = state
+                    .app
+                    .emit("terminal-sessions-changed", &state.project_id);
+            }
+        }
+    });
 }
 fn session(identifier: u64) -> Option<Arc<Session>> {
     sessions().lock().ok()?.get(&identifier).cloned()
@@ -266,9 +327,7 @@ extern "C" fn input(identifier: u64, bytes: *const u8, length: usize) {
 
 extern "C" fn resize(identifier: u64, columns: u16, rows: u16, width: u16, height: u16) {
     if let Some(session) = session(identifier) {
-        if let Ok(control) = session.control.lock() {
-            let _ = pty::resize(&control, columns, rows, width, height);
-        }
+        session.process.resize(columns, rows, width, height);
     }
 }
 
@@ -317,6 +376,7 @@ pub async fn terminal_start(
 ) -> Result<u64, String> {
     let project =
         projects::Registry::load(&projects::file(window.app_handle())?)?.project(&project_id)?;
+    project.require_active()?;
     project.check_path()?;
     let mut command = Command::new("/bin/zsh");
     command
@@ -333,22 +393,51 @@ pub async fn start(
     window: WebviewWindow,
     project_id: String,
     purpose: &'static str,
-    mut command: Command,
+    command: Command,
     layout: Layout,
     conversation_id: Option<String>,
 ) -> Result<u64, String> {
-    layout.validate()?;
-    let finished: Vec<_> = terminal_sessions(project_id.clone())
-        .into_iter()
-        .filter(|status| !status.running)
-        .map(|status| status.identifier)
-        .collect();
-    for identifier in finished {
-        terminal_close(window.app_handle().clone(), identifier).await?;
+    start_reserved(
+        window,
+        project_id,
+        purpose,
+        command,
+        layout,
+        conversation_id,
+        Reservation {
+            identifier: reserve_identifier(),
+            on_exit: None,
+        },
+    )
+    .await
+}
+
+pub(crate) type ExitHandler = Box<dyn FnOnce(Option<i32>) + Send>;
+pub(crate) struct Reservation {
+    pub identifier: u64,
+    pub on_exit: Option<ExitHandler>,
+}
+
+pub(crate) async fn start_reserved(
+    window: WebviewWindow,
+    project_id: String,
+    purpose: &'static str,
+    mut command: Command,
+    layout: Layout,
+    conversation_id: Option<String>,
+    reservation: Reservation,
+) -> Result<u64, String> {
+    let Reservation {
+        identifier,
+        on_exit,
+    } = reservation;
+    if crate::lifecycle::is_closing() {
+        return Err("The app is closing.".into());
     }
+    layout.validate()?;
     if let Some(previous) = status_for(&project_id, Some(purpose_group(purpose))) {
         if previous.running && !(is_chat(purpose) && is_chat(previous.purpose)) {
-            if previous.purpose == purpose {
+            if previous.purpose == purpose && on_exit.is_none() {
                 return Ok(previous.identifier);
             }
             return Err("This project has an open terminal. End that process first.".into());
@@ -358,7 +447,6 @@ pub async fn start(
     let mut writer = pty.master.try_clone().map_err(|error| error.to_string())?;
     let mut reader = pty.master.try_clone().map_err(|error| error.to_string())?;
     let (send, receive) = mpsc::sync_channel::<Vec<u8>>(256);
-    let identifier = NEXT_ID.fetch_add(1, Ordering::SeqCst);
     let state = Arc::new(Session {
         app: window.app_handle().clone(),
         project_id: project_id.clone(),
@@ -367,21 +455,25 @@ pub async fn start(
             conversation_id: conversation_id.clone(),
             ..Default::default()
         }),
-        running: AtomicBool::new(true),
         exit_code: Mutex::new(None),
-        process: AtomicI32::new(0),
+        process: Arc::new(pty::Process::new(&pty).map_err(|error| error.to_string())?),
         view: AtomicUsize::new(0),
-        control: Mutex::new(pty.master.try_clone().map_err(|error| error.to_string())?),
         input: send,
     });
     {
         let mut states = sessions().lock().map_err(|error| error.to_string())?;
+        if crate::lifecycle::is_closing() {
+            return Err("The app is closing.".into());
+        }
         if let Some((identifier, _)) = states.iter().find(|(_, session)| {
             session.project_id == project_id
-                && session.running.load(Ordering::SeqCst)
-                && conversation_id
-                    .as_ref()
-                    .is_some_and(|id| session.chat.lock().is_ok_and(|chat| chat.matches(id)))
+                && session.process.running()
+                && conversation_id.as_ref().is_some_and(|id| {
+                    session
+                        .chat
+                        .lock()
+                        .is_ok_and(|chat| chat.conversation_id.as_ref() == Some(id))
+                })
         }) {
             return Ok(*identifier);
         }
@@ -389,12 +481,18 @@ pub async fn start(
             session.project_id == project_id
                 && purpose_group(session.purpose) == purpose_group(purpose)
                 && !(is_chat(session.purpose) && is_chat(purpose))
-                && session.running.load(Ordering::SeqCst)
+                && session.process.running()
         }) {
             return Err("This project terminal is already starting.".into());
         }
-        if states.len() >= 16 {
-            return Err("Close an unused terminal first.".into());
+        let statuses: Vec<_> = states
+            .iter()
+            .map(|(id, state)| (*id, state.process.running()))
+            .collect();
+        if !retention(&statuses).0 {
+            return Err(
+                "There are 16 live terminal processes. End an unused process first.".into(),
+            );
         }
         states.insert(identifier, state.clone());
     }
@@ -430,6 +528,7 @@ pub async fn start(
     let view = match view {
         Ok(view) => view,
         Err(error) => {
+            state.process.stop(libc::SIGHUP);
             if let Ok(mut states) = sessions().lock() {
                 states.remove(&identifier);
             }
@@ -437,13 +536,12 @@ pub async fn start(
         }
     };
     state.view.store(view, Ordering::SeqCst);
-    let child = pty.spawn(&mut command);
+    let child = state.process.spawn(&pty, &mut command);
     if let Err(error) = child {
-        terminal_close(app, identifier).await?;
+        close_state(app, identifier, state).await?;
         return Err(error.to_string());
     }
     let mut child = child.unwrap();
-    state.process.store(child.id() as i32, Ordering::SeqCst);
     std::thread::spawn(move || {
         while let Ok(bytes) = receive.recv() {
             if writer.write_all(&bytes).is_err() {
@@ -494,12 +592,15 @@ pub async fn start(
     let _ = app.emit("terminal-sessions-changed", &state.project_id);
     std::thread::spawn(move || {
         let status = child.wait();
-        state.process.store(0, Ordering::SeqCst);
         let code = status.ok().and_then(|status| status.code());
         if let Ok(mut stored) = state.exit_code.lock() {
             *stored = code;
         }
-        state.running.store(false, Ordering::SeqCst);
+        if let Some(on_exit) = on_exit {
+            on_exit(code);
+        }
+        state.process.exited();
+        trim_finished(&app);
         let _ = app.emit(
             "terminal-exit",
             serde_json::json!({ "identifier": identifier, "projectId": project_id, "purpose": purpose, "code": code }),
@@ -563,23 +664,17 @@ pub async fn terminal_focus(window: WebviewWindow, identifier: u64) -> Result<()
 
 #[tauri::command]
 pub async fn terminal_close(app: AppHandle, identifier: u64) -> Result<(), String> {
+    let Some(state) = session(identifier) else {
+        return Ok(());
+    };
+    close_state(app, identifier, state).await
+}
+
+async fn close_state(app: AppHandle, identifier: u64, state: Arc<Session>) -> Result<(), String> {
+    state.process.stop(libc::SIGHUP);
+    let closing = state.clone();
     on_main(app, move || {
-        let state = sessions()
-            .lock()
-            .map_err(|error| error.to_string())?
-            .remove(&identifier);
-        let Some(state) = state else {
-            return Ok(());
-        };
-        state.stop(libc::SIGHUP);
-        let closing = state.clone();
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if closing.running.load(Ordering::SeqCst) {
-                closing.stop(libc::SIGKILL);
-            }
-        });
-        let pointer = state.view.swap(0, Ordering::SeqCst);
+        let pointer = closing.view.swap(0, Ordering::SeqCst);
         if pointer != 0 {
             unsafe {
                 brig_terminal_destroy(pointer as *mut c_void);
@@ -587,23 +682,36 @@ pub async fn terminal_close(app: AppHandle, identifier: u64) -> Result<(), Strin
         }
         Ok(())
     })
+    .await?;
+    tauri::async_runtime::spawn_blocking(move || {
+        pty::terminate(
+            std::slice::from_ref(&state.process),
+            std::time::Duration::from_millis(500),
+        )?;
+        sessions()
+            .lock()
+            .map_err(|error| error.to_string())?
+            .remove(&identifier);
+        Ok(())
+    })
     .await
+    .map_err(|error| error.to_string())?
 }
 
-pub fn shutdown() {
-    if let Ok(states) = sessions().lock() {
-        for state in states.values() {
-            state.stop(libc::SIGHUP);
-        }
-    }
+pub fn shutdown() -> Result<(), String> {
+    let processes: Vec<_> = sessions()
+        .lock()
+        .map_err(|error| error.to_string())?
+        .values()
+        .map(|state| state.process.clone())
+        .collect();
+    pty::terminate(&processes, std::time::Duration::from_secs(1))
 }
 
 pub fn any_running() -> bool {
-    sessions().lock().is_ok_and(|sessions| {
-        sessions
-            .values()
-            .any(|session| session.running.load(Ordering::SeqCst))
-    })
+    sessions()
+        .lock()
+        .is_ok_and(|sessions| sessions.values().any(|session| session.process.running()))
 }
 
 pub async fn close_project(app: AppHandle, project_id: &str) -> Result<(), String> {
@@ -623,6 +731,19 @@ pub async fn close_project(app: AppHandle, project_id: &str) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn completed_outputs_do_not_consume_live_capacity_and_retention_never_evicts_running_processes()
+    {
+        let mut states: Vec<_> = (1..=16).map(|id| (id, false)).collect();
+        assert_eq!(retention(&states), (true, Vec::new()));
+        states.extend((17..=32).map(|id| (id, true)));
+        assert_eq!(retention(&states), (false, Vec::new()));
+        states.extend((33..=50).map(|id| (id, false)));
+        assert_eq!(retention(&states), (false, vec![1, 2]));
+        states.retain(|(id, _)| *id != 17);
+        assert_eq!(retention(&states), (true, vec![1, 2]));
+    }
 
     fn conversation(id: &str) -> crate::conversations::Conversation {
         serde_json::from_value(
@@ -647,5 +768,117 @@ mod tests {
         assert!(!chat.matches(second));
         assert!(!chat.bind(&[]));
         assert_eq!(chat.conversation_id.as_deref(), Some(first));
+    }
+
+    fn primary(id: &str) -> crate::conversations::Conversation {
+        let mut result = conversation(id);
+        result.lineage.kind = crate::lineage::Kind::Primary;
+        result.lineage.source_version = Some("0.167.0".into());
+        result.relation_status = crate::conversation_graph::Status::Root;
+        result.root_session_id = Some(id.into());
+        result
+    }
+
+    fn child(id: &str, root: Option<&str>) -> crate::conversations::Conversation {
+        let mut result = conversation(id);
+        result.lineage.kind = crate::lineage::Kind::Subagent;
+        result.lineage.source_version = Some("0.167.0".into());
+        result.relation_status = if root.is_some() {
+            crate::conversation_graph::Status::Resolved
+        } else {
+            crate::conversation_graph::Status::Orphan
+        };
+        result.root_session_id = root.map(str::to_owned);
+        result
+    }
+
+    #[test]
+    fn child_titles_keep_root_identity_busy_state_and_duplicate_resume_match() {
+        let root = "10000000-0000-4000-8000-000000000001";
+        let agent = "20000000-0000-4000-8000-000000000001";
+        let conversations = [primary(root), child(agent, Some(root))];
+        let mut chat = ChatState {
+            conversation_id: Some(root.into()),
+            ..Default::default()
+        };
+        // A root reservation exists before its process spawns or the monitor binds metadata.
+        chat.update_title(terminal_title::ChatTitle {
+            prefix: Some(agent.into()),
+            busy: true,
+        });
+        assert_eq!(chat.conversation_id.as_deref(), Some(root));
+        assert!(chat.matches(root));
+        assert!(!chat.matches(agent));
+        assert!(chat.matches_any(&[agent.into()]));
+        assert!(chat.busy);
+        assert!(!chat.bind(&conversations));
+        assert!(chat.update_title(terminal_title::ChatTitle {
+            prefix: Some(agent[..25].into()),
+            busy: false
+        }));
+        assert_eq!(chat.conversation_id.as_deref(), Some(root));
+        assert!(!chat.busy);
+        assert!(chat.matches_any(&[root.into(), agent.into()]));
+        let mut observed = ChatState {
+            prefix: Some(agent.into()),
+            ..Default::default()
+        };
+        assert!(!observed.matches(root));
+        assert!(observed.matches_any(&[root.into(), agent.into()]));
+        assert!(observed.bind(&conversations));
+        assert_eq!(observed.conversation_id.as_deref(), Some(root));
+        observed.update_title(terminal_title::ChatTitle {
+            prefix: Some(agent[..25].into()),
+            busy: true,
+        });
+        assert_eq!(observed.conversation_id.as_deref(), Some(root));
+    }
+
+    #[test]
+    fn orphan_unsupported_and_invalid_child_titles_never_bind_to_a_primary_name() {
+        let root = "10000000-0000-4000-8000-000000000001";
+        let agent = "20000000-0000-4000-8000-000000000001";
+        for status in [
+            crate::conversation_graph::Status::Orphan,
+            crate::conversation_graph::Status::Unknown,
+            crate::conversation_graph::Status::Invalid,
+        ] {
+            let mut orphan = child(agent, None);
+            orphan.relation_status = status;
+            let mut chat = ChatState {
+                conversation_id: Some(root.into()),
+                ..Default::default()
+            };
+            chat.update_title(terminal_title::ChatTitle {
+                prefix: Some(agent.into()),
+                busy: true,
+            });
+            assert!(chat.bind(&[primary(root), orphan]));
+            assert!(chat.conversation_id.is_none());
+            assert!(chat.busy);
+            assert!(!chat.matches(root));
+            assert!(chat.matches(agent));
+            assert!(!chat.bind(&[primary(root)]));
+            assert!(chat.conversation_id.is_none());
+        }
+    }
+
+    #[test]
+    fn ambiguous_child_prefix_cannot_select_a_root_but_blocks_family_archival() {
+        let first = "20000000-0000-4000-8000-000000000001";
+        let second = "20000000-0000-4000-8000-000000000002";
+        let root = "10000000-0000-4000-8000-000000000001";
+        let mut chat = ChatState {
+            prefix: Some(first[..25].into()),
+            ..Default::default()
+        };
+        assert!(!chat.bind(&[
+            primary(root),
+            child(first, Some(root)),
+            child(second, Some(root))
+        ]));
+        assert!(chat.conversation_id.is_none());
+        assert!(chat.matches_any(&[root.into(), first.into(), second.into()]));
+        assert!(!chat.matches(root));
     }
 }

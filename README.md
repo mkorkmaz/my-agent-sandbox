@@ -17,6 +17,7 @@ Choose a local project folder, prepare a Brig environment, and work with Codex i
 - Run multiple Codex conversations per project and switch between their live terminals in the sidebar.
 - Set CPU and memory limits, image verification, and allowed network hosts.
 - Check Git status, review changes, and run project tests inside the guest environment.
+- Reopen completed test and diagnostic output from **Terminals** in the sidebar. The app keeps up to 32 completed terminal views for the current app session; older views are closed. **Close output** discards a view. The separate limit of 16 live processes excludes these completed views.
 - Inspect Brig diagnostics, logs, and file and network boundaries.
 - Use native macOS menus and keyboard shortcuts, a fixed dark sidebar, and a light workspace.
 
@@ -35,7 +36,9 @@ Brig response fixtures were captured with Brig v0.5.2 and the `brig.sh/v1alpha1`
 
 ## Build and install
 
-Download the Apple silicon DMG from [GitHub Releases](https://github.com/mkorkmaz/my-agent-sandbox/releases), open it, and drag Tugboat into Applications. The app uses ad hoc signing.
+Download the Apple silicon DMG from [GitHub Releases](https://github.com/mkorkmaz/my-agent-sandbox/releases), open it, and drag Tugboat into Applications. The first release (`v0.1.0-build.1`) uses ad hoc signing and can require approval in macOS Privacy & Security. New release builds require Developer ID signing and Apple notarization.
+
+The release workflow requires six repository secrets: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (`Developer ID Application: …`), `APPLE_API_KEY`, `APPLE_API_ISSUER`, and `APPLE_API_KEY_CONTENT` (the App Store Connect `.p8` private key). Add these through GitHub's repository settings. Local development and ordinary source builds continue to use ad hoc signing. The workflow signs the bundled hull helper, notarizes and staples the app and final DMG, then checks the version, signatures, notarization tickets and Gatekeeper result from a read-only mount before publishing. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
 
 To build from source, install Node.js and npm, Rust and Cargo, and Xcode with its command line tools. The recorded development environment uses Node.js 26.12.1 and Rust 1.99.1.
 
@@ -81,17 +84,27 @@ When several Brig sessions match a folder, select the session to use. Project ac
 
 Each project has a fixed header with its name, branch, and `folder path · Brig session` line. Its settings icon opens a wide modal for project name, CPU, memory, image verification, network, sign-in, policy, and environment actions. Project resource options override the app defaults and persist with the project. Stop the environment before changing them. The dot grid appears only in the Projects library.
 
-Ready projects show saved sessions, token totals, and API cost equivalents. **New Chat** starts another Codex process in the project's Brig environment. Selecting an open chat in the sidebar restores its existing terminal and scrollback. Other chats continue running. A spinning activity icon precedes a session while its agent is working or thinking. End process closes the selected terminal. **Archived** keeps chats out of the active list. **Delete** moves a chat to **Trash**, where **Restore** returns it to the active list. These states belong to Tugboat; source Codex rollout files remain intact. Archive and deletion preserve all historical usage in the project total. End a session's terminal before archiving or deleting that session. Prepare a stopped environment before resuming a saved session.
+Ready projects show saved sessions, token totals, and API cost equivalents. **New Chat** starts another Codex process in the project's Brig environment. Selecting an open chat in the sidebar restores its existing terminal and scrollback. Other chats continue running. A spinning activity icon precedes a session while its agent is working or thinking. End process closes the selected terminal. Prepare a stopped environment before resuming a saved session.
+
+Each root chat appears once in the session table and sidebar. Its table totals include its own usage and all linked subagents, including nested subagents. The row shows the subagent count; normal conversation forks remain separate chats. **Archived** keeps a root chat out of the active list. **Delete** moves it to **Trash**, where **Restore** returns it to the active list. These actions change the root chat's saved state without changing its subagents' recorded states or the project total. Source Codex rollout files remain intact. End the root chat's and subagents' terminal processes before archiving or deleting the root chat. Subagents cannot be resumed, archived, deleted, or restored independently. Agents with unresolved relationships appear under **Unlinked subagents**, with read-only usage details.
 
 ### Usage and API cost
 
-Tugboat reads token events from the selected guest home's Codex rollout files. A background reader checks observed projects every two seconds and writes an atomic project ledger under `conversation-ledgers/` in the app configuration directory. Each prompt retains its request counts, completion or interruption state, model, price snapshot, and cumulative cost. The usage icon on each session opens the prompt breakdown. Prompts and answers are not copied into this ledger.
+Tugboat reads token events from the selected guest home's Codex rollout files. A background reader checks observed projects every two seconds and writes an atomic project ledger under `conversation-ledgers/` in the app configuration directory. The ledger retains agent turns, request counts, completion or interruption state, model, price snapshots, and cost. Prompts and answers are not copied into this ledger.
+
+The usage icon opens **Session usage**. For a root chat with subagents, **Main agent**, **Subagents**, and **Combined** separate the root's own usage from delegated work. Expand a subagent to inspect its own agent turns and requests. User prompt counts and agent turn counts are separate. Proven prompt attribution links to the source request or unmeasured turn. Work without proven attribution stays under **Unassigned to a user prompt** and remains in the selected total. A selected child's details cover that child and its descendants only; ancestors and siblings are excluded. While the dialog is open, changes in the selected subtree refresh its details and preserve open disclosures, focus, and scroll position.
+
+Exact source ownership and parent relationships are supported for the observed guest Codex 0.167.0 format. A physical request uses the verified guest-home namespace, model provider, origin thread ID, and response ID. Different guest homes stay separate. Matching titles, token amounts, or project paths do not establish request identity. Legacy counter records retain their saved usage with unknown source coverage until reliable evidence resolves ownership; they are not reset or deduplicated by equal amounts.
 
 The bundled price snapshot was verified on 2026-11-10 against [OpenAI API pricing](https://developers.openai.com/api/docs/pricing), [GPT-6.1 Sol pricing](https://developers.openai.com/api/docs/models/gpt-6.1-sol), and [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching). It covers GPT-6 Astra, GPT-6.1 Sol, GPT-6.1 Terra, and GPT-6 Luna. Supported recorded service tiers apply their published multiplier; missing tiers use Standard and are labelled as assumed. Sol requests above 272K input tokens use the published full-request long-context rates. Other unverified models, tiers, or long-context rates remain unpriced.
 
-Input, cache reads, and cache writes use separate rates. Reasoning already included in output is counted once. Missing cache counts, cache-write lifetimes, and incomplete counter coverage remain explicit; unpriced requests do not become zero-cost requests. Cached input shows its share of total input in parentheses in the project total, session table, and request details. The table abbreviates large token counts, with exact counts in hover tooltips. Archived, deleted, and temporarily unavailable source sessions retain their cost history.
+Input, cache reads, and cache writes use separate rates. Reasoning already included in output is counted once. Missing cache counts, cache-write lifetimes, and incomplete counter coverage remain explicit; unpriced requests do not become zero-cost requests. Cached input shows its share of total input in parentheses in the project total, session table, and request details. Aggregated percentages divide summed cached input by summed input; they do not average request percentages. A percentage appears only when the relevant counts are fully known. Otherwise, the UI shows **Unknown** or a known subtotal plus **unknown**. The table abbreviates large token counts, with exact counts in hover tooltips. Archived, deleted, and temporarily unavailable source sessions retain their cost history.
 
-These USD amounts are API equivalents, separate from ChatGPT subscription billing, tools, taxes, and regional premiums. Imported history uses the bundled price snapshot on first import. Stored request prices do not change when a future build updates the catalogue.
+An agent turn without recorded request usage has unknown token counts and API cost. A recorded zero-token request is measured zero, and a history with no turns remains empty. **Recorded source coverage** can be complete, partial, or unknown. It describes the persisted records in the selected scope, not complete account billing or a guarantee that every short-lived subagent left a readable record. Pricing and cache information can remain unknown even when source coverage is complete.
+
+These USD amounts are API equivalents, separate from ChatGPT subscription billing, tools, taxes, and regional premiums. Imported history uses the bundled price snapshot on first import. Stored request prices do not change when a future build updates the catalogue. The reader records whether a tier came from a request, applied session settings, the turn context, or an assumption. Older ledgers are replayed once to recover recorded tiers. A correction uses the original dated price snapshot and retains the previous rates and cost as evidence. It does not count the request again. Missing source files or historical rates remain explicit.
+
+Usage ledgers use schema 2. Before the first write that migrates a schema 1 ledger, Tugboat creates a byte-for-byte, immutable `<projectId>.json.v1.backup` beside `<projectId>.json`. Migration preserves saved states, request keys, token amounts, dated prices, and prior correction evidence. Later source replay can attach proven identities or correct proven amounts without counting a request again. Amount corrections retain the previous counts and cost separately from rate corrections. A conflicting backup or unsupported ledger schema stops the write and preserves the files.
 
 **Run project tests** detects configured npm, Composer, Cargo, or pytest tests. It opens a separate terminal process while the Codex terminal remains available.
 
@@ -120,19 +133,25 @@ New settings use these defaults:
 | Allowed hosts | `auth.openai.com`, `chatgpt.com`, `api.openai.com` |
 | Brig usage telemetry | Off |
 
-Network policies deny other destinations by default. Enter exact host names, one per line. Wildcards are not supported. Add hosts required by your project or sign-in flow.
+Brig network policies control connections made by guest commands and deny other destinations by default. Enter exact host names, one per line. Wildcards are not supported. Add hosts required by your project or sign-in flow.
 
 The allowed hosts in Settings apply to new policies. Use **Project network policy** to inspect or change an existing project's policy. Stop the environment before editing its allowed hosts.
 
 **Offline** mode disables guest network access. Online Codex sessions and sign-in require network access.
 
+Hosted Codex tools, including web search, have a separate scope from guest command traffic. Web search can return content from an OpenAI-maintained index. Tugboat does not read or set the effective `web_search` mode and does not label it as enabled or disabled. A result from a hosted tool does not show that a guest command reached that destination. See the [official Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+
 Codex starts with `workspace-write` sandboxing, command network access disabled, and `on-request` approvals. The app also provides checks for the outer Brig boundary.
 
 The optional **Use the Brig boundary with the Codex sandbox disabled** mode requires current Brig boundary checks to pass. It gives commands more access inside the guest. Approvals remain `on-request`.
 
+Boundary checks select comparison hosts from the effective guest network mode and resolved policy. Offline and deny-all modes expect blocked connections. CIDR, wildcard or advanced policies remain inconclusive when a suitable comparison cannot be verified. Brig/hull host rules authorize resolved addresses, so services on shared IP addresses can have a wider scope than their host names. A reachable comparison with possible address overlap also remains inconclusive. Inconclusive results do not enable the optional mode. See the [pinned hull network policy behavior](https://github.com/brig-sh/hull/blob/7e50ac340d69be387312755c1f07ef6b0e9fec52/docs/network-egress.md).
+
 Settings and recent project records are stored in the app's macOS configuration directory. Brig manages guest homes and conversation history. Closing the app while a process runs asks for confirmation. Cancel keeps the app and process open. Confirming ends open terminal processes and preserves Brig environments, guest homes, and conversation history.
 
-Use **Stop Brig environment** to stop a guest. Use **Preview removal…** to review session removal and confirm its name.
+Use **Stop Brig environment** to stop a guest. Use **Preview removal…** to review session removal and confirm its name. If removal is interrupted, **Review incomplete removal…** reopens a current preview and continues recorded steps. Normal setup stays paused until removal finishes.
+
+An unavailable folder stays in the library. **Forget…** removes only its Tugboat record and stops background monitoring; it preserves project files, Brig environments, guest homes and saved usage. Use **Add new project** to reconnect a moved folder instead.
 
 ## Development
 

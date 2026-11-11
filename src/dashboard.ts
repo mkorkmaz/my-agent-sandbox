@@ -1,23 +1,10 @@
-import type { Conversation, UsageSummary } from './projects';
+import { isStandaloneConversation, standaloneConversations, type Conversation } from './projects';
+import type { Dashboard, SessionState } from './usage-types';
+export type { Dashboard, SessionState } from './usage-types';
 
-export interface Dashboard { conversations: Conversation[]; usage: UsageSummary; pricingDate: string }
-export type SessionState = 'active' | 'archived' | 'deleted';
-export const emptyUsage: UsageSummary = { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0, costUsd: 0, unpricedRequests: 0, requests: 0, completedTurns: 0, assumedTierRequests: 0 };
-export function count(value: number): string { return new Intl.NumberFormat('en-US').format(value); }
-function compactCount(value: number): string { return value >= 10000 ? new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value) : count(value); }
-function cachePercentage(cached: number, input: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 1 }).format(input > 0 ? cached / input : 0);
-}
-function cachedCount(usage: UsageSummary, compact = false): string {
-  const value = compact ? compactCount(usage.cached) : count(usage.cached);
-  if (usage.missingCacheRequests) return usage.missingCacheRequests === usage.requests ? 'Unknown' : value + ' + unknown';
-  return value + ' (' + cachePercentage(usage.cached, usage.input) + ')';
-}
-export function money(usage: UsageSummary): string {
-  const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(usage.costUsd);
-  if (usage.unpricedRequests && usage.requests === usage.unpricedRequests) return 'Unavailable';
-  return amount + (usage.unpricedRequests ? ' + unpriced' : '');
-}
+import { cachedCount, cachePercentage, cacheWrites, count, money, usageCount } from './usage-format';
+export { emptyUsage, money, count } from './usage-format';
+export { renderUsageDetails, usageDetailsStatus } from './usage-details';
 
 const icons: Record<string, string> = {
   archive: '<rect x="3" y="3" width="18" height="4" rx="1"/><path d="M5 7v13h14V7M10 12h4"/>',
@@ -28,123 +15,80 @@ const icons: Record<string, string> = {
 function actionButton(icon: string, label: string, action: () => void): HTMLButtonElement {
   const button = document.createElement('button');
   button.className = 'icon-button session-action'; button.title = label; button.setAttribute('aria-label', label);
-  button.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icons[icon] + '</svg>';
+  button.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icons[icon] + '</svg>';
   button.addEventListener('click', action); return button;
+}
+
+function renderSessionRows(body: HTMLElement, sessions: Conversation[], state: SessionState, resume: (conversation: Conversation) => Promise<void>, change: (conversation: Conversation, state: SessionState) => Promise<void>, details: (conversation: Conversation) => Promise<void>, busy: boolean, readOnly = false): void {
+  body.replaceChildren();
+  for (const conversation of sessions) {
+    const row = document.createElement('tr'); row.dataset.sessionId = conversation.id;
+    const titleCell = document.createElement('td');
+    const title = document.createElement(readOnly ? 'span' : 'button'); title.className = 'session-title'; title.title = conversation.title; title.textContent = conversation.title;
+    if (title.tagName === 'BUTTON') {
+      title.setAttribute('aria-label', conversation.title); (title as HTMLButtonElement).disabled = state === 'deleted' || busy || conversation.available === false;
+      title.addEventListener('click', () => { void resume(conversation); });
+    }
+    const date = document.createElement('span'); date.className = 'session-date'; date.textContent = new Date(conversation.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    if (conversation.subagentCount && !readOnly) date.textContent += ' · Includes ' + conversation.subagentCount + ' subagent' + (conversation.subagentCount === 1 ? '' : 's');
+    if (readOnly) date.textContent += ' · ' + (conversation.relationStatus === 'orphan' ? 'Parent session unavailable' : conversation.relationStatus === 'invalid' ? 'Invalid session relationship' : 'Unverified subagent relationship') + ' · Recorded state: ' + conversation.state;
+    if (conversation.available === false) date.textContent += ' · Session file unavailable';
+    if (conversation.warning) date.textContent += ' · ' + conversation.warning;
+    titleCell.append(title, date); row.append(titleCell);
+    const totals = readOnly ? conversation.usage : conversation.familyUsage;
+    for (const value of [usageCount(totals, 'input', true), cachedCount(totals, true), usageCount(totals, 'output', true), usageCount(totals, 'total', true), money(totals)]) {
+      const cell = document.createElement('td'); cell.className = 'number-column'; cell.textContent = value; cell.title = [usageCount(totals, 'input') + ' input', cachedCount(totals) + ' cached input', cacheWrites(totals) + ' cache writes', usageCount(totals, 'output') + ' output', usageCount(totals, 'total') + ' total tokens', money(totals) + ' API equivalent'].join(' · '); row.append(cell);
+    }
+    const actions = document.createElement('td'); actions.className = 'session-row-actions';
+    actions.append(actionButton('usage', 'Usage for ' + conversation.title, () => { void details(conversation); }));
+    if (!readOnly && state !== 'active') actions.append(actionButton('restore', 'Restore ' + conversation.title, () => { void change(conversation, 'active'); }));
+    if (!readOnly && state === 'active') actions.append(actionButton('archive', 'Archive ' + conversation.title, () => { void change(conversation, 'archived'); }));
+    if (!readOnly && state !== 'deleted') actions.append(actionButton('trash', 'Delete ' + conversation.title, () => { void change(conversation, 'deleted'); }));
+    for (const button of actions.querySelectorAll<HTMLButtonElement>('button')) button.disabled = busy;
+    row.append(actions); body.append(row);
+  }
 }
 
 export function renderDashboard(dashboard: Dashboard, state: SessionState, resume: (conversation: Conversation) => Promise<void>, change: (conversation: Conversation, state: SessionState) => Promise<void>, details: (conversation: Conversation) => Promise<void>, busy = false): void {
   const usage = dashboard.usage;
   const summary = document.getElementById('project-usage')!;
-  const values = [['Total tokens', count(usage.total)], ['Input', count(usage.input)], ['Cached input', cachedCount(usage)], ['Output', count(usage.output)], ['Total API cost', money(usage)]];
+  const values = [['Total tokens', usageCount(usage, 'total')], ['Input', usageCount(usage, 'input')], ['Cached input', cachedCount(usage)], ['Output', usageCount(usage, 'output')], ['Total API cost', money(usage)]];
   summary.replaceChildren(...values.map(([label, value]) => {
     const row = document.createElement('div'); const term = document.createElement('dt'); term.textContent = label;
     const description = document.createElement('dd');
     description.textContent = value;
-    if (label === 'Cached input' && !usage.missingCacheRequests) {
+    if (label === 'Cached input' && !usage.missingCachedRequests && !usage.unmeasuredTurns) {
       description.textContent = count(usage.cached) + ' ';
       const percentage = document.createElement('small'); percentage.textContent = '(' + cachePercentage(usage.cached, usage.input) + ')'; description.append(percentage);
     }
     row.append(term, description); return row;
   }));
   const notes = ['API equivalent in USD', 'OpenAI rates from ' + dashboard.pricingDate, 'Includes archived and deleted sessions'];
-  if (usage.missingCacheRequests) notes.push('Some cache counts are unavailable');
+  notes.push('Cache writes ' + cacheWrites(usage));
+  if (usage.missingCachedRequests) notes.push('Some cache-read counts are unavailable');
+  if (usage.unmeasuredTurns) notes.push(count(usage.unmeasuredTurns) + ' agent turn(s) without request measurements');
   if (usage.unpricedRequests) notes.push(count(usage.unpricedRequests) + ' request(s) unpriced');
   if (usage.assumedTierRequests) notes.push('Standard rates assumed where service tier is not recorded');
   notes.push('ChatGPT subscription billing is separate.');
   document.getElementById('usage-note')!.textContent = notes.join(' · ');
   const body = document.getElementById('session-table-body')!;
-  const sessions = dashboard.conversations.filter(conversation => (conversation.state ?? 'active') === state);
+  const unlinkedBody = document.getElementById('unlinked-subagent-body')!;
+  const sessions = standaloneConversations(dashboard.conversations, state);
   const focus = document.activeElement as HTMLElement | null;
-  const focusedId = focus?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId;
+  const focusedId = document.hasFocus() && (body.contains(focus) || unlinkedBody.contains(focus)) ? focus?.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId : undefined;
   const focusedLabel = focus?.getAttribute('aria-label');
-  body.replaceChildren();
-  for (const conversation of sessions) {
-    const row = document.createElement('tr'); row.dataset.sessionId = conversation.id;
-    const titleCell = document.createElement('td');
-    const title = document.createElement('button'); title.className = 'session-title'; title.title = conversation.title; title.textContent = conversation.title;
-    title.setAttribute('aria-label', conversation.title); title.disabled = state === 'deleted' || busy || conversation.available === false;
-    title.addEventListener('click', () => { void resume(conversation); });
-    const date = document.createElement('span'); date.className = 'session-date'; date.textContent = new Date(conversation.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    if (conversation.available === false) date.textContent += ' · Session file unavailable';
-    titleCell.append(title, date); row.append(titleCell);
-    const totals = conversation.usage ?? emptyUsage;
-    for (const value of [compactCount(totals.input), cachedCount(totals, true), compactCount(totals.output), compactCount(totals.total), money(totals)]) {
-      const cell = document.createElement('td'); cell.className = 'number-column'; cell.textContent = value; cell.title = [count(totals.input) + ' input', cachedCount(totals) + ' cached input', count(totals.output) + ' output', count(totals.total) + ' total tokens', money(totals) + ' API equivalent'].join(' · '); row.append(cell);
-    }
-    const actions = document.createElement('td'); actions.className = 'session-row-actions';
-    actions.append(actionButton('usage', 'Usage for ' + conversation.title, () => { void details(conversation); }));
-    if (state !== 'active') actions.append(actionButton('restore', 'Restore ' + conversation.title, () => { void change(conversation, 'active'); }));
-    if (state === 'active') actions.append(actionButton('archive', 'Archive ' + conversation.title, () => { void change(conversation, 'archived'); }));
-    if (state !== 'deleted') actions.append(actionButton('trash', 'Delete ' + conversation.title, () => { void change(conversation, 'deleted'); }));
-    for (const button of actions.querySelectorAll<HTMLButtonElement>('button')) button.disabled = busy;
-    row.append(actions); body.append(row);
-  }
+  renderSessionRows(body, sessions, state, resume, change, details, busy);
+  const unlinked = dashboard.conversations.filter(conversation => !isStandaloneConversation(conversation) && conversation.relationStatus !== 'resolved');
+  document.getElementById('unlinked-subagents')!.hidden = unlinked.length === 0;
+  renderSessionRows(unlinkedBody, unlinked, state, resume, change, details, busy, true);
   const status = document.getElementById('dashboard-session-status')!;
-  status.textContent = sessions.length ? '' : state === 'active' ? 'No sessions yet. Start a New Chat to begin.' : state === 'archived' ? 'No archived sessions. Archive a session to keep it out of the main list.' : 'Trash is empty. Deleted sessions can be restored here.';
-  status.hidden = sessions.length > 0;
+  const warning = dashboard.warnings?.join(' ');
+  status.textContent = warning || (sessions.length ? '' : state === 'active' ? 'No sessions yet. Start a New Chat to begin.' : state === 'archived' ? 'No archived sessions. Archive a session to keep it out of the main list.' : 'Trash is empty. Deleted sessions can be restored here.');
+  status.hidden = sessions.length > 0 && !warning;
   document.getElementById('session-table')!.hidden = sessions.length === 0;
   for (const tab of document.querySelectorAll<HTMLButtonElement>('[data-session-state]')) tab.setAttribute('aria-pressed', String(tab.dataset.sessionState === state));
   if (focusedId && focusedLabel) {
-    const target = [...body.querySelectorAll<HTMLButtonElement>('button')].find(button => button.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId === focusedId && button.getAttribute('aria-label') === focusedLabel);
+    const target = [...body.querySelectorAll<HTMLButtonElement>('button'), ...unlinkedBody.querySelectorAll<HTMLButtonElement>('button')].find(button => button.closest<HTMLElement>('[data-session-id]')?.dataset.sessionId === focusedId && button.getAttribute('aria-label') === focusedLabel);
     target?.focus({ preventScroll: true });
   }
-}
-
-interface RequestUsage { at: string; model: string | null; tokens: { input: number; cached: number; cacheWrite: number; output: number; cacheKnown?: boolean }; costUsd: number | null; unpricedReason: string | null; rates: { date: string; tier: string; tierAssumed: boolean } | null }
-export interface TurnUsage { id: string; status: string; requests: RequestUsage[] }
-
-function appendDetail(cell: HTMLTableCellElement, text: string): void {
-  const detail = document.createElement('small');
-  detail.textContent = text;
-  cell.append(detail);
-}
-
-function appendRequestRow(body: HTMLTableSectionElement, request: RequestUsage): void {
-  const row = body.insertRow();
-  const model = document.createElement('th');
-  model.scope = 'row';
-  model.textContent = request.model ?? 'Unknown model';
-  row.append(model);
-
-  const tokens = request.tokens;
-  const cached = tokens.cacheKnown === false ? 'Unknown' : count(tokens.cached) + ' (' + cachePercentage(tokens.cached, tokens.input) + ')';
-  for (const value of [count(tokens.input), cached, count(tokens.cacheWrite), count(tokens.output)]) {
-    row.insertCell().textContent = value;
-  }
-  const cost = row.insertCell();
-  cost.textContent = request.costUsd === null ? 'Unpriced' : '$' + request.costUsd.toFixed(6);
-  if (request.costUsd === null && request.unpricedReason) appendDetail(cost, request.unpricedReason);
-  if (request.rates) {
-    appendDetail(model, request.rates.tier + ' tier' + (request.rates.tierAssumed ? ' (assumed)' : ''));
-    const rateDate = document.createElement('time');
-    rateDate.dateTime = request.rates.date;
-    rateDate.textContent = 'Rates ' + request.rates.date;
-    cost.append(rateDate);
-  }
-}
-
-export function renderUsageDetails(turns: TurnUsage[]): void {
-  const content = document.getElementById('session-usage-details')!;
-  const template = document.querySelector<HTMLTemplateElement>('#prompt-usage-template')!;
-  const report = document.createDocumentFragment();
-  for (const [index, turn] of turns.entries()) {
-    if (!turn.requests.length) continue;
-    const section = document.importNode(template.content, true);
-    const heading = section.querySelector('h3')!;
-    heading.id = 'usage-prompt-' + (index + 1);
-    heading.textContent = 'Prompt ' + (index + 1) + ' · ' + turn.status;
-    const table = section.querySelector('table')!;
-    table.setAttribute('aria-labelledby', heading.id);
-    section.querySelector('.table-scroll')!.setAttribute('aria-labelledby', heading.id);
-
-    const usage = { ...emptyUsage, requests: turn.requests.length };
-    for (const request of turn.requests) {
-      appendRequestRow(table.tBodies[0], request);
-      if (request.costUsd === null) usage.unpricedRequests++;
-      else usage.costUsd += request.costUsd;
-    }
-    table.tFoot!.querySelector('td')!.textContent = money(usage);
-    report.append(section);
-  }
-  content.replaceChildren(report);
 }

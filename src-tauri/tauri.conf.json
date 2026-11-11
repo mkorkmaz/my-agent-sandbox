@@ -19,6 +19,8 @@
       "minWidth": 760,
       "minHeight": 500,
       "center": true,
+      "maximized": true,
+      "fullscreen": false,
       "create": false,
       "visible": false,
       "decorations": true,

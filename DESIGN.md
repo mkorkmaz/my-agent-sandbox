@@ -439,6 +439,10 @@ The user-confirmed palette comes from the ChatGPT conversation “Renk paleti ol
 
 **The Terminal Palette Rule.** Preserve the pinned foreground, background, cursor, selection colors, and all sixteen ANSI entries. Do not derive them from shell colors.
 
+## Iconography
+
+**The Icon Stroke Rule.** All Lucide icons use `stroke-width="1.5"` in the `0 0 24 24` SVG viewBox. Apply this value to navigation icons, action icons, branch marks, activity indicators, close controls, and form chevrons. Keep `currentColor`, rounded caps, and rounded joins. New Lucide icons follow the same rule at every displayed size.
+
 ## Typography
 
 The WebView UI uses the Inter stack in `typography.body`, including controls, labels, status text, policy documents, and removal previews. Inter is the locally bundled Google Fonts variable asset at `src/assets/fonts/Inter-Variable.ttf`. Its normal style supports weights (100–900), uses `font-display: swap`, and is preloaded by `index.html`. Root rendering uses `font-synthesis: none` and `text-rendering: optimizeLegibility`.
@@ -471,6 +475,8 @@ The full-height shell uses `components.sidebar` and a flexible main pane with a 
 Only the visible Projects library receives the dot grid over Pale Workspace. A radial gradient draws Workspace Dot circles with a (1px) radius on a repeating (20 × 20px) grid. Selecting a project or showing Settings removes the pattern. Keep the sidebar solid, controls white, and the native terminal on its pinned canvas.
 
 The sidebar header places a (36 × 36px) application icon beside the white “Tugboat” name. The “Agent Sandbox” subtitle sits (3px) below the name and fits on one line at the minimum window width. The row centers the icon beside both lines with an (8px) gap and a margin of `0 0 20px 10px`. Each navigation destination pairs a Lucide icon (16 × 16px) with its label and an (8px) gap.
+
+On launch, the main window maximizes to the screen's usable area, including its native titlebar. Menu bar and Dock space follow macOS screen settings.
 
 The project area fills the sidebar's remaining space and scrolls vertically. Its minimum height is zero, top margin is (12px), and inner padding is (3px). Horizontal overflow stays hidden. The application header and navigation destinations do not shrink. Settings stays below the scrolling area. There is no sidebar add-project control.
 
@@ -593,7 +599,7 @@ Removal uses the implemented modal dialog, with the session reference, workspace
 - **Do** keep every registered project in last-opened order and show only the selected project's saved sessions in its sidebar context.
 - **Do** preserve full session titles in tooltips and accessible names while keeping list rows on one line.
 - **Do** keep Settings below the scrollable project area and terminal controls visible beside a bounded caption.
-- **Do** retain Lucide Folder and Settings beside their navigation labels, with the implemented size and stroke.
+- **Do** use `stroke-width="1.5"` for all Lucide icons, including Folder and Settings beside their navigation labels.
 - **Do** preserve the fixed dark terminal palette, Consolas preference, bundled JetBrains Mono fallback at 14pt, native cell metrics, and equal terminal insets.
 - **Do** retain underline or surface keyboard focus, current-navigation semantics, inline status, compact selectable paths, and full identity tooltips.
 - **Do** keep policy, boundary, and session details grouped and preserve their actual enabled, disabled, and read-only states.

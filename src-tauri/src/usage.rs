@@ -1,13 +1,15 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeMap;
-use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
-use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
-use std::path::Path;
+use std::collections::{BTreeMap, HashSet};
 
 pub const PRICING_DATE: &str = "2026-11-10";
 pub const PRICING_SOURCE: &str = "https://developers.openai.com/api/docs/pricing";
+pub const PARSER_VERSION: u32 = 3;
+
+mod cursor;
+#[cfg(test)]
+pub use cursor::sync_file;
+pub use cursor::{sync_file_bound, Cursor};
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -19,9 +21,37 @@ pub struct Tokens {
     pub reasoning: u64,
     pub write_12h: Option<u64>,
     pub cache_known: bool,
+    #[serde(default)]
+    pub cached_known: Option<bool>,
+    #[serde(default)]
+    pub cache_write_known: Option<bool>,
 }
 
 impl Tokens {
+    fn cached_is_known(&self) -> bool {
+        self.cached_known.unwrap_or(self.cache_known)
+    }
+    fn writes_are_known(&self) -> bool {
+        self.cache_write_known.unwrap_or(self.cache_known)
+    }
+
+    fn recover_cache_knowledge(&mut self, source: &Self) {
+        if self.input != source.input
+            || self.output != source.output
+            || self.cached != source.cached
+            || self.cache_write != source.cache_write
+        {
+            return;
+        }
+        if self.cached_known.is_none() {
+            self.cached_known = Some(source.cached_is_known());
+        }
+        if self.cache_write_known.is_none() {
+            self.cache_write_known = Some(source.writes_are_known());
+        }
+        self.cache_known = self.cached_is_known() && self.writes_are_known();
+    }
+
     fn parse(value: &Value) -> Result<Self, String> {
         let input = value["input_tokens"]
             .as_u64()
@@ -61,6 +91,8 @@ impl Tokens {
                 write_12h
             },
             cache_known: cached.is_some() && writes.is_some(),
+            cached_known: Some(cached.is_some()),
+            cache_write_known: Some(writes.is_some()),
         };
         if result
             .cached
@@ -85,7 +117,12 @@ impl Tokens {
                 .write_12h
                 .zip(previous.write_12h)
                 .and_then(|(current, previous)| current.checked_sub(previous)),
-            cache_known: self.cache_known && previous.cache_known,
+            cache_known: self.cached_is_known()
+                && previous.cached_is_known()
+                && self.writes_are_known()
+                && previous.writes_are_known(),
+            cached_known: Some(self.cached_is_known() && previous.cached_is_known()),
+            cache_write_known: Some(self.writes_are_known() && previous.writes_are_known()),
         })
     }
 }
@@ -113,13 +150,7 @@ fn rates(model: &str, tier: Option<&str>, input: u64) -> Option<RateSnapshot> {
         "gpt-6-luna" => (0.1, 0.01, 0.5),
         _ => return None,
     };
-    let multiplier = match tier.unwrap_or("standard") {
-        "standard" | "default" | "auto" => 1.0,
-        "priority" | "fast" => 2.0,
-        "flex" | "batch" => 0.5,
-        "ultrafast" if matches!(model, "gpt-6-astra" | "gpt-6.1-sol") => 6.0,
-        _ => return None,
-    };
+    let multiplier = tier_multiplier(model, tier.unwrap_or("standard"))?;
     // The verified Sol model page specifies the 272K threshold. Do not invent thresholds for other models.
     if input > 272_000 && model != "gpt-6.1-sol" {
         return None;
@@ -140,6 +171,16 @@ fn rates(model: &str, tier: Option<&str>, input: u64) -> Option<RateSnapshot> {
     })
 }
 
+fn tier_multiplier(model: &str, tier: &str) -> Option<f64> {
+    Some(match tier {
+        "standard" | "default" | "auto" => 1.0,
+        "priority" | "fast" => 2.0,
+        "flex" | "batch" => 0.5,
+        "ultrafast" if matches!(model, "gpt-6-astra" | "gpt-6.1-sol") => 6.0,
+        _ => return None,
+    })
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RequestUsage {
@@ -151,6 +192,72 @@ pub struct RequestUsage {
     pub cost_usd: Option<f64>,
     pub partial: bool,
     pub unpriced_reason: Option<String>,
+    #[serde(default)]
+    pub service_tier: Option<String>,
+    #[serde(default)]
+    pub tier_source: Option<String>,
+    #[serde(default)]
+    pub rate_correction: Option<RateCorrection>,
+    #[serde(default)]
+    pub source: Option<RequestSource>,
+    #[serde(default)]
+    pub amount_correction: Option<AmountCorrection>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestSource {
+    pub guest_namespace: String,
+    pub model_provider: String,
+    pub origin_thread_id: String,
+    pub origin_turn_id: Option<String>,
+    pub root_turn_id: Option<String>,
+    pub response_id: String,
+}
+
+impl RequestSource {
+    pub fn physical_key(&self) -> String {
+        serde_json::to_string(&[
+            &self.guest_namespace,
+            &self.model_provider,
+            &self.origin_thread_id,
+            &self.response_id,
+        ])
+        .expect("string tuple serialization")
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AmountCorrection {
+    pub previous_tokens: Tokens,
+    pub previous_cost_usd: Option<f64>,
+    pub previous_partial: bool,
+    pub previous_unpriced_reason: Option<String>,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RateCorrection {
+    previous_rates: RateSnapshot,
+    previous_cost_usd: Option<f64>,
+    reason: String,
+}
+
+fn price(tokens: &Tokens, rate: &RateSnapshot) -> Option<f64> {
+    let regular = tokens
+        .input
+        .checked_sub(tokens.cached.checked_add(tokens.cache_write)?)?;
+    let write_12h = tokens.write_12h.unwrap_or(0);
+    let write_30m = tokens.cache_write.checked_sub(write_12h)?;
+    let cost = (regular as f64 * rate.input
+        + tokens.cached as f64 * rate.cached
+        + write_30m as f64 * rate.write_30m
+        + write_12h as f64 * rate.write_12h
+        + tokens.output as f64 * rate.output)
+        / 1_000_000.0;
+    (cost.is_finite() && cost >= 0.0).then_some(cost)
 }
 
 fn request(
@@ -168,7 +275,7 @@ fn request(
     if rates.is_none() {
         reason = Some("Model, service tier or long-context price is unavailable".into());
     }
-    if !tokens.cache_known {
+    if !tokens.cached_is_known() || !tokens.writes_are_known() {
         reason = Some("Cache usage is not recorded".into());
     }
     if tokens.cache_write > 0 && tokens.write_12h.is_none() {
@@ -178,15 +285,7 @@ fn request(
         reason = Some("Usage counter reset or aggregated requests; coverage is partial".into());
     }
     let cost_usd = if reason.is_none() {
-        rates.as_ref().map(|rate| {
-            let write_12h = tokens.write_12h.unwrap_or(0);
-            ((tokens.input - tokens.cached - tokens.cache_write) as f64 * rate.input
-                + tokens.cached as f64 * rate.cached
-                + (tokens.cache_write - write_12h) as f64 * rate.write_30m
-                + write_12h as f64 * rate.write_12h
-                + tokens.output as f64 * rate.output)
-                / 1_000_000.0
-        })
+        rates.as_ref().and_then(|rate| price(&tokens, rate))
     } else {
         None
     };
@@ -199,6 +298,18 @@ fn request(
         cost_usd,
         partial,
         unpriced_reason: reason,
+        service_tier: tier.map(str::to_owned),
+        tier_source: Some(
+            if tier.is_some() {
+                "turn-context"
+            } else {
+                "assumed"
+            }
+            .into(),
+        ),
+        rate_correction: None,
+        source: None,
+        amount_correction: None,
     }
 }
 
@@ -208,9 +319,15 @@ pub struct TurnUsage {
     pub id: String,
     pub status: String,
     pub requests: Vec<RequestUsage>,
+    #[serde(default)]
+    pub origin_thread_id: Option<String>,
+    #[serde(default)]
+    pub root_turn_id: Option<String>,
+    #[serde(default)]
+    pub parent_turn_id: Option<String>,
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Summary {
     pub input: u64,
@@ -225,7 +342,22 @@ pub struct Summary {
     pub completed_turns: u64,
     pub assumed_tier_requests: u64,
     pub missing_cache_requests: u64,
+    #[serde(default)]
+    pub missing_cached_requests: u64,
+    #[serde(default)]
+    pub missing_cache_write_requests: u64,
+    #[serde(default)]
+    pub unmeasured_turns: u64,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Coverage {
+    Complete,
+    Partial,
+    #[default]
+    Unknown,
+}
+
 impl Summary {
     pub fn add(&mut self, other: &Self) {
         self.input += other.input;
@@ -240,25 +372,49 @@ impl Summary {
         self.completed_turns += other.completed_turns;
         self.assumed_tier_requests += other.assumed_tier_requests;
         self.missing_cache_requests += other.missing_cache_requests;
+        self.missing_cached_requests += other.missing_cached_requests;
+        self.missing_cache_write_requests += other.missing_cache_write_requests;
+        self.unmeasured_turns += other.unmeasured_turns;
     }
 }
 pub fn summarize(turns: &BTreeMap<String, TurnUsage>) -> Summary {
     let mut result = Summary::default();
+    let mut seen = HashSet::new();
     for turn in turns.values() {
         if turn.status == "complete" {
             result.completed_turns += 1;
         }
+        if turn.requests.is_empty() {
+            result.unmeasured_turns += 1;
+        }
         for request in &turn.requests {
+            if request
+                .source
+                .as_ref()
+                .is_some_and(|source| !seen.insert(source.physical_key()))
+            {
+                continue;
+            }
             let tokens = &request.tokens;
             result.input += tokens.input;
-            result.cached += tokens.cached;
-            result.cache_write += tokens.cache_write;
+            if tokens.cached_is_known() {
+                result.cached += tokens.cached;
+            }
+            if tokens.writes_are_known() {
+                result.cache_write += tokens.cache_write;
+            }
             result.output += tokens.output;
             result.reasoning += tokens.reasoning;
             result.total += tokens.input + tokens.output;
             result.requests += 1;
-            if !tokens.cache_known {
+            if !tokens.cached_is_known() || !tokens.writes_are_known() {
                 result.missing_cache_requests += 1;
+            }
+            if !tokens.cached_is_known() {
+                result.missing_cached_requests += 1;
+            }
+            if !tokens.writes_are_known() {
+                result.missing_cache_write_requests += 1;
             }
             result.cost_usd += request.cost_usd.unwrap_or(0.0);
             if request.cost_usd.is_none() {
@@ -272,165 +428,110 @@ pub fn summarize(turns: &BTreeMap<String, TurnUsage>) -> Summary {
     result
 }
 
-#[derive(Default, Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Cursor {
-    offset: u64,
-    inode: u64,
-    device: u64,
-    previous: Option<Tokens>,
-    turn_id: Option<String>,
-    model: Option<String>,
-    tier: Option<String>,
-}
-
-impl Cursor {
-    fn consume(
-        &mut self,
-        document: Value,
-        turns: &mut BTreeMap<String, TurnUsage>,
-    ) -> Result<(), String> {
-        let payload = &document["payload"];
-        if document["type"] == "turn_context" {
-            self.model = payload["model"].as_str().map(str::to_owned);
-            self.tier = payload["service_tier"].as_str().map(str::to_owned);
-            if let Some(id) = payload["turn_id"].as_str() {
-                self.turn_id = Some(id.into());
-            }
-            return Ok(());
+pub fn own_turns(turns: &BTreeMap<String, TurnUsage>, owner: &str) -> BTreeMap<String, TurnUsage> {
+    let mut result = BTreeMap::new();
+    let mut exact: BTreeMap<String, (String, RequestUsage)> = BTreeMap::new();
+    for turn in turns.values() {
+        let own = turn
+            .origin_thread_id
+            .as_deref()
+            .is_none_or(|origin| origin == owner);
+        if own {
+            let mut metadata = turn.clone();
+            metadata.requests.clear();
+            result.insert(turn.id.clone(), metadata);
         }
-        if document["type"] != "event_msg" {
-            return Ok(());
-        }
-        let kind = payload["type"].as_str().unwrap_or_default();
-        if kind == "task_started" {
-            self.turn_id = payload["turn_id"].as_str().map(str::to_owned);
-            // Each turn_context must supply its own model; a missing context cannot inherit a price.
-            self.model = None;
-            self.tier = None;
-            return Ok(());
-        }
-        if kind == "task_complete" || kind == "turn_aborted" {
-            if let Some(id) = payload["turn_id"].as_str().or(self.turn_id.as_deref()) {
-                let turn = turns.entry(id.into()).or_insert_with(|| TurnUsage {
-                    id: id.into(),
-                    ..Default::default()
-                });
-                turn.status = if kind == "task_complete" {
-                    "complete"
-                } else {
-                    "interrupted"
+        for request in &turn.requests {
+            let Some(source) = request.source.as_ref() else {
+                if own {
+                    result
+                        .get_mut(&turn.id)
+                        .unwrap()
+                        .requests
+                        .push(request.clone());
                 }
-                .into();
+                continue;
+            };
+            if source.origin_thread_id != owner {
+                continue;
             }
-            return Ok(());
+            let id = source
+                .origin_turn_id
+                .clone()
+                .unwrap_or_else(|| turn.id.clone());
+            let key = source.physical_key();
+            let replace = exact.get(&key).is_none_or(|(_, previous)| {
+                previous.key.starts_with("source:") && !request.key.starts_with("source:")
+            });
+            if replace {
+                exact.insert(key, (id, request.clone()));
+            }
         }
-        if kind != "token_count" || payload["info"].is_null() {
-            return Ok(());
-        }
-        let info = &payload["info"];
-        let current = Tokens::parse(&info["total_token_usage"])?;
-        let last = Tokens::parse(&info["last_token_usage"])?;
-        let delta = match &self.previous {
-            Some(previous) => current.difference(previous),
-            None => Some(current.clone()),
-        };
-        self.previous = Some(current);
-        if delta
-            .as_ref()
-            .is_some_and(|delta| delta.input == 0 && delta.output == 0)
-        {
-            return Ok(());
-        }
-        let partial = delta.as_ref().is_none_or(|delta| delta != &last);
-        let tokens = delta.unwrap_or(last);
-        if tokens.cached + tokens.cache_write > tokens.input {
-            return Err("Invalid token delta".into());
-        }
-        let at = document["timestamp"]
-            .as_str()
-            .ok_or("Token record has no timestamp")?
-            .to_owned();
-        let id = self
-            .turn_id
-            .clone()
-            .unwrap_or_else(|| format!("unattributed-{at}"));
-        let key = format!(
-            "{at}/{}:{}:{}",
-            info["total_token_usage"]["input_tokens"],
-            info["total_token_usage"]["output_tokens"],
-            info["total_token_usage"]["cached_input_tokens"]
-        );
-        let turn = turns.entry(id.clone()).or_insert_with(|| TurnUsage {
+    }
+    for (_, (id, request)) in exact {
+        let turn = result.entry(id.clone()).or_insert_with(|| TurnUsage {
             id,
             status: "in-progress".into(),
-            requests: Vec::new(),
+            origin_thread_id: Some(owner.into()),
+            root_turn_id: request
+                .source
+                .as_ref()
+                .and_then(|source| source.root_turn_id.clone()),
+            ..Default::default()
         });
-        if turn.requests.iter().any(|request| request.key == key) {
-            return Ok(());
-        }
-        turn.requests.push(request(
-            key,
-            at,
-            self.model.clone(),
-            self.tier.as_deref(),
-            tokens,
-            partial,
-        ));
-        Ok(())
+        turn.requests.push(request);
     }
+    // A stored bucket containing only copied/aliased requests is not an empty own turn.
+    result.retain(|id, turn| {
+        !turn.requests.is_empty()
+            || turns
+                .get(id)
+                .is_some_and(|stored| stored.requests.is_empty())
+    });
+    result
 }
 
-pub fn sync_file(
-    path: &Path,
-    cursor: &mut Cursor,
-    turns: &mut BTreeMap<String, TurnUsage>,
-) -> Result<bool, String> {
-    let mut file = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(path)
-        .map_err(|_| "Could not read session usage.")?;
-    let metadata = file.metadata().map_err(|error| error.to_string())?;
-    if !metadata.is_file() {
-        return Err("Session usage is not a regular file.".into());
+fn correct_legacy_tier(request: &mut RequestUsage, tier: &str, source: &str) {
+    if request.tier_source.is_some() {
+        return;
     }
-    if metadata.ino() != cursor.inode
-        || metadata.dev() != cursor.device
-        || metadata.len() < cursor.offset
-    {
-        *cursor = Cursor {
-            inode: metadata.ino(),
-            device: metadata.dev(),
-            ..Default::default()
-        };
+    request.service_tier = Some(tier.into());
+    request.tier_source = Some(source.into());
+    let Some(previous) = request.rates.clone() else {
+        return;
+    };
+    if previous.tier == tier && !previous.tier_assumed {
+        return;
     }
-    file.seek(SeekFrom::Start(cursor.offset))
-        .map_err(|error| error.to_string())?;
-    // Bound a single synchronization pass, including unrelated conversation-body lines.
-    let mut reader = BufReader::new(file.take(64 * 1024 * 1024));
-    let mut changed = false;
-    loop {
-        let mut line = Vec::new();
-        reader
-            .by_ref()
-            .take(16 * 1024 * 1024 + 1)
-            .read_until(b'\n', &mut line)
-            .map_err(|error| error.to_string())?;
-        if line.len() > 16 * 1024 * 1024 {
-            return Err("A session record is too large to read.".into());
-        }
-        if line.last() != Some(&b'\n') {
-            break;
-        }
-        let document: Value = serde_json::from_slice(&line).map_err(|_| {
-            "A saved session record is invalid. Refresh after Codex finishes writing."
-        })?;
-        cursor.consume(document, turns)?;
-        cursor.offset += line.len() as u64;
-        changed = true;
+    let model = request.model.as_deref().unwrap_or_default();
+    let ratio = tier_multiplier(model, tier)
+        .zip(tier_multiplier(model, &previous.tier))
+        .map(|(next, old)| next / old);
+    request.rate_correction = Some(RateCorrection {
+        previous_rates: previous.clone(),
+        previous_cost_usd: request.cost_usd,
+        reason: format!(
+            "Recovered recorded service tier from {source}; original dated rates retained."
+        ),
+    });
+    let Some(ratio) = ratio else {
+        request.rates = None;
+        request.cost_usd = None;
+        request.unpriced_reason = Some("The recorded service tier price is unavailable".into());
+        return;
+    };
+    let mut corrected = previous;
+    corrected.input *= ratio;
+    corrected.cached *= ratio;
+    corrected.write_30m *= ratio;
+    corrected.write_12h *= ratio;
+    corrected.output *= ratio;
+    corrected.tier = tier.into();
+    corrected.tier_assumed = tier == "auto";
+    if request.cost_usd.is_some() {
+        request.cost_usd = price(&request.tokens, &corrected);
     }
-    Ok(changed)
+    request.rates = Some(corrected);
 }
 
 #[cfg(test)]
@@ -444,6 +545,62 @@ mod tests {
     fn event(at: &str, total: Value, last: Value) -> Value {
         json!({"timestamp":at,"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":total,"last_token_usage":last}}})
     }
+    #[test]
+    fn cache_reads_and_writes_keep_independent_known_and_missing_counts() {
+        let mut raw = usage(300, 75, 30);
+        raw.as_object_mut()
+            .unwrap()
+            .remove("cache_write_input_tokens");
+        let tokens = Tokens::parse(&raw).unwrap();
+        assert!(tokens.cached_is_known());
+        assert!(!tokens.writes_are_known());
+        let record = request(
+            "k".into(),
+            "now".into(),
+            Some("gpt-6.1-sol".into()),
+            None,
+            tokens.clone(),
+            false,
+        );
+        assert!(record.cost_usd.is_none());
+        let mut turns = BTreeMap::new();
+        turns.insert(
+            "one".into(),
+            TurnUsage {
+                id: "one".into(),
+                status: "complete".into(),
+                requests: vec![record],
+                ..Default::default()
+            },
+        );
+        let summary = summarize(&turns);
+        assert_eq!(summary.cached, 75);
+        assert_eq!(summary.missing_cached_requests, 0);
+        assert_eq!(summary.missing_cache_write_requests, 1);
+        let zero = Tokens::parse(&usage(300, 0, 30)).unwrap();
+        assert!(zero.cached_is_known() && zero.writes_are_known());
+        let mut write_only = usage(300, 0, 30);
+        write_only
+            .as_object_mut()
+            .unwrap()
+            .remove("cached_input_tokens");
+        let write_only = Tokens::parse(&write_only).unwrap();
+        assert!(!write_only.cached_is_known() && write_only.writes_are_known());
+        let mut neither = raw;
+        neither
+            .as_object_mut()
+            .unwrap()
+            .remove("cached_input_tokens");
+        let neither = Tokens::parse(&neither).unwrap();
+        assert!(!neither.cached_is_known() && !neither.writes_are_known());
+        let mut legacy = serde_json::to_value(tokens).unwrap();
+        for field in ["cachedKnown", "cacheWriteKnown"] {
+            legacy.as_object_mut().unwrap().remove(field);
+        }
+        let legacy: Tokens = serde_json::from_value(legacy).unwrap();
+        assert!(!legacy.cached_is_known() && !legacy.writes_are_known());
+    }
+
     #[test]
     fn cost_uses_disjoint_cache_classes_and_never_doubles_reasoning() {
         let raw = json!({"input_tokens":1000,"cached_input_tokens":200,"cache_write_input_tokens":300,"cache_write_input_tokens_details":{"ttl_12h_tokens":100},"output_tokens":100,"reasoning_output_tokens":20,"total_tokens":1100});
@@ -571,5 +728,161 @@ mod tests {
         sync_file(&path, &mut cursor, &mut turns).unwrap();
         assert_eq!(summarize(&turns).requests, 1);
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn an_invalid_token_record_does_not_advance_the_last_trusted_counter() {
+        let mut cursor = Cursor::default();
+        let mut turns = BTreeMap::new();
+        cursor
+            .consume(
+                json!({"type":"turn_context","payload":{"turn_id":"one","model":"gpt-6.1-sol"}}),
+                &mut turns,
+            )
+            .unwrap();
+        cursor
+            .consume(
+                event("one", usage(100, 0, 10), usage(100, 0, 10)),
+                &mut turns,
+            )
+            .unwrap();
+        let corrected = event("two", usage(200, 0, 20), usage(100, 0, 10));
+        let mut invalid = corrected.clone();
+        invalid.as_object_mut().unwrap().remove("timestamp");
+        assert!(cursor.consume(invalid, &mut turns).is_err());
+        cursor.consume(corrected, &mut turns).unwrap();
+        assert_eq!(summarize(&turns).requests, 2);
+        assert_eq!(summarize(&turns).total, 220);
+        assert!(!turns["one"].requests[1].partial);
+    }
+
+    #[test]
+    fn recorded_tiers_follow_applied_settings_and_request_overrides() {
+        let mut cursor = Cursor::default();
+        let mut turns = BTreeMap::new();
+        let settings = |tier| json!({"type":"event_msg","payload":{"type":"thread_settings_applied","thread_settings":{"service_tier":tier}}});
+        cursor.consume(settings("default"), &mut turns).unwrap();
+        cursor
+            .consume(
+                json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"one"}}),
+                &mut turns,
+            )
+            .unwrap();
+        cursor
+            .consume(
+                json!({"type":"turn_context","payload":{"turn_id":"one","model":"gpt-6.1-sol"}}),
+                &mut turns,
+            )
+            .unwrap();
+        cursor
+            .consume(
+                event("one", usage(1000, 0, 100), usage(1000, 0, 100)),
+                &mut turns,
+            )
+            .unwrap();
+        let first = &turns["one"].requests[0];
+        assert_eq!(first.rates.as_ref().unwrap().tier, "default");
+        assert!(!first.rates.as_ref().unwrap().tier_assumed);
+        assert_eq!(first.tier_source.as_deref(), Some("thread-settings"));
+        assert!((first.cost_usd.unwrap() - 0.003).abs() < 1e-12);
+        cursor.consume(settings("priority"), &mut turns).unwrap();
+        cursor
+            .consume(
+                event("two", usage(2000, 0, 200), usage(1000, 0, 100)),
+                &mut turns,
+            )
+            .unwrap();
+        assert!((turns["one"].requests[1].cost_usd.unwrap() - 0.006).abs() < 1e-12);
+        let mut per_request = event("three", usage(3000, 0, 300), usage(1000, 0, 100));
+        per_request["payload"]["info"]["service_tier"] = "default".into();
+        cursor.consume(per_request, &mut turns).unwrap();
+        let third = &turns["one"].requests[2];
+        assert_eq!(third.tier_source.as_deref(), Some("request"));
+        assert!((third.cost_usd.unwrap() - 0.003).abs() < 1e-12);
+        cursor
+            .consume(
+                json!({"type":"event_msg","payload":{"type":"task_started","turn_id":"two"}}),
+                &mut turns,
+            )
+            .unwrap();
+        cursor
+            .consume(
+                json!({"type":"turn_context","payload":{"turn_id":"two","model":"gpt-6.1-sol"}}),
+                &mut turns,
+            )
+            .unwrap();
+        cursor
+            .consume(
+                event("four", usage(4000, 0, 400), usage(1000, 0, 100)),
+                &mut turns,
+            )
+            .unwrap();
+        assert_eq!(
+            turns["two"].requests[0].service_tier.as_deref(),
+            Some("priority")
+        );
+        let mut missing = Cursor::default();
+        let mut missing_turns = BTreeMap::new();
+        missing
+            .consume(
+                json!({"type":"turn_context","payload":{"turn_id":"one","model":"gpt-6.1-sol"}}),
+                &mut missing_turns,
+            )
+            .unwrap();
+        missing
+            .consume(
+                event("one", usage(1000, 0, 100), usage(1000, 0, 100)),
+                &mut missing_turns,
+            )
+            .unwrap();
+        assert!(
+            missing_turns["one"].requests[0]
+                .rates
+                .as_ref()
+                .unwrap()
+                .tier_assumed
+        );
+        assert_eq!(
+            missing_turns["one"].requests[0].tier_source.as_deref(),
+            Some("assumed")
+        );
+    }
+
+    #[test]
+    fn legacy_tier_correction_keeps_dated_prices_and_original_evidence() {
+        let tokens = Tokens::parse(&usage(1000, 0, 100)).unwrap();
+        let mut legacy = request(
+            "key".into(),
+            "old".into(),
+            Some("gpt-6.1-sol".into()),
+            None,
+            tokens,
+            false,
+        );
+        legacy.tier_source = None;
+        let old = legacy.rates.as_mut().unwrap();
+        old.date = "2026-10-01".into();
+        old.input = 3.0;
+        old.output = 15.0;
+        legacy.cost_usd = price(&legacy.tokens, old);
+        assert!((legacy.cost_usd.unwrap() - 0.0045).abs() < 1e-12);
+        correct_legacy_tier(&mut legacy, "priority", "thread-settings");
+        assert_eq!(legacy.rates.as_ref().unwrap().date, "2026-10-01");
+        assert_eq!(legacy.rates.as_ref().unwrap().input, 6.0);
+        assert!((legacy.cost_usd.unwrap() - 0.009).abs() < 1e-12);
+        let correction = legacy.rate_correction.as_ref().unwrap();
+        assert_eq!(correction.previous_rates.input, 3.0);
+        assert!((correction.previous_cost_usd.unwrap() - 0.0045).abs() < 1e-12);
+        correct_legacy_tier(&mut legacy, "priority", "thread-settings");
+        assert!((legacy.cost_usd.unwrap() - 0.009).abs() < 1e-12);
+        assert_eq!(
+            legacy
+                .rate_correction
+                .as_ref()
+                .unwrap()
+                .previous_rates
+                .input,
+            3.0
+        );
     }
 }

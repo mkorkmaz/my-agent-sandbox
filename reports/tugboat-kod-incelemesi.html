@@ -1,0 +1,721 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Tugboat 0.1.0 · Kod ve özellik incelemesi</title>
+<style>
+:root{color-scheme:light;--ink:#172b39;--muted:#465c67;--line:#cbd7d9;--paper:#fff;--canvas:#f4f7f6;--blue:#174d75;--p1:#872919;--p2:#775110;--p3:#325a70;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);background:var(--canvas)}
+header,main,footer{width:min(1096px,100%);margin:auto;padding-inline:clamp(16px,4.6vw,64px)}
+header{padding-top:clamp(32px,7vw,80px);padding-bottom:24px}
+h1,h2,h3,p{margin:0}
+h1{font-size:clamp(34px,5.3vw,65px);line-height:1.03;letter-spacing:-.05em;max-width:17ch}
+h2{font-size:clamp(24px,3vw,34px);line-height:1.16;letter-spacing:-.033em;margin-bottom:.5em}
+h3{font-size:clamp(19px,2.1vw,25px);line-height:1.27;letter-spacing:-.018em}
+a{color:var(--blue);text-underline-offset:3px;overflow-wrap:anywhere}
+a:hover{text-decoration-thickness:2px}
+a:focus-visible,summary:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #0870ab;outline-offset:3px}
+.kicker{margin-bottom:15px;font-weight:700;color:#244f5a}
+.meta,.small,.foot,.sources{font-size:.87rem;color:var(--muted)}
+.meta{margin-top:17px}
+.nav{display:flex;flex-wrap:wrap;gap:.5rem 1.35rem;margin-top:22px;border-top:1px solid var(--line);padding-top:15px;font-weight:600;font-size:.93rem}
+main>section{margin:1.7rem 0 3rem;scroll-margin-top:1rem}
+.intro{background:#e7f0ef;border-left:4px solid #216454;border-radius:0 8px 8px 0;padding:clamp(18px,3vw,30px)}
+.intro>p{max-width:83ch}
+.intro ul{margin:12px 0 0;padding-left:1.25rem}
+.intro li+li,.guide li+li{margin-top:.45em}
+code,kbd{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;overflow-wrap:anywhere}
+p code,li code,td code,.meta code{background:#edf2f3;padding:.04em .22em;border-radius:3px}
+.meta code,.intro code{background:transparent}
+.tablewrap{margin-top:1rem;border:1px solid var(--line);border-radius:8px;overflow:auto;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:.94rem;text-align:left}
+th,td{padding:12px 14px;vertical-align:top;border-bottom:1px solid #dce4e4;overflow-wrap:anywhere}
+thead th{font-size:.84rem;background:#e7edee;color:#344b56;font-weight:700}
+tbody tr:last-child>*{border-bottom:none}
+tbody th{min-width:145px;width:22%;font-weight:650}
+td:last-child{min-width:108px}
+.linkset a{display:inline-block;margin-right:.45em;font-weight:650;font-size:.88em;font-variant-numeric:tabular-nums}
+.checks{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:.8rem}
+.checks>dl{margin:0;background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:15px 17px}
+.checks dt{font-weight:700;margin:0 0 4px}
+.checks dd{margin:0;color:var(--muted);font-size:.92rem}
+.guide,.pending{padding-left:1.3rem}
+.guide{font-size:.95rem}
+.levels{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:.8rem 0}
+.pill,.id,.field{font-size:.78rem;font-weight:700}
+.pill{display:inline-block;padding:.17rem .55rem;border-radius:4px;white-space:nowrap}
+.p1{color:var(--p1);background:#fae5df}.p2{color:var(--p2);background:#f8edce}.p3{color:var(--p3);background:#e4eef3}
+.index{background:var(--paper);border:1px solid var(--line);border-radius:8px;margin:1rem 0}
+summary{cursor:pointer;color:var(--blue);font-weight:650}
+.index summary{padding:.85rem 1rem}
+.index ol{columns:2 20rem;column-gap:2rem;padding:0 1.4rem 1rem 2.7rem;margin:0}
+.index li{break-inside:avoid;margin:0 0 .55rem;font-size:.9rem}
+.tools{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.6rem;margin-top:1rem}
+button{background:var(--blue);border:none;border-radius:6px;color:white;padding:.65rem .9rem;font:inherit;font-size:.88rem;font-weight:650;cursor:pointer}
+#progress{font-weight:700}
+.finding{margin:1rem 0;border:1px solid var(--line);background:var(--paper);border-radius:9px;scroll-margin:1rem;padding:clamp(16px,3vw,29px)}
+.finding:target{border-color:#427987;box-shadow:0 0 0 2px #cedfe1}
+.finding header{width:auto;margin:0;padding:0}
+.trail{display:flex;align-items:center;flex-wrap:wrap;gap:.4rem .65rem;margin-bottom:.55rem;color:var(--muted);font-size:.85rem}
+.id{font-family:ui-monospace,monospace;color:#233b45}
+.proof{margin-top:.9rem;max-width:86ch}
+.kind{font-weight:650}
+.deps{margin:.65rem 0;color:var(--muted);font-size:.85rem}
+.sublabel{font-size:.9rem;font-weight:700;margin:1rem 0 .3rem;color:#2a4955}
+.finding ol{margin:.15rem 0 .8rem;padding-left:1.45rem}
+.finding li+li{margin-top:.3rem}
+.accept{background:#f0f5f4;border-left:2px solid #94b7af;padding:.65rem .85rem;margin:.85rem 0}
+.accept strong{display:block;font-size:.84rem;color:#244b42}
+.sources{display:flex;flex-wrap:wrap;gap:.25rem .8rem;margin-top:.55rem}
+.sources a{font-family:ui-monospace,Menlo,monospace;font-size:.87em}
+.record{padding-top:.65rem;margin-top:.9rem;border-top:1px solid #e3e8e8;font-size:.85rem}
+.record label{display:block;margin-top:.55rem}
+.record input[type=text]{width:min(100%,640px);border:1px solid #99acb0;border-radius:4px;background:var(--paper);color:var(--ink);font:inherit;padding:.4rem .55rem}
+.record input[type=checkbox]{accent-color:#216454;width:1rem;height:1rem;vertical-align:middle;margin:0 .35rem 0 0}
+.finding[data-durum=dogrulandi] .id::after{content:" · Doğrulandı";color:#145c48}
+.finding[data-durum=dis-dogrulama] .id::after{content:" · Dış doğrulama bekliyor";color:#775110}
+.finding[data-durum=suruyor] .id::after{content:" · Üzerinde çalışılıyor";color:#174d75}
+.implementation-summary{font-size:1.1rem;font-weight:700;margin:.8rem 0 .4rem}
+.implementation-table tbody th{width:34%}
+.implementation-table td:nth-child(2){min-width:130px;font-weight:650}
+.implementation-table td:last-child{font-size:.88rem}
+.implementation-table tr[data-durum=dogrulandi] td:nth-child(2){color:#145c48}
+.implementation-table tr[data-durum=dis-dogrulama] td:nth-child(2){color:#775110}
+.implementation-table tr[data-durum=suruyor] td:nth-child(2){color:#174d75}
+#implementation-bar{width:min(100%,440px);height:12px;accent-color:#216454;display:block;margin:.65rem 0}
+footer{padding-bottom:3rem;font-size:.85rem}
+@media(max-width:600px){.tablewrap{overflow:visible;border:0;background:transparent}.coverage,.coverage tbody,.coverage tr,.coverage td,.coverage tbody th{display:block;width:100%;min-width:0}.coverage thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}.coverage tr{margin:.65rem 0;border:1px solid var(--line);border-radius:6px;background:var(--paper);padding:10px 14px}.coverage td,.coverage tbody th{padding:2px 0;border:0}.coverage .linkset{margin-top:4px}.index ol{columns:1}header{padding-bottom:10px}}
+@media print{@page{margin:16mm}body{background:white;font-size:10pt}header,main,footer{padding:0;width:100%}main>section{margin:1rem 0}.nav,.tools button,.index,.record summary,footer,.screen{display:none}.intro,.finding,.checks>dl{margin:0;background:white;border-color:#aaa;box-shadow:none}.finding{break-inside:avoid;padding:12px;margin:.7rem 0}.finding h3{font-size:14pt}.record:not([open]){display:none}thead{display:table-header-group}tr{break-inside:avoid}a{color:inherit}.kicker{margin:0}h1{font-size:31pt}h2{font-size:20pt}h1,h2,h3,.sublabel{break-after:avoid}*{print-color-adjust:exact}}
+</style>
+</head>
+<body>
+<header id="baslangic">
+<p class="kicker">Tugboat 0.1.0 · macOS / Apple Silicon</p>
+<h1>Kod ve özellik incelemesi</h1>
+<p class="meta"><time datetime="2026-11-11">11 Kasım 2026</time> · <code>trunk</code> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/commit/99cb6419345ad875700242dbc2f796cfdfd72ca1"><code>99cb641</code></a> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/releases/tag/v0.1.0-build.1">v0.1.0-build.1</a></p>
+<nav class="nav" aria-label="Rapor bölümleri"><a href="#ilerleme">Düzeltme ilerlemesi</a><a href="#sonuc">İnceleme bulguları</a><a href="#ozellikler">Özellik kapsamı</a><a href="#dogrulama">İlk test sonuçları</a><a href="#isler">Uygulama listesi</a><a href="#kabul">Açık kabul senaryoları</a></nav>
+</header>
+<main>
+<section id="ilerleme" aria-labelledby="ilerleme-baslik">
+<h2 id="ilerleme-baslik">Düzeltme ilerlemesi</h2>
+<p id="implementation-summary" class="implementation-summary" aria-live="polite">27 / 28 doğrulandı · 0 üzerinde çalışılıyor · 1 dış doğrulama bekliyor · 0 bekliyor</p>
+<progress id="implementation-bar" max="28" value="27" aria-label="Doğrulanan düzeltmeler"></progress>
+<p id="final-verification" class="small"><strong>Son toplu doğrulama:</strong> 71 Node testi, 68 Rust testi, Clippy (uyarılar hata kabul edilerek), native terminal ve hull testleri geçti. Üretim arayüz derlemesi, yayın betiklerinin sözdizimi ve actionlint kontrolü geçti. Rapor, JavaScript açık ve kapalıyken 27 doğrulanmış / 1 dış doğrulama bekleyen maddeyle tutarlı. Geçici 9.8.7 uygulama paketinde sürüm eşleşmesi ve ad hoc imza bütünlüğü doğrulandı; native Settings ekranında 9.8.7 görüldü ve boş QA uygulaması Cmd+Q ile kapandı. Etkin süreç varken onay/iptal diyaloğunun tam native akışı ayrıca elle denenmedi. Apple Developer ID / noter / Gatekeeper kabulü henüz yapılmadı.</p>
+<p class="small">Doğrulandı, ilgili yerel testlerin geçtiğini gösterir. Dış doğrulama bekliyor, kodun hazır olduğunu ve kabul için gerekli dış kontrolün henüz tamamlanmadığını gösterir. Her satır ayrıntılı bulguya bağlanır.</p>
+<p class="small">Son kayıt güncellemesi <time id="implementation-updated" datetime="2026-11-11T11:34:55+03:00">11.11.2026 11:34 (İstanbul)</time></p>
+<div class="tablewrap"><table class="coverage implementation-table" aria-label="Tüm bulguların güncel düzeltme durumu"><thead><tr><th scope="col">Madde</th><th scope="col">Durum</th><th scope="col">Değişiklik ve doğrulama</th></tr></thead><tbody id="implementation-rows">
+<tr data-durum="dis-dogrulama"><th scope="row"><a href="#is-01">KR-01 · Dağıtılan uygulama Gatekeeper denetiminde reddediliyor</a></th><td>Dış doğrulama bekliyor</td><td>Developer ID ile yardımcı ve uygulama imzalama, app/DMG noter onayı ve salt okunur DMG üzerinde Gatekeeper kabul kapısı eklendi. bash -n, node --check ve actionlint geçti. Kimlik bilgisi olmadan build erken duruyor. Apple sertifikası ve altı GitHub secret ayarı ile canlı yayın kabulü bekliyor.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-02">KR-02 · İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor</a></th><td>Doğrulandı</td><td>Proje ve kullanım defteri oku-değiştir-yaz işlemleri süreçler arası flock kilidi altında yeniden yükleniyor. Atomik dosya değişimi korundu. independent_processes_preserve_both_project_registrations ve concurrent_archive_and_usage_writers_preserve_both_changes dahil 42 Rust testi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-03">KR-03 · Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor</a></th><td>Doğrulandı</td><td>Açık ayırma tercihi policyDetached alanında kalıcı tutuluyor. Yeniden hazırlama, kayıt açma ve politika kaydetme tercihi değiştirmiyor; yalnız Attach başarıyla tamamlanınca bağlanıyor. Gerçek Brig entegrasyonunda iki yeniden açılış boyunca sıfır bağ doğrulandı. 49 Node testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-04">KR-04 · Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor</a></th><td>Doğrulandı</td><td>Bozuk başlık, ad dizini ve token satırı hataları kayda bağlı uyarılarla yalıtılıyor. Son güvenilir sayaç konumu korunuyor; eksik son satır bekleniyor. Onarım ve yeniden okuma testi toplamları kayıp veya mükerrer istek olmadan doğruladı. 44 Rust testi, 23 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-05">KR-05 · Kayıtlı hizmet tarifesi gözden kaçıyor ve maliyet yanlış hesaplanıyor</a></th><td>Doğrulandı</td><td>Tarife önceliği istek → uygulanmış oturum ayarı → tur bağlamı → açık varsayım olarak düzeltildi. Kaynak saklanıyor. Eski defterler bir kez tekrar okunuyor; düzeltmede özgün tarihli fiyat ve önceki tutar korunuyor. priority örneği 0,006 USD, yeniden içe aktarma tek istek. 47 Rust testi, 23 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-06">KR-06 · Çalışmayan VM, eski kayıttan hazır görünebiliyor</a></th><td>Doğrulandı</td><td>Hazır durumu güncel Brig ls/info yanıtı, proje yolu ve konuk evi eşleşmesiyle doğrulanıyor. Durmuş/kayıp ortam hazır sayılmıyor; okunamayan envanter açık hata veriyor. Dört durum ve yanlış proje eşleşmesi test edildi. Eski hazır kayıt ve boş gerçek Brig envanteri ready sonucunu verdi. 48 Rust testi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-07">KR-07 · Hazırlık sonucu başka bir terminalin durumuna göre reddedilebiliyor</a></th><td>Doğrulandı</td><td>Hazırlık denemesi benzersiz token ve ayrılmış terminal kimliğiyle kaydediliyor. Çıkış Rust tarafında aynı denemeyi tamamlıyor; eski sonuç yeni denemeye dokunmuyor. Başlatma/çıkış/doğrulama hatası ready durumuna dönüyor. 49 Rust testi ve tanılama terminali açıkken tamamlanma dahil 24 arayüz testi geçti. Üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-08">KR-08 · Plan okunamazsa etkin New Chat düğmesi hiçbir işlem yapmıyor</a></th><td>Doğrulandı</td><td>Plan yüklenirken ve hata halinde eski parmak izi temizleniyor, New Chat ve planla çalışan kontroller devre dışı kalıyor. Proje ekranında hata ve Retry setup var. Yeniden denemede yeni parmak iziyle tek sohbet açılması ve terminal olayının hatalı düğmeyi etkinleştirememesi test edildi. 26 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-09">KR-09 · Başka projeye geçince önceki projenin tanılama ve giriş sonuçları görünüyor</a></th><td>Doğrulandı</td><td>Proje seçimi ve her ayar penceresi açılışı ayrı kimlikle izleniyor. Alanlar ve düzenleme/izin durumları temizleniyor. Gecikmiş giriş, politika, sınır, tercih, durdurma ve kaldırma önizlemesi sonuçları doğru kapsama bağlandı. A→B→A ve aynı pencereyi yeniden açmada başarı/hata sırası testleri dahil 28 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-10">KR-10 · Bir sohbetin istek tablosu diğer sohbetin başlığı altında görünebiliyor</a></th><td>Doğrulandı</td><td>Her kullanım penceresi açılışı artan istek kimliğini, proje seçimini ve sohbet kimliğini yakalıyor. Kapanış isteği geçersiz kılıyor. A/B ve aynı sohbetin yeniden açılmasında ters sıradaki başarı/hata yanıtları güncel tabloyu değiştiremiyor. 29 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-11">KR-11 · Eksik önbellek sayacı sıfır görünüyor, bilinen sayaç da gizleniyor</a></th><td>Doğrulandı</td><td>cachedKnown ve cacheWriteKnown ayrı saklanıyor. Bilinen 75 okuma ve yüzdesi gösteriliyor; eksik yazma Unknown kalıyor. Toplamlar iki sınıfı ayrı izliyor. Eski kaynaklardan bilinirlik geri kazanımı arşiv ve tarihli fiyatları koruyor. Gerçek sıfır/tek sayaç eksik/ikisi eksik testleri dahil 51 Rust, 30 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-12">KR-12 · Oturum dosyası kaybolduğunda açık liste güncellenmiyor</a></th><td>Doğrulandı</td><td>Kaynak erişilebilirliği defterde tutuluyor; uygulama örneği son yayımladığı panoyla da karşılaştırıyor. Başka süreç değişikliği önceden yazsa bile bildirim kaybolmuyor. Dosyanın aynı içerikle kaybolup dönmesi iki geçiş üretiyor, değişmeyen tur tekrar olay üretmiyor. 51 Rust ve 31 arayüz testi geçti; toplam maliyet sabit kaldı.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-13">KR-13 · Kaldırılan proje uygulama kapanana kadar izleniyor</a></th><td>Doğrulandı</td><td>Kaldırma kaydı başarıyla yazıldıktan sonra izleyici ve yayımlanmış pano kaldırılıyor. Okuma turu ve kaldırma ortak kilitle sıralanıyor; gecikmiş istek silinen projeyi yeniden izlemeye alamıyor. Kapanış bütün projeleri işleyip hataları birlikte bildiriyor. Yarış ve hata sonrası diğer defterin yazılması testleri dahil 53 Rust testi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-14">KR-14 · İzin listesinin Codex web aramasına etkisi arayüzde belirsiz</a></th><td>Doğrulandı</td><td>Ayarlar, proje politikası, paylaşım planı ve README konuk komut trafiği ile barındırılan Codex araçlarının kapsamını ayrı anlatıyor. Web arama modu okunmadığı ve yönetilmediği açıkça gösteriliyor. Resmî Codex yapılandırma belgesiyle karşılaştırıldı. 32 arayüz testi, son metin değişikliğinin hedef testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-15">KR-15 · İzin verilen bir alan adı, denetimde yasak hedef sayılabiliyor</a></th><td>Doğrulandı</td><td>Hedefler etkin ağ modu ve çözülmüş basit politikadan seçiliyor; izinli example.com yasak hedef yapılmıyor. Offline ve deny-all için ayrı beklenti var. Gelişmiş kurallar, dış kontrol eksikliği ve olası ortak IP örtüşmesi belirsiz kalıyor. Belirsiz/eksik rapor ek erişim açmıyor; eski raporlar yeniden kontrol gerektiriyor. 54 Rust, 33 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-16">KR-16 · Çıkış onayı açık işlemlerin sona erdiğini doğrulamıyor</a></th><td>Doğrulandı</td><td>Pencere kapatma ve Cmd+Q artık aynı sıralı akışı kullanıyor; onaydan önce süreçler kesilmiyor. Kurulum ve sorgular iptal edilip bekleniyor, PTY grupları HUP/SIGKILL ile bitiriliyor ve son kullanım ardından yazılıyor. Gerçek süreç testleri: geciken kapanış, zorunlu sonlandırma, ayrılmış terminalin geç başlaması, kurulumun yeniden denenebilir kaydı ve çıkışta son token olayı geçti. 34 arayüz testi ve üretim derlemesi geçti. Native onay diyaloğu bu değişiklik için ayrıca elle denenmedi.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-17">KR-17 · Open local terminal seçimi açık Codex sohbetine dönebiliyor</a></th><td>Doğrulandı</td><td>Amaç eşleştiğinde mevcut yerel terminal, konuk kabuğu veya giriş terminali geri getiriliyor. Çakışan Codex sohbeti varsa ayarlar açık ve odak seçilen düğmede kalıyor; gerekçe düğmenin yanındaki durum alanında görünüyor. Giriş/kabuk düğmelerinin hazırlık sonrası devre dışı kalması da giderildi. Üç amaç için eşleşme ve çakışma testleriyle 36 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-18">KR-18 · Biten testlerin çıktısı başka bir terminal açılırken kayboluyor</a></th><td>Doğrulandı</td><td>Yeni terminal açılışı bitmiş çıktıları kapatmıyor. Terminals listesi tamamlanmış test ve tanılamayı çıkış koduyla yeniden açıyor; Close output açıkça kapatıyor. Ayrı 16 canlı süreç ve 32 tamamlanmış çıktı sınırı var; yalnız en eski tamamlanmış görünümler temizleniyor. Sonuç geri açma/kapatma arayüz testi, karışık yaşam döngüsü kapasite testi, 60 Rust testi, 37 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-19">KR-19 · Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor</a></th><td>Doğrulandı</td><td>Erişilemeyen klasör kütüphanede belirtiliyor ve Forget… yalnız Tugboat kaydı için kapsamı açık bir onay açıyor. Backend kaydı kimlikle kaldırıyor, yeniden erişilebilir klasörü reddediyor ve izlemeyi bırakıyor; Brig komutu veya dosya silme çalışmıyor. Taşınmış klasörün dosyalarını ve diğer kayıtları koruma Rust testi, iptal/onay arayüz testi, 38 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-20">KR-20 · Yarım kalan proje kaldırma, yeniden açılışta normal hazırlığa dönüşüyor</a></th><td>Doğrulandı</td><td>Kaldırma günlüğü hedefi, girişten çıkış tercihini ve tamamlanan adımları saklıyor. Yeniden açılış normal hazırlığı ve yeni süreçleri durdurup devam önizlemesini gösteriyor. VM silinmeden önce/sonra ve iki politika adımında hata enjeksiyonu, eski onayın reddi, yeniden oluşturulmuş VM’nin korunması ve yeniden açılış testi geçti. Tamamlanan girişten çıkış ve durdurma tekrarlanmıyor; 63 Rust testi, 39 arayüz testi ve üretim derlemesi geçti. Canlı kullanıcı VM’si kaldırılmadı.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-21">KR-21 · Korunan eski politika aynı klasörün yeniden kurulmasını engelliyor</a></th><td>Doğrulandı</td><td>Mevcut politika adı doluysa belgeye veya sahipliğine dokunulmadan yeni bir ad seçiliyor ve yaratmadan önce kaydediliyor. Gerçek Brig ile yalıtılmış kayıtlarda harici düzenlenmiş politikayı koruyarak kaldırma, aynı klasörü yeniden ekleme, yeni plan, iki tekrar deneme ve ikinci kaldırma zinciri geçti. Korunan belgenin baytları aynı kaldı ve yalnız yeni uygulama politikası silindi. VM başlatılmadı.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-22">KR-22 · Önceki başarılı kurulum, yeni kurulumun hiç çalışmadan bitmesine yol açıyor</a></th><td>Doğrulandı</td><td>Kurulum başlangıcı mevcut CLI sürümünü okuyor; eski günlüğün install tamamlandı kaydı mevcut kurulumun kanıtı sayılmıyor. Eksik CLI için install, uyumsuz mevcut CLI için reinstall çalışıyor. Son sürüm yeniden doğrulanmadan başarı bildirilmiyor. Üç kurulum testi: kesilen adımdan devam, iki kur/kaldır/yeniden kur döngüsü, eksik/uyumsuz/geçersiz son sürüm ve kapanışta iptal geçti. Gerçek Homebrew kurulumu yapılmadı.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-23">KR-23 · İstek kaydı oluşmadan kesilen prompt rapordan düşüyor</a></th><td>Doğrulandı</td><td>İstek sayacı olmayanlar dahil her tur sıra ve durumuyla gösteriliyor. Kesilen turda token ve maliyetin bilinmediği açıklanıyor, tablo ve sıfır maliyet üretilmiyor. Hiç prompt olmaması ile ölçümsüz prompt bulunması ayrı durum metinleri taşıyor. Karışık iki tur, yalnız ölçümsüz tur ve boş oturum senaryolarıyla 40 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-24">KR-24 · Aynı klasörü yeniden seçmek özel proje adını siliyor</a></th><td>Doğrulandı</td><td>Klasör kimliği yeniden bulunduğunda kayıtlı görünen ad artık değiştirilmiyor; yol ve son açılış zamanı yenileniyor. Customer billing adıyla eski kayıt yükleme, aynı klasörü yeniden seçme, klasörü taşıma, tek kayıt kimliği ve yeniden açılış sırası regresyon testi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-25">KR-25 · Arka plan yenilemesi kenar çubuğundaki klavye odağını kaybettiriyor</a></th><td>Doğrulandı</td><td>Kenar çubuğu sohbet ve terminal odağını kimlikle, kaydırmadan geri yüklüyor. Kaybolan satır için komşu veya Refresh seçiliyor; WebView odakta değilse odak istenmiyor. Ana tablonun kenar çubuğundan odak çalmasına yol açan kapsam hatası da giderildi. Kimlik/başlık güncellemesi, terminal sonucu, ayar alanı, arşivlenen satır ve boş liste testleriyle 41 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-26">KR-26 · Sürüm sorgusu iptal edilirse uyumlu Brig için uyumsuzluk uyarısı çıkıyor</a></th><td>Doğrulandı</td><td>Denetim iptal, zaman aşımı, geçersiz yanıt, komut hatası ve yalnız okunmuş bir sürümün uyuşmazlığını ayrı sınıflandırıyor. Arayüz İngilizce durum metinleri kullanıyor; iptal/zaman aşımında önceki başarılı sonuç açıkça eski denetim olarak etiketlenip korunuyor. Gerçek yavaş alt süreçte iptal/yeniden deneme, gerçek uyuşmazlık ve geçersiz yanıt testleri, 4 host testi, 42 arayüz testi ve üretim derlemesi geçti.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-27">KR-27 · Settings ekranındaki sürüm bir sonraki yayında eski kalacak</a></th><td>Doğrulandı</td><td>Settings ve About aynı Tauri paket metadata’sını kullanıyor; HTML sürüm içermiyor. Dağıtım doğrulaması config, Info.plist ve --package-version çıktısını karşılaştırıyor. Geçici 9.8.7 config ile gerçek QA .app üretildi; Info.plist ve metadata 9.8.7, yanlış 9.8.6 beklentisi reddedildi. Native QA uygulamasında Settings 9.8.7 ekranda görüldü ve Cmd+Q ile kapandı. 43 arayüz testi ve paket imza bütünlüğü denetimi geçti. QA paketi ad hoc imzalıdır; noter doğrulaması değildir.</td></tr>
+<tr data-durum="dogrulandi"><th scope="row"><a href="#is-28">KR-28 · İndekse alınmış değişiklikler için fark görünümü yok</a></th><td>Doğrulandı</td><td>Working tree diff ve Staged diff ayrı eylemler ve terminal sonuçlarıdır. Aynı konuk proje dizininde --no-ext-diff ve --no-textconv kullanılır; temiz sonuç açıkça belirtilir. Gerçek geçici Git deposunda yalnız indeks, yalnız çalışma ağacı, ikisi birlikte ve temiz durum geçti; harici diff/textconv sürücüsü hiç çağrılmadı. Ayrı işlem/fingerprint arayüz testiyle 44 arayüz testi ve üretim derlemesi geçti.</td></tr>
+</tbody></table></div>
+</section>
+<section id="sonuc" class="intro" aria-labelledby="one-cikanlar"><h2 id="one-cikanlar">Öncelikli bulgular</h2>
+<p>Proje kütüphanesi ve Mac tanılaması yayımlanan uygulamada çalıştı. Çalışan konukta Codex ve Git komutları yanıt verdi. İncelemede dağıtımı, kullanıcı tercihlerini veya kayıtların doğruluğunu etkileyen beş yüksek öncelikli sorun çıktı.</p>
+<ul>
+<li>Yayımlanan DMG sağlam. Paket içindeki uygulama Gatekeeper denetiminde <code>rejected</code> sonucu aldı. <a href="#is-01" aria-label="KR-01 Dağıtılan uygulama Gatekeeper denetiminde reddediliyor">KR-01</a></li>
+<li>İki bağımsız kayıt işlemi başarıyla dönmesine rağmen son yazan öncekinin projesini listeden düşürdü. <a href="#is-02" aria-label="KR-02 İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor">KR-02</a></li>
+<li>Ayrılmış ağ politikası, proje yeniden açılınca kullanıcı tekrar bağlamadan etkinleşti. <a href="#is-03" aria-label="KR-03 Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor">KR-03</a></li>
+<li>Tek bir oturumdaki eksik token sayacı, sağlam oturumların da listelenmesini engelledi. <a href="#is-04" aria-label="KR-04 Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor">KR-04</a></li>
+<li><code>priority</code> tarifeli örnek isteğin API maliyet karşılığı, uygulamanın kataloğundaki 0,006 USD yerine 0,003 USD olarak kaydedildi. <a href="#is-05" aria-label="KR-05 Kayıtlı hizmet tarifesi gözden kaçıyor ve maliyet yanlış hesaplanıyor">KR-05</a></li>
+</ul></section>
+<section id="ozellikler" aria-labelledby="ozellik-baslik"><h2 id="ozellik-baslik">Özellik kapsamı</h2>
+<p>README ve ürün tanımındaki işlevler, arayüzdeki giriş noktalarından Tauri komutlarına, disk kayıtlarına ve Brig çağrılarına kadar izlendi. <a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#features">README</a> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/PRODUCT.md">Ürün tanımı</a></p>
+<div class="tablewrap"><table class="coverage" aria-label="Özelliklere göre doğrulama sonuçları"><thead><tr><th scope="col">Özellik</th><th scope="col">Doğrulama ve sonuç</th><th scope="col">İlgili işler</th></tr></thead>
+<tbody><tr><th scope="row">Proje kütüphanesi ve gezinme</th><td>Kurulu uygulamada Projects tablosu, dal etiketi, Settings’e geçiş ve geri dönüş görüldü. Klasör kimliği, son açılış sırası, menü yönlendirmesi ve kenar çubuğu boyutu mevcut testlerde geçti.</td><td class="linkset"><a href="#is-02" aria-label="KR-02 İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor">KR-02</a> <a href="#is-19" aria-label="KR-19 Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor">KR-19</a> <a href="#is-24" aria-label="KR-24 Aynı klasörü yeniden seçmek özel proje adını siliyor">KR-24</a> <a href="#is-25" aria-label="KR-25 Arka plan yenilemesi kenar çubuğundaki klavye odağını kaybettiriyor">KR-25</a></td></tr>
+<tr><th scope="row">Mac denetimi ve ayarlar</th><td>Check this Mac, macOS 27.2 üzerinde ARM64, Brig v0.5.2 ve paket içindeki hull’u buldu. Ayar doğrulama, geçişler ve kesilmiş kurulumun devamı otomatik testlerde geçti.</td><td class="linkset"><a href="#is-22" aria-label="KR-22 Önceki başarılı kurulum, yeni kurulumun hiç çalışmadan bitmesine yol açıyor">KR-22</a> <a href="#is-26" aria-label="KR-26 Sürüm sorgusu iptal edilirse uyumlu Brig için uyumsuzluk uyarısı çıkıyor">KR-26</a> <a href="#is-27" aria-label="KR-27 Settings ekranındaki sürüm bir sonraki yayında eski kalacak">KR-27</a></td></tr>
+<tr><th scope="row">Proje hazırlama, kaynaklar ve politika</th><td>Yalıtılmış dizinde gerçek Brig CLI ile politika oluşturma, bağlama, ayırma ve yeniden açma çalıştırıldı. CPU, bellek, ağ modu, imza tercihi ve plan eşleşmesi testleri geçti.</td><td class="linkset"><a href="#is-03" aria-label="KR-03 Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor">KR-03</a> <a href="#is-06" aria-label="KR-06 Çalışmayan VM, eski kayıttan hazır görünebiliyor">KR-06</a> <a href="#is-07" aria-label="KR-07 Hazırlık sonucu başka bir terminalin durumuna göre reddedilebiliyor">KR-07</a> <a href="#is-08" aria-label="KR-08 Plan okunamazsa etkin New Chat düğmesi hiçbir işlem yapmıyor">KR-08</a></td></tr>
+<tr><th scope="row">Ağ ve dosya sınırları</th><td>Plan doğrulama, varsayılan ret ve hatalı ağ yanıtlarının sınıflandırılması test edildi. Barındırılan web aramasının kapsamı önceki oturum kaydıyla karşılaştırıldı. Canlı sınır deneyi bu turda tekrarlanmadı.</td><td class="linkset"><a href="#is-09" aria-label="KR-09 Başka projeye geçince önceki projenin tanılama ve giriş sonuçları görünüyor">KR-09</a> <a href="#is-14" aria-label="KR-14 İzin listesinin Codex web aramasına etkisi arayüzde belirsiz">KR-14</a> <a href="#is-15" aria-label="KR-15 İzin verilen bir alan adı, denetimde yasak hedef sayılabiliyor">KR-15</a></td></tr>
+<tr><th scope="row">ChatGPT girişi ve sohbetler</th><td>Çalışan Linux konuğunda <code>codex --version</code> değeri <code>0.167.0</code>. <code>codex login status</code> mevcut ChatGPT girişini doğruladı. Yeni sohbet, kayıtlı sohbete devam, iki açık sohbet ve etkinlik simgesi Tauri yanıtları taklit edilerek test edildi.</td><td class="linkset"><a href="#is-08" aria-label="KR-08 Plan okunamazsa etkin New Chat düğmesi hiçbir işlem yapmıyor">KR-08</a> <a href="#is-09" aria-label="KR-09 Başka projeye geçince önceki projenin tanılama ve giriş sonuçları görünüyor">KR-09</a> <a href="#is-17" aria-label="KR-17 Open local terminal seçimi açık Codex sohbetine dönebiliyor">KR-17</a></td></tr>
+<tr><th scope="row">Native terminal, Git ve proje testleri</th><td>PTY giriş/çıkışı, Unicode, ekran geçişi, klavye kesmesi, boyut değişikliği, yazı tipi ve metin kompozisyonu testleri geçti. Konukta Git status ve diff komutları 0 ile çıktı. Test terminalinin sohbetle birlikte çalışması arayüz testinde geçti.</td><td class="linkset"><a href="#is-16" aria-label="KR-16 Çıkış onayı açık işlemlerin sona erdiğini doğrulamıyor">KR-16</a> <a href="#is-17" aria-label="KR-17 Open local terminal seçimi açık Codex sohbetine dönebiliyor">KR-17</a> <a href="#is-18" aria-label="KR-18 Biten testlerin çıktısı başka bir terminal açılırken kayboluyor">KR-18</a> <a href="#is-28" aria-label="KR-28 İndekse alınmış değişiklikler için fark görünümü yok">KR-28</a></td></tr>
+<tr><th scope="row">Oturum geçmişi, arşiv ve çöp kutusu</th><td>Mevcut testlerde arşivleme, silme, geri yükleme ve geçmiş maliyet toplamlarını koruma geçti. Yeni deneylerde erişilemeyen ve geçersiz iki farklı kaynak durumu incelendi.</td><td class="linkset"><a href="#is-02" aria-label="KR-02 İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor">KR-02</a> <a href="#is-04" aria-label="KR-04 Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor">KR-04</a> <a href="#is-12" aria-label="KR-12 Oturum dosyası kaybolduğunda açık liste güncellenmiyor">KR-12</a> <a href="#is-13" aria-label="KR-13 Kaldırılan proje uygulama kapanana kadar izleniyor">KR-13</a></td></tr>
+<tr><th scope="row">Session usage ve maliyet</th><td>İstek tablosu, prompt toplamı ve fiyatlandırılamayan istekler otomatik testten geçti. Gerçek tarife alanları, geciken yanıt, eksik sayaç ve kesilen prompt ayrıca sınandı.</td><td class="linkset"><a href="#is-05" aria-label="KR-05 Kayıtlı hizmet tarifesi gözden kaçıyor ve maliyet yanlış hesaplanıyor">KR-05</a> <a href="#is-10" aria-label="KR-10 Bir sohbetin istek tablosu diğer sohbetin başlığı altında görünebiliyor">KR-10</a> <a href="#is-11" aria-label="KR-11 Eksik önbellek sayacı sıfır görünüyor, bilinen sayaç da gizleniyor">KR-11</a> <a href="#is-23" aria-label="KR-23 İstek kaydı oluşmadan kesilen prompt rapordan düşüyor">KR-23</a></td></tr>
+<tr><th scope="row">Durdurma, kaldırma ve çıkış</th><td>Hedef doğrulama, kaldırma önizlemesi ve onay yolları okundu. Kesilmiş kaldırma durumu ve korunan politika geçici kayıtlarda sınandı. Çalışan kullanıcı ortamı korunarak incelendi.</td><td class="linkset"><a href="#is-07" aria-label="KR-07 Hazırlık sonucu başka bir terminalin durumuna göre reddedilebiliyor">KR-07</a> <a href="#is-13" aria-label="KR-13 Kaldırılan proje uygulama kapanana kadar izleniyor">KR-13</a> <a href="#is-16" aria-label="KR-16 Çıkış onayı açık işlemlerin sona erdiğini doğrulamıyor">KR-16</a> <a href="#is-19" aria-label="KR-19 Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor">KR-19</a> <a href="#is-20" aria-label="KR-20 Yarım kalan proje kaldırma, yeniden açılışta normal hazırlığa dönüşüyor">KR-20</a> <a href="#is-21" aria-label="KR-21 Korunan eski politika aynı klasörün yeniden kurulmasını engelliyor">KR-21</a></td></tr>
+<tr><th scope="row">Derleme ve dağıtım</th><td>TypeScript/Vite üretim derlemesi ve Actions sözdizimi kontrolü geçti. GitHub’daki başarılı çalışma incelenen commit’i yayımladı. İndirilen DMG’nin SHA-256 değeri ve disk bütünlüğü doğrulandı. Gatekeeper uygulamayı reddetti.</td><td class="linkset"><a href="#is-01" aria-label="KR-01 Dağıtılan uygulama Gatekeeper denetiminde reddediliyor">KR-01</a> <a href="#is-27" aria-label="KR-27 Settings ekranındaki sürüm bir sonraki yayında eski kalacak">KR-27</a></td></tr></tbody></table></div></section>
+<section id="dogrulama" aria-labelledby="test-baslik"><h2 id="test-baslik">Test sonuçları</h2>
+<div class="checks">
+<dl><dt>49 / 49 Node testi geçti</dt><dd><code>npm test</code>. Bunların 22’si Tauri yanıtlarını taklit ederek arayüz akışlarını çalıştırıyor. Diğerleri Brig sözleşmesini ve geliştirme raporlarını kapsıyor.</dd></dl>
+<dl><dt>39 / 39 Rust testi geçti</dt><dd><code>cargo test --manifest-path src-tauri/Cargo.toml --locked</code>. PTY, plan denetimi, geçmiş, maliyet ve gerçek Brig CLI ile politika işlemleri dâhil.</dd></dl>
+<dl><dt>Native terminal ve hull geçti</dt><dd><code>npm run test:terminal</code> terminal motorunu, fontları ve metin girişini doğruladı. <code>npm run test:hull</code> içinde 13 üst düzey Go testi geçti.</dd></dl>
+<dl><dt>Üretim derlemesi geçti</dt><dd><code>npm run build</code> TypeScript ve Vite adımlarını tamamladı. <code>actionlint</code> macOS yayın iş akışı için hata bildirmedi.</dd></dl>
+<dl><dt>Yayımlanan uygulama açıldı</dt><dd>Kurulu Tugboat’ın ana çalıştırılabilir dosyası, indirilen DMG’deki dosyayla SHA-256 düzeyinde eşleşti. Projects → Settings → Check this Mac → Projects akışı native pencerede doğrulandı.</dd></dl>
+<dl><dt>Çalışan konukta beş kontrol geçti</dt><dd>Linux çekirdeği, Codex sürümü, mevcut ChatGPT girişi, Git status ve Git diff için beş komut da 0 ile çıktı. Konuğa yeni prompt gönderilmedi.</dd></dl>
+</div>
+<p><strong>Ek deneyler.</strong> Geçici kaynak kopyasında üretim işlevlerini çağıran altı Rust testi ve gerçek TypeScript modüllerini yükleyen sekiz jsdom senaryosu çalıştırıldı. Bu deneyler mevcut kusurlu davranışı gözlemek için yazıldı. Her işte beklenen doğru sonuç ayrıca tanımlandı.</p>
+<p class="small" style="margin-top:.8rem"><strong>Release kanıtı.</strong> GitHub çalışması <code>99cb641</code> için başarılı. Yayımlanan DMG 14.067.680 bayt. İndirilen dosyanın SHA-256 değeri <code>a432acaabb47f9c1a5b09633e3cb7988e58a07608c3f11e8197b80107258b859</code>. <code>hdiutil verify</code> ve imza bütünlüğü denetimi geçti. Gatekeeper bulgusu <a href="#is-01" aria-label="KR-01 Dağıtılan uygulama Gatekeeper denetiminde reddediliyor">KR-01</a> içinde. <a href="https://github.com/mkorkmaz/my-agent-sandbox/actions/runs/42927256707">Actions çalışması</a> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/releases/tag/v0.1.0-build.1">Release ve DMG</a></p>
+</section>
+<section id="isler" aria-labelledby="is-baslik"><h2 id="is-baslik">Ajan için uygulama listesi</h2>
+<p>Düzeltmeler bu dosyada sırayla izleniyor. Her maddenin Uygulama kaydı alanı yapılan değişikliği ve doğrulama kanıtını içeriyor. Dış doğrulama bekleyen maddelerin yerel kodu hazır olsa da tam kabul ölçütü henüz tamamlanmış sayılmıyor. İnceleme bulguları ve ilk test sonuçları, düzeltme öncesindeki durumu belgeliyor.</p>
+<p>Her madde tek bir düzeltme ve kabul senaryosu içerir. P1 dağıtımı veya kayıt doğruluğunu etkiler. P2 belirli bir kullanıcı akışını bozar. P3 daha dar kapsamlı kullanım ve tutarlılık sorunlarını kapsar.</p>
+<div class="levels"><span class="pill p1">P1 · 5 madde</span><span class="pill p2">P2 · 18 madde</span><span class="pill p3">P3 · 5 madde</span></div>
+<ol class="guide"><li>İşleri öncelik sırasıyla ele al. İlgili önceki işler, aynı akışı etkileyen düzeltmelerin birlikte sınanmasını kolaylaştırır. Dış bağımlılıklar ilgili maddede belirtilir. Kaynak bağlantıları incelenen commit’in satırlarını açar.</li><li>Gözlenen durumu bir regresyon testiyle kapsa, düzeltmeyi uygula ve kabul ölçütünü aynı giriş noktasından doğrula.</li><li>Maddeyi kapatırken Uygulama kaydı bölümüne testi veya commit’i yaz. Ajan dosyayı doğrudan düzenliyorsa ilgili <code>article</code> üzerinde <code>data-durum="dogrulandi"</code> ve <code>data-kanit</code> alanlarını güncelleyebilir.</li></ol>
+<div class="tools"><span id="progress" aria-live="polite">0 / 28 madde doğrulandı</span><button id="save-report" type="button">İlerlemeyi HTML olarak indir</button></div>
+<p class="small screen">Tarayıcıda işaretlediğiniz maddeler ve test notları indirilen dosyada saklanır.</p>
+<details class="index"><summary>Uygulama listesi · 28 madde</summary><ol><li><a href="#is-01">Dağıtılan uygulama Gatekeeper denetiminde reddediliyor</a></li>
+<li><a href="#is-02">İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor</a></li>
+<li><a href="#is-03">Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor</a></li>
+<li><a href="#is-04">Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor</a></li>
+<li><a href="#is-05">Kayıtlı hizmet tarifesi gözden kaçıyor ve maliyet yanlış hesaplanıyor</a></li>
+<li><a href="#is-06">Çalışmayan VM, eski kayıttan hazır görünebiliyor</a></li>
+<li><a href="#is-07">Hazırlık sonucu başka bir terminalin durumuna göre reddedilebiliyor</a></li>
+<li><a href="#is-08">Plan okunamazsa etkin New Chat düğmesi hiçbir işlem yapmıyor</a></li>
+<li><a href="#is-09">Başka projeye geçince önceki projenin tanılama ve giriş sonuçları görünüyor</a></li>
+<li><a href="#is-10">Bir sohbetin istek tablosu diğer sohbetin başlığı altında görünebiliyor</a></li>
+<li><a href="#is-11">Eksik önbellek sayacı sıfır görünüyor, bilinen sayaç da gizleniyor</a></li>
+<li><a href="#is-12">Oturum dosyası kaybolduğunda açık liste güncellenmiyor</a></li>
+<li><a href="#is-13">Kaldırılan proje uygulama kapanana kadar izleniyor</a></li>
+<li><a href="#is-14">İzin listesinin Codex web aramasına etkisi arayüzde belirsiz</a></li>
+<li><a href="#is-15">İzin verilen bir alan adı, denetimde yasak hedef sayılabiliyor</a></li>
+<li><a href="#is-16">Çıkış onayı açık işlemlerin sona erdiğini doğrulamıyor</a></li>
+<li><a href="#is-17">Open local terminal seçimi açık Codex sohbetine dönebiliyor</a></li>
+<li><a href="#is-18">Biten testlerin çıktısı başka bir terminal açılırken kayboluyor</a></li>
+<li><a href="#is-19">Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor</a></li>
+<li><a href="#is-20">Yarım kalan proje kaldırma, yeniden açılışta normal hazırlığa dönüşüyor</a></li>
+<li><a href="#is-21">Korunan eski politika aynı klasörün yeniden kurulmasını engelliyor</a></li>
+<li><a href="#is-22">Önceki başarılı kurulum, yeni kurulumun hiç çalışmadan bitmesine yol açıyor</a></li>
+<li><a href="#is-23">İstek kaydı oluşmadan kesilen prompt rapordan düşüyor</a></li>
+<li><a href="#is-24">Aynı klasörü yeniden seçmek özel proje adını siliyor</a></li>
+<li><a href="#is-25">Arka plan yenilemesi kenar çubuğundaki klavye odağını kaybettiriyor</a></li>
+<li><a href="#is-26">Sürüm sorgusu iptal edilirse uyumlu Brig için uyumsuzluk uyarısı çıkıyor</a></li>
+<li><a href="#is-27">Settings ekranındaki sürüm bir sonraki yayında eski kalacak</a></li>
+<li><a href="#is-28">İndekse alınmış değişiklikler için fark görünümü yok</a></li></ol></details>
+<article class="finding" id="is-01" data-durum="dis-dogrulama" data-kanit="Developer ID ile yardımcı ve uygulama imzalama, app/DMG noter onayı ve salt okunur DMG üzerinde Gatekeeper kabul kapısı eklendi. bash -n, node --check ve actionlint geçti. Kimlik bilgisi olmadan build erken duruyor. Apple sertifikası ve altı GitHub secret ayarı ile canlı yayın kabulü bekliyor.">
+<header><div class="trail"><span class="id">KR-01</span><span class="pill p1">P1 · Yüksek</span><span>Dağıtım</span></div>
+<h3>Dağıtılan uygulama Gatekeeper denetiminde reddediliyor</h3></header>
+<p class="proof"><span class="kind">Yayımlanan DMG.</span> v0.1.0-build.1 içindeki uygulamada <code>codesign --verify --deep --strict</code> başarılı oldu. Aynı pakette, değerlendirmeler açıkken <code>spctl --assess --type execute</code> çıkış kodu 3 ve <code>rejected</code> verdi. Release ayarı ad hoc imza kullanıyor. İlk kez tarayıcıdan indiren bir kullanıcı macOS’un olağan açılış denetimine takılabilir.</p>
+<p class="deps">Bağımsız uygulanabilir. Apple Developer dağıtım kimliği ve noter hizmetine erişim gerekir. Diğer maddeler bağımsız yürüyebilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Genel dağıtım iş akışında uygulamayı ve paketlenen native yardımcıları Developer ID Application ile imzala. Dağıtım için Apple noter onayını al ve onay biletini pakete ekle. Geliştirme derlemesinin kimlik bilgisi gerektirmemesini sağla.</li><li>Release yayımlanmadan önce son DMG’yi salt okunur bağla. Uygulamanın sürümünü, imzasını, noter biletini ve Gatekeeper sonucunu bu kopya üzerinden denetle.</li></ol>
+<section id="kr-01-yayin-hazirligi" aria-labelledby="kr-01-yayin-hazirligi-baslik">
+<h4 class="sublabel" id="kr-01-yayin-hazirligi-baslik">Sizin tamamlamanız gereken hazırlık</h4>
+<p>KR-01’i tamamlamak için <strong>Apple imzalama sertifikasını ve noter onayı kimlik bilgilerini GitHub’a tanımlamanız gerekiyor.</strong> Hazırlanan yayın akışı bu bilgileri bekliyor.</p>
+<ol class="guide">
+<li><strong>Apple Developer Program üyeliğinizi hazırlayın.</strong> Üyeliğiniz yoksa kayıt olmanız gerekiyor. Ücret yıllık 99 USD; bölgesel fiyat değişebilir. <a href="https://developer.apple.com/programs/enroll/">Apple üyelik sayfası</a>.</li>
+<li><strong>Developer ID Application sertifikası oluşturun.</strong> Sertifikayı Mac’inizde Keychain Access’e yükleyin. Özel anahtarıyla birlikte, parola belirleyerek <code>.p12</code> olarak dışa aktarın. Bu sertifikayı oluşturmak için Account Holder yetkisi gerekiyor. <a href="https://developer.apple.com/help/account/certificates/create-developer-id-certificates/">Apple sertifika rehberi</a> · <a href="https://v2.tauri.app/distribute/sign/macos/#signing-in-cicd-platforms">Tauri dışa aktarma rehberi</a>.</li>
+<li><strong>App Store Connect’te bir Team API Key oluşturun.</strong> <strong>Users and Access → Integrations → App Store Connect API → Team Keys</strong> yolunu kullanın. Erişim rolünü <strong>Developer</strong> seçin. <code>.p8</code> dosyasını indirin; <strong>Key ID</strong> ve <strong>Issuer ID</strong> değerlerini kaydedin. <a href="https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/">Apple API anahtarı rehberi</a> · <a href="https://v2.tauri.app/distribute/sign/macos/#notarization">Tauri noter onayı rehberi</a>.</li>
+<li><strong>Aşağıdaki altı kaydı GitHub’a ekleyin.</strong> <a href="https://github.com/mkorkmaz/my-agent-sandbox/settings/secrets/actions">Deponun GitHub Secrets sayfasında</a> <strong>Settings → Secrets and variables → Actions → New repository secret</strong> yolunu kullanın.
+<div class="tablewrap"><table class="coverage" aria-label="KR-01 için gerekli GitHub repository secrets"><thead><tr><th scope="col">Secret adı</th><th scope="col">Girilecek değer</th></tr></thead><tbody>
+<tr><th scope="row"><code>APPLE_CERTIFICATE</code></th><td><code>.p12</code> dosyasının Base64 karşılığı.</td></tr>
+<tr><th scope="row"><code>APPLE_CERTIFICATE_PASSWORD</code></th><td><code>.p12</code> dışa aktarılırken belirlediğiniz parola.</td></tr>
+<tr><th scope="row"><code>APPLE_SIGNING_IDENTITY</code></th><td>Sertifikanın tam adı: <code>Developer ID Application: … (TEAMID)</code>.</td></tr>
+<tr><th scope="row"><code>APPLE_API_KEY</code></th><td>API anahtarının <strong>Key ID</strong> değeri.</td></tr>
+<tr><th scope="row"><code>APPLE_API_ISSUER</code></th><td><strong>Issuer ID</strong> değeri.</td></tr>
+<tr><th scope="row"><code>APPLE_API_KEY_CONTENT</code></th><td>İndirdiğiniz <code>.p8</code> dosyasının tam metin içeriği.</td></tr>
+</tbody></table></div>
+<p><code>.p12</code> dosyasını Base64’e çevirmek için:</p>
+<pre style="white-space:pre-wrap;overflow-wrap:anywhere"><code>openssl base64 -A -in /tam/yol/sertifika.p12 -out certificate-base64.txt</code></pre>
+<p>Üretilen dosyanın içeriğini <code>APPLE_CERTIFICATE</code> değerine girin. Diğer değerleri de doğrudan GitHub Secrets’e ekleyin.</p>
+</li>
+<li><strong>İmzalı yayın derlemesini çalıştırın.</strong> Bu bilgiler hazır olunca, düzeltmeleri içeren bir yayın derlemesi çalıştırılmalı. Hazırlanan <code>.github/workflows/macos-release.yml</code> akışı, <code>trunk</code> dalına push ile başlıyor. Kontroller geçince GitHub Release yayımlıyor. Üretilen DMG’nin Apple noter ve Gatekeeper denetimleri geçtiğinde KR-01 kapanacak.</li>
+</ol>
+</section>
+<div class="accept"><strong>Kabul ölçütü</strong>Yeni release adayında imza doğrulaması ve Gatekeeper denetimi geçer. Tarayıcıdan indirilen dosya, daha önce Tugboat açılmamış bir Apple Silicon Mac’te varsayılan güvenlik ayarlarıyla açılır.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/tauri.conf.json#L36-L43">src-tauri/tauri.conf.json · 36–43</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/.github/workflows/macos-release.yml#L64-L76">.github/workflows/macos-release.yml · 64–76</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L36-L39">README.md · 36–39</a></div>
+<p class="small">Dağıtım belgeleri. <a href="https://developer.apple.com/developer-id/">Apple Developer ID</a> · <a href="https://v2.tauri.app/distribute/sign/macos/">Tauri macOS imzalama kılavuzu</a></p>
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-1">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-1" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-02" data-durum="dogrulandi" data-kanit="Proje ve kullanım defteri oku-değiştir-yaz işlemleri süreçler arası flock kilidi altında yeniden yükleniyor. Atomik dosya değişimi korundu. independent_processes_preserve_both_project_registrations ve concurrent_archive_and_usage_writers_preserve_both_changes dahil 42 Rust testi geçti.">
+<header><div class="trail"><span class="id">KR-02</span><span class="pill p1">P1 · Yüksek</span><span>Kalıcı kayıtlar</span></div>
+<h3>İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor</h3></header>
+<p class="proof"><span class="kind">Rust deneyi.</span> Üretim ve geliştirme örnekleri aynı uygulama kimliğini kullanabiliyor. <code>Projects</code> kilidi tek süreçte geçerli. İki bağımsız <code>Registry::load</code> çağrısından sonra farklı klasörler başarıyla kaydedildi. Son <code>projects.json</code> dosyasında iki projeden yalnızca son yazılan kaldı. Atomik dosya değişimi her bir yazmayı tamamlıyor, eşzamanlı güncellemeleri birleştirmiyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Aynı yapılandırma dizinini kullanan süreçlerde kayıt dosyasının oku–değiştir–yaz işlemini birlikte kilitle. Kilidi aldıktan sonra veriyi yeniden yükle.</li><li>Aynı düzeni oturum durumunu ve kullanım defterini güncelleyen yollara uygula. Okuyucuların tamamlanmış dosyayı atomik olarak görmesini koru.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Aynı dizini kullanan iki süreç farklı projeler eklediğinde ikinci açılışta ikisi de listelenir. Bir süreç sohbeti arşivlerken diğeri yeni kullanım yazdığında hem arşiv durumu hem yeni istek korunur.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L13-L14">src-tauri/src/projects.rs · 13–14</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L305-L320">src-tauri/src/projects.rs · 305–320</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/storage.rs#L21-L44">src-tauri/src/storage.rs · 21–44</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L425-L439">src-tauri/src/conversations.rs · 425–439</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/tauri.conf.json#L3-L6">src-tauri/tauri.conf.json · 3–6</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-2">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-2" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-03" data-durum="dogrulandi" data-kanit="Açık ayırma tercihi policyDetached alanında kalıcı tutuluyor. Yeniden hazırlama, kayıt açma ve politika kaydetme tercihi değiştirmiyor; yalnız Attach başarıyla tamamlanınca bağlanıyor. Gerçek Brig entegrasyonunda iki yeniden açılış boyunca sıfır bağ doğrulandı. 49 Node testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-03</span><span class="pill p1">P1 · Yüksek</span><span>Proje politikası</span></div>
+<h3>Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor</h3></header>
+<p class="proof"><span class="kind">Gerçek Brig ile geçici proje.</span> <code>Detach from this session</code> sonrasında kayıt <code>policy-detached</code> oldu. Proje açılırken çağrılan <code>prepare</code> aynı kuralı yeniden bağladı. Sonuç <code>ready</code>, <code>ownsBinding=true</code> ve bir bağlı politikaydı. Deney yalıtılmış Brig politika dizininde, VM başlatılmadan yapıldı.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Hazırlık durumları arasında kullanıcının açıkça ayırdığı politikayı koru. Projeyi görüntüleme ve normal yenileme sırasında bu durumda bağlama komutu çalıştırma.</li><li>Politika belgesini ve açık <code>Attach to this session</code> eylemini erişilebilir bırak. Bağlama başarılı olduğunda planı yeniden oluştur.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Ayırma, Projects’e dönüş, uygulamayı yeniden açma ve yenileme sonrasında bağ sayısı sıfır kalır. Kullanıcı Attach seçtiğinde tek bağ oluşur ve ortam hazırlama yeniden kullanılabilir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/project_policy.rs#L169-L210">src-tauri/src/project_policy.rs · 169–210</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L296-L304">src/main.ts · 296–304</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L229-L250">src-tauri/src/preparation.rs · 229–250</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-3">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-3" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-04" data-durum="dogrulandi" data-kanit="Bozuk başlık, ad dizini ve token satırı hataları kayda bağlı uyarılarla yalıtılıyor. Son güvenilir sayaç konumu korunuyor; eksik son satır bekleniyor. Onarım ve yeniden okuma testi toplamları kayıp veya mükerrer istek olmadan doğruladı. 44 Rust testi, 23 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-04</span><span class="pill p1">P1 · Yüksek</span><span>Geçmiş ve kullanım</span></div>
+<h3>Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor</h3></header>
+<p class="proof"><span class="kind">Rust deneyi.</span> Bir geçerli oturum ve sayaç alanı eksik ikinci bir oturumla <code>synchronize</code> tüm pano için <code>Missing input token count</code> döndürdü. Dosya düzeyindeki hata proje düzeyine taşınıyor. Sağlam sohbetler için önceki kayıtlar diskte bulunsa da yeni bir pano yanıtı üretilemiyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-02" aria-label="KR-02 İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor">KR-02</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Oturum başlığı, ad dizini ve kullanım satırı hatalarını ilgili kayda bağla. Son geçerli kullanım defterini ve diğer sohbetlerin güncellemelerini sun.</li><li>Eksik son satırı bir sonraki okumaya bırak. Kalıcı biçim hatası için hangi oturumun kısmen okunabildiğini bildir. Hatalı dosya onarılınca son güvenilir konumdan yeniden oku.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>İki sohbetten biri bozukken diğeri görünür, açılır ve yeni tokenları tam bir kez alır. Hatalı dosya tamamlandığında toplamlar kayıp veya mükerrer istek olmadan güncellenir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L68-L77">src-tauri/src/conversations.rs · 68–77</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L169-L179">src-tauri/src/conversations.rs · 169–179</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L285-L303">src-tauri/src/conversations.rs · 285–303</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L415-L431">src-tauri/src/usage.rs · 415–431</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-4">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-4" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-05" data-durum="dogrulandi" data-kanit="Tarife önceliği istek → uygulanmış oturum ayarı → tur bağlamı → açık varsayım olarak düzeltildi. Kaynak saklanıyor. Eski defterler bir kez tekrar okunuyor; düzeltmede özgün tarihli fiyat ve önceki tutar korunuyor. priority örneği 0,006 USD, yeniden içe aktarma tek istek. 47 Rust testi, 23 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-05</span><span class="pill p1">P1 · Yüksek</span><span>API maliyeti</span></div>
+<h3>Kayıtlı hizmet tarifesi gözden kaçıyor ve maliyet yanlış hesaplanıyor</h3></header>
+<p class="proof"><span class="kind">Oturum kaydı ve Rust deneyi.</span> Codex CLI 0.167.0’ın bir oturumunda <code>thread_settings_applied.thread_settings.service_tier</code> alanı <code>default</code> olduğu halde sekiz isteğin tamamı deftere <code>standard</code>, <code>tierAssumed=true</code> olarak yazılmıştı. Aynı olay yapısıyla hazırlanan <code>priority</code> örneğinde 1.000 giriş ve 100 çıkış tokenı için uygulamanın kendi kataloğuna göre 0,006 USD beklenirken 0,003 USD kaydedildi.</p>
+<p class="deps">İlgili önceki işler <a href="#is-04" aria-label="KR-04 Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor">KR-04</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>İstekle ilişkili tarife bilgisini ve <code>thread_settings_applied</code> olayını zaman sırasıyla işle. İstek için kesinleşmiş tarife bilgisine öncelik ver. Kayıt bulunmadığında varsayımı açıkça göster.</li><li>Yeni kayıtta tarifenin kaynağını sakla. Eski defterler için kaynak olaydan kesin olarak doğrulanabilen yanlış varsayımları saptayacak bir düzeltme yolu tanımla. Hesapta isteğin kayıt tarihindeki fiyatları kullan.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong><code>default</code>, <code>priority</code>, tur içinde değişen tarife ve eksik tarife örnekleri ayrı ayrı geçer. Örnek <code>priority</code> isteği 0,006 USD gösterir. Yeniden içe aktarma aynı isteği ikinci kez ücretlendirmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L116-L139">src-tauri/src/usage.rs · 116–139</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L293-L333">src-tauri/src/usage.rs · 293–333</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L364-L379">src-tauri/src/usage.rs · 364–379</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L88-L94">README.md · 88–94</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-5">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-5" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-06" data-durum="dogrulandi" data-kanit="Hazır durumu güncel Brig ls/info yanıtı, proje yolu ve konuk evi eşleşmesiyle doğrulanıyor. Durmuş/kayıp ortam hazır sayılmıyor; okunamayan envanter açık hata veriyor. Dört durum ve yanlış proje eşleşmesi test edildi. Eski hazır kayıt ve boş gerçek Brig envanteri ready sonucunu verdi. 48 Rust testi geçti.">
+<header><div class="trail"><span class="id">KR-06</span><span class="pill p2">P2 · Orta</span><span>Ortam durumu</span></div>
+<h3>Çalışmayan VM, eski kayıttan hazır görünebiliyor</h3></header>
+<p class="proof"><span class="kind">Gerçek Brig ve boş test envanteri.</span> Kayıt <code>environment-ready</code> iken runtime envanteri boş dönecek şekilde proje yeniden açıldı. Sonuç yine <code>environment-ready</code> oldu. <code>prepare</code>, son durumu önceki kayıt değerinden seçiyor. Bu yüzden dışarıdan durdurulan veya kaldırılan ortamda New Chat ve giriş kontrolleri yanlış anda sunulabiliyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Proje açılırken ve hazır durumuna dayanan işlemlerde Brig envanterindeki güncel referansı, çalışma durumunu ve proje eşleşmesini kontrol et.</li><li>Durdurulmuş veya eksik VM için hazırlama eylemini göster. Envanter okunamazsa son bilinen durumun doğrulanamadığını bildir.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Çalışan, durmuş, kaldırılmış ve envanteri okunamayan dört örnek farklı doğru sonuç verir. Durmuş projeyi görüntülemek VM’yi başlatmaz.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L114-L120">src-tauri/src/preparation.rs · 114–120</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L269-L277">src-tauri/src/preparation.rs · 269–277</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L390-L395">src/main.ts · 390–395</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-6">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-6" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-07" data-durum="dogrulandi" data-kanit="Hazırlık denemesi benzersiz token ve ayrılmış terminal kimliğiyle kaydediliyor. Çıkış Rust tarafında aynı denemeyi tamamlıyor; eski sonuç yeni denemeye dokunmuyor. Başlatma/çıkış/doğrulama hatası ready durumuna dönüyor. 49 Rust testi ve tanılama terminali açıkken tamamlanma dahil 24 arayüz testi geçti. Üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-07</span><span class="pill p2">P2 · Orta</span><span>Ortam hazırlama</span></div>
+<h3>Hazırlık sonucu başka bir terminalin durumuna göre reddedilebiliyor</h3></header>
+<p class="proof"><span class="kind">Kod akışı.</span> <code>prepare_environment</code> terminal açılmadan önce <code>environment-starting</code> yazar. Başlatma başarısız olduğunda bu yazıyı geri alan yol yok. Bitişte <code>finish_environment</code> olayın terminalini doğrudan okumak yerine proje için en yüksek öncelikli terminali seçiyor. Çalışan bir tanılama terminali, başarıyla bitmiş hazırlık terminalinden önce seçiliyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-06" aria-label="KR-06 Çalışmayan VM, eski kayıttan hazır görünebiliyor">KR-06</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Hazırlık denemesini proje ve terminal kimliğine bağla. Çıkış kodunu aynı terminalin kaydından doğrula. Durum geçişini Rust tarafında güvenilir biçimde tamamla.</li><li>Başlatma hatası, sıfırdan farklı çıkış ve iptalde projeyi yeniden denenebilir duruma getir. Eski bir bitiş olayının daha yeni denemeyi değiştirmesini engelle.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Hazırlık ile uzun süren bir tanılama çakıştığında doğru VM hazır olur. Terminal açılamadığında ya da Codex sürüm komutu başarısız olduğunda kullanıcı beklemeden yeniden deneyebilir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/environment.rs#L132-L162">src-tauri/src/environment.rs · 132–162</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L202-L217">src-tauri/src/terminal.rs · 202–217</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L631-L644">src/main.ts · 631–644</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-7">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-7" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-08" data-durum="dogrulandi" data-kanit="Plan yüklenirken ve hata halinde eski parmak izi temizleniyor, New Chat ve planla çalışan kontroller devre dışı kalıyor. Proje ekranında hata ve Retry setup var. Yeniden denemede yeni parmak iziyle tek sohbet açılması ve terminal olayının hatalı düğmeyi etkinleştirememesi test edildi. 26 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-08</span><span class="pill p2">P2 · Orta</span><span>Sohbet başlatma</span></div>
+<h3>Plan okunamazsa etkin New Chat düğmesi hiçbir işlem yapmıyor</h3></header>
+<p class="proof"><span class="kind">Arayüz deneyi.</span> Önceki kaydı hazır olan projede <code>prepare_project</code> hata verdiğinde New Chat ekranda etkin kaldı. Tıklama hiçbir native komut çağırmadı. Hata metni kapalı proje ayarları penceresindeydi. Planı yenileme hatasında eski parmak izi de ekranda kalabiliyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-06" aria-label="KR-06 Çalışmayan VM, eski kayıttan hazır görünebiliyor">KR-06</a>, <a href="#is-07" aria-label="KR-07 Hazırlık sonucu başka bir terminalin durumuna göre reddedilebiliyor">KR-07</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Plan alınırken veya geçersizken sohbet başlatma eyleminin durumunu güncelle. Yenileme hatasında kullanılabilirlik ve parmak izini aynı anda sıfırla.</li><li>Proje ekranında hata nedenini ve yeniden deneme eylemini göster. Geçerli plan geldikten sonra düğmeyi etkinleştir.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Önceden hazır olan projede plan hatası görünürdür. Yeniden deneme başarılı olunca tek tıklama tek sohbet açar. Geçersiz parmak iziyle başlatma isteği gönderilmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L334-L355">src/main.ts · 334–355</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L383-L409">src/main.ts · 383–409</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L106-L114">src/main.ts · 106–114</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-8">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-8" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-09" data-durum="dogrulandi" data-kanit="Proje seçimi ve her ayar penceresi açılışı ayrı kimlikle izleniyor. Alanlar ve düzenleme/izin durumları temizleniyor. Gecikmiş giriş, politika, sınır, tercih, durdurma ve kaldırma önizlemesi sonuçları doğru kapsama bağlandı. A→B→A ve aynı pencereyi yeniden açmada başarı/hata sırası testleri dahil 28 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-09</span><span class="pill p2">P2 · Orta</span><span>Proje ayarları</span></div>
+<h3>Başka projeye geçince önceki projenin tanılama ve giriş sonuçları görünüyor</h3></header>
+<p class="proof"><span class="kind">İki projeli arayüz deneyi.</span> A projesinde giriş, politika ve sınır sonuçları açıldı. B projesinin ayarlarında proje adı B iken A’nın giriş mesajı, politika belgesi ve sınır satırları görünmeye devam etti. İzin kutusu yeniden devre dışıydı. <code>checkLogin</code> gecikmiş yanıtın hangi projeye ait olduğunu da denetlemiyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Seçili proje değişirken proje kapsamındaki giriş, politika, sınır ve işlem alanlarını, düzenleme durumunu ve bekleyen istekleri temizle.</li><li>Başarılı ve hatalı tüm geç yanıtları, çağrı başladığındaki proje ve görünüm kimliğiyle eşleştir. Aynı proje yeniden seçilirse eski çağrıyı yine ayırt et.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>A’dan B’ye, ardından yeniden A’ya geçildiğinde her pencere yalnız o açılışa ait bilgileri gösterir. Veri gelene kadar eski belge, izin sonucu ve düzenleme düğmeleri gösterilmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L257-L282">src/main.ts · 257–282</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L398-L404">src/main.ts · 398–404</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/boundaries.ts#L6-L10">src/boundaries.ts · 6–10</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/project-policy.ts#L15-L30">src/project-policy.ts · 15–30</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-9">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-9" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-10" data-durum="dogrulandi" data-kanit="Her kullanım penceresi açılışı artan istek kimliğini, proje seçimini ve sohbet kimliğini yakalıyor. Kapanış isteği geçersiz kılıyor. A/B ve aynı sohbetin yeniden açılmasında ters sıradaki başarı/hata yanıtları güncel tabloyu değiştiremiyor. 29 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-10</span><span class="pill p2">P2 · Orta</span><span>Session usage</span></div>
+<h3>Bir sohbetin istek tablosu diğer sohbetin başlığı altında görünebiliyor</h3></header>
+<p class="proof"><span class="kind">Geciktirilmiş arayüz yanıtı.</span> A’nın kullanım yanıtı beklerken pencere kapatılıp B açıldı. Önce B’nin tablosu geldi. A’nın yanıtı sonra geldiğinde başlık <code>Chat B</code>, tablodaki model <code>model-A</code> oldu. Başarı yolu yalnız projeyi ve pencerenin açık olmasını kontrol ediyor. Hata yolunda bu kontrol de yok.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Her açılışta artan bir istek kimliği üret ve proje ile sohbet kimliğini yakala. Pencere kapanınca bekleyen isteği geçersiz kıl.</li><li>Yükleme, başarı ve hata metinlerini yalnızca hâlâ etkin olan isteğin yazabilmesini sağla.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>A ve B yanıtları ters sırada geldiğinde B başlığı, B’nin tablosu ve B’nin maliyeti birlikte kalır. A’dan gecikmiş hata gelmesi B’nin durumunu değiştirmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L211-L224">src/main.ts · 211–224</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L508-L512">src/main.ts · 508–512</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-10">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-10" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-11" data-durum="dogrulandi" data-kanit="cachedKnown ve cacheWriteKnown ayrı saklanıyor. Bilinen 75 okuma ve yüzdesi gösteriliyor; eksik yazma Unknown kalıyor. Toplamlar iki sınıfı ayrı izliyor. Eski kaynaklardan bilinirlik geri kazanımı arşiv ve tarihli fiyatları koruyor. Gerçek sıfır/tek sayaç eksik/ikisi eksik testleri dahil 51 Rust, 30 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-11</span><span class="pill p2">P2 · Orta</span><span>Token dökümü</span></div>
+<h3>Eksik önbellek sayacı sıfır görünüyor, bilinen sayaç da gizleniyor</h3></header>
+<p class="proof"><span class="kind">Kaynak ve arayüz deneyi.</span> <code>cached_input_tokens=75</code> varken yazma sayacı yoksa Rust tek <code>cacheKnown</code> değerini <code>false</code> yapıyor ve eksik sayıyı sıfır olarak saklıyor. İstek tablosunda okuma <code>Unknown</code>, yazma <code>0</code> göründü. Böylece kullanıcı hem bildirilen 75 tokenı hem de hangi sayacın eksik olduğunu kaybediyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-04" aria-label="KR-04 Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor">KR-04</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Önbellekten okunan ve önbelleğe yazılan tokenlar için bilginin varlığını ayrı taşı. Bu ayrımı istek tablosuna ve proje toplamlarına aktar.</li><li>Eski defterlerde ayrıştırılamayan değerleri belirsiz göster. Maliyete etki eden eksik bilgi varsa mevcut fiyatlandırılamaz durumunu koru.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>75 okuma ve yazma sayacı eksik olan istek <code>75</code> ile yüzdesini ve yazma sütununda <code>Unknown</code> gösterir. Gerçek sıfır, eksik değer ve iki sayacın da bilindiği örnekler ayrı test edilir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L47-L64">src-tauri/src/usage.rs · 47–64</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L10-L14">src/dashboard.ts · 10–14</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L109-L116">src/dashboard.ts · 109–116</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-11">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-11" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-12" data-durum="dogrulandi" data-kanit="Kaynak erişilebilirliği defterde tutuluyor; uygulama örneği son yayımladığı panoyla da karşılaştırıyor. Başka süreç değişikliği önceden yazsa bile bildirim kaybolmuyor. Dosyanın aynı içerikle kaybolup dönmesi iki geçiş üretiyor, değişmeyen tur tekrar olay üretmiyor. 51 Rust ve 31 arayüz testi geçti; toplam maliyet sabit kaldı.">
+<header><div class="trail"><span class="id">KR-12</span><span class="pill p2">P2 · Orta</span><span>Geçmişi güncelleme</span></div>
+<h3>Oturum dosyası kaybolduğunda açık liste güncellenmiyor</h3></header>
+<p class="proof"><span class="kind">Rust deneyi.</span> Deftere alınmış kaynak dosya taşınınca <code>synchronize</code> doğru olarak <code>available=false</code>, fakat <code>changed=false</code> döndürdü. Arka plan okuyucusu yalnız <code>changed</code> doğru olduğunda panoya olay yolluyor. Kullanıcı elle yenileyene veya başka bir kullanım değişikliği gelene kadar sohbet açılabilir görünüyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-04" aria-label="KR-04 Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor">KR-04</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Son yayımlanan panonun kaynak erişilebilirliğini proje bazında sakla. Dosya kaybolduğunda ve geri geldiğinde bunu bildirilecek bir değişiklik say.</li><li>Dosyanın eksik olduğu sürede geçmiş toplamını ve arşiv durumunu koru. Değişiklik yoksa her iki saniyede bir tekrar olay gönderme.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Açık projede kaynak dosyanın kaldırılması ve aynı içerikle geri konması, elle yenilemeden iki durum geçişi üretir. Maliyet toplamı sabit kalır.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L285-L310">src-tauri/src/conversations.rs · 285–310</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L369-L379">src-tauri/src/conversations.rs · 369–379</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-12">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-12" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-13" data-durum="dogrulandi" data-kanit="Kaldırma kaydı başarıyla yazıldıktan sonra izleyici ve yayımlanmış pano kaldırılıyor. Okuma turu ve kaldırma ortak kilitle sıralanıyor; gecikmiş istek silinen projeyi yeniden izlemeye alamıyor. Kapanış bütün projeleri işleyip hataları birlikte bildiriyor. Yarış ve hata sonrası diğer defterin yazılması testleri dahil 53 Rust testi geçti.">
+<header><div class="trail"><span class="id">KR-13</span><span class="pill p2">P2 · Orta</span><span>Arka plan okuyucusu</span></div>
+<h3>Kaldırılan proje uygulama kapanana kadar izleniyor</h3></header>
+<p class="proof"><span class="kind">Kod akışı.</span> <code>observe</code> gözlenen projeyi haritaya ekliyor. Başarılı proje kaldırma yalnız kayıt listesini güncelliyor. Arka plan iş parçacığı haritadaki eski yolu iki saniyede bir okumayı, çıkıştaki <code>flush</code> da aynı projeyi işlemeyi sürdürüyor. Bir izleyicinin hatası çıkıştaki diğer yazımları erken kesebiliyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-02" aria-label="KR-02 İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor">KR-02</a>, <a href="#is-04" aria-label="KR-04 Tek bir hatalı oturum, bütün projenin geçmişini okunamaz kılıyor">KR-04</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Proje kaldırma başarıyla kesinleştiğinde izleme kaydını kaldır. Önceden alınmış izleme listesindeki eski bir turla yarışı yönet.</li><li>Kapanışta bir projenin okuma hatasını o projeyle sınırla ve diğer projelerdeki son kayıtları da yaz. Kullanım geçmişinin saklanması ile aktif izlemeyi ayrı yönet.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>İki projeden biri kaldırıldıktan sonra o projeye yeni okuma veya olay gitmez. Diğer proje izlenir. Okunamayan bir kaynak, diğer projenin kapanışta deftere yazılmasını engellemez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L341-L370">src-tauri/src/conversations.rs · 341–370</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L389-L392">src-tauri/src/operations.rs · 389–392</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L88-L92">src-tauri/src/lifecycle.rs · 88–92</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-13">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-13" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-14" data-durum="dogrulandi" data-kanit="Ayarlar, proje politikası, paylaşım planı ve README konuk komut trafiği ile barındırılan Codex araçlarının kapsamını ayrı anlatıyor. Web arama modu okunmadığı ve yönetilmediği açıkça gösteriliyor. Resmî Codex yapılandırma belgesiyle karşılaştırıldı. 32 arayüz testi, son metin değişikliğinin hedef testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-14</span><span class="pill p2">P2 · Orta</span><span>Ağ ayarlarının kapsamı</span></div>
+<h3>İzin listesinin Codex web aramasına etkisi arayüzde belirsiz</h3></header>
+<p class="proof"><span class="kind">Canlı arayüz, oturum kaydı ve kaynak.</span> Ayarlar yalnız izin verilen hedeflere erişilebileceğini söylüyor. Bu cümle Brig VM’sinden çıkan bağlantıları anlatıyor. Daha önce incelenen iki sorguda Codex’in barındırılan web aracı, dizininden sonuç döndürdü. Tugboat başlangıç argümanlarında komutların ağı kısıtlanıyor, <code>web_search</code> için ayrı bir seçim yapılmıyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Ayarlar, proje planı ve README’de izin listesinin hangi bağlantıları denetlediğini açıkça yaz. Codex’in barındırılan web aramasını kullanıcıya ayrı bir yetenek olarak anlat.</li><li>Uygulama web arama ayarını yönetmiyorsa bunu göster. Gerçekte okunmamış bir çalışma modunu açık veya kapalı diye etiketleme.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Kullanıcı izin listesini gördüğü yerde konuk komutlarının ağ erişimini ve barındırılan araçların kapsamını ayırt edebilir. Uygulama arayüzü ile README aynı davranışı tarif eder.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/settings.ts#L43-L48">src/settings.ts · 43–48</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/preparation.ts#L34-L40">src/preparation.ts · 34–40</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/codex.rs#L163-L178">src-tauri/src/codex.rs · 163–178</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L123-L131">README.md · 123–131</a></div>
+<p class="small">Barındırılan araç için başvuru. <a href="https://learn.chatgpt.com/docs/config-file/config-basic#web-search-mode">OpenAI · Codex web arama modları</a></p>
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-14">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-14" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-15" data-durum="dogrulandi" data-kanit="Hedefler etkin ağ modu ve çözülmüş basit politikadan seçiliyor; izinli example.com yasak hedef yapılmıyor. Offline ve deny-all için ayrı beklenti var. Gelişmiş kurallar, dış kontrol eksikliği ve olası ortak IP örtüşmesi belirsiz kalıyor. Belirsiz/eksik rapor ek erişim açmıyor; eski raporlar yeniden kontrol gerektiriyor. 54 Rust, 33 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-15</span><span class="pill p2">P2 · Orta</span><span>Sınır denetimi</span></div>
+<h3>İzin verilen bir alan adı, denetimde yasak hedef sayılabiliyor</h3></header>
+<p class="proof"><span class="kind">Kod akışı.</span> Denetim ilk uygun izinli hedefi plandan alıyor, yasak hedefi ise her zaman <code>example.com</code> seçiyor. Bu alan adı izin listesine eklenmişse çalışan bir politika başarısız görünebilir. Boş izin listesi ve çevrimdışı planda da algoritma başarılı bir izinli HTTPS bağlantısı bekliyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Denetim senaryosunu etkin ağ modundan ve çözülmüş politikadan üret. Yasak hedef seçerken adayın gerçekten izin kapsamı dışında olduğunu denetle.</li><li>Çevrimdışı ve tüm çıkışı reddeden planlarda beklenen sonucu ayrı tanımla. Uygun karşılaştırma veya dış kontrol yoksa kesin sonuç bildirme.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Taklit bağlantı yanıtlarıyla izin listesinde <code>example.com</code> olan, listesi boş olan, çevrimdışı olan ve normal izole plan için doğru sonuç sınıfı üretilir. Belirsiz sonuç ek erişim seçeneğini etkinleştirmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L96-L119">src-tauri/src/boundaries.rs · 96–119</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L279-L332">src-tauri/src/boundaries.rs · 279–332</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L335-L355">src-tauri/src/boundaries.rs · 335–355</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-15">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-15" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-16" data-durum="dogrulandi" data-kanit="Pencere kapatma ve Cmd+Q artık aynı sıralı akışı kullanıyor; onaydan önce süreçler kesilmiyor. Kurulum ve sorgular iptal edilip bekleniyor, PTY grupları HUP/SIGKILL ile bitiriliyor ve son kullanım ardından yazılıyor. Gerçek süreç testleri: geciken kapanış, zorunlu sonlandırma, ayrılmış terminalin geç başlaması, kurulumun yeniden denenebilir kaydı ve çıkışta son token olayı geçti. 34 arayüz testi ve üretim derlemesi geçti. Native onay diyaloğu bu değişiklik için ayrıca elle denenmedi.">
+<header><div class="trail"><span class="id">KR-16</span><span class="pill p2">P2 · Orta</span><span>Uygulamadan çıkış</span></div>
+<h3>Çıkış onayı açık işlemlerin sona erdiğini doğrulamıyor</h3></header>
+<p class="proof"><span class="kind">Kod akışı.</span> End process, SIGHUP ardından gerekirse SIGKILL gönderiyor. Uygulamadan çıkarken <code>shutdown</code> yalnız SIGHUP gönderip hemen dönüyor. Kullanım defteri de işlemlerin bitmesi beklenmeden yazılıyor. Ayrıca çıkış için yalnız terminal listesi kontrol edildiğinden sürmekte olan Homebrew kurulumu onay akışına girmiyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-13" aria-label="KR-13 Kaldırılan proje uygulama kapanana kadar izleniyor">KR-13</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Pencereyi kapatma ve ⌘Q için ortak bir kapanış sırası kullan. Etkin terminal süreçlerini ve kurulumu hesaba kat. İptalde çalışan işleri sürdür.</li><li>Onayda süreçlerin bitişini süre sınırıyla bekle, gereken sonlandırmayı tamamla ve son kullanım olaylarını ardından kaydet. Konuk VM’nin korunması ile uygulamanın alt süreçlerinin sonlandırılmasını ayrı yönet.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>İptal sohbeti kesmez. Kapanması geciken test süreciyle onaylı çıkıştan sonra uygulamanın açık terminal süreci kalmaz ve son kullanım olayı saklanır. Kurulum sırasında çıkış da tanımlı bir sonuç verir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L12-L20">src-tauri/src/lifecycle.rs · 12–20</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L71-L92">src-tauri/src/lifecycle.rs · 71–92</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L565-L599">src-tauri/src/terminal.rs · 565–599</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L92-L103">src-tauri/src/installation.rs · 92–103</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-16">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-16" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-17" data-durum="dogrulandi" data-kanit="Amaç eşleştiğinde mevcut yerel terminal, konuk kabuğu veya giriş terminali geri getiriliyor. Çakışan Codex sohbeti varsa ayarlar açık ve odak seçilen düğmede kalıyor; gerekçe düğmenin yanındaki durum alanında görünüyor. Giriş/kabuk düğmelerinin hazırlık sonrası devre dışı kalması da giderildi. Üç amaç için eşleşme ve çakışma testleriyle 36 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-17</span><span class="pill p2">P2 · Orta</span><span>Terminal yönlendirmesi</span></div>
+<h3>Open local terminal seçimi açık Codex sohbetine dönebiliyor</h3></header>
+<p class="proof"><span class="kind">Arayüz deneyi.</span> Bir sohbet çalışırken proje ayarlarında <code>Open local terminal</code> seçildi. <code>terminal_start</code> çağrısı sayısı sıfırdı. Ayarlar kapandı, <code>Codex</code> başlıklı sohbet açıldı ve hata alanı gizli kaldı. Farklı birincil işlemler aynı engelleme dalında ele alınıyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>İstenen işlemle açık işlem aynıysa mevcut terminali geri getir. Farklı bir işlem aynı anda başlatılamıyorsa kullanıcıya hangi işlemin engellediğini ilgili düğmenin yanında göster.</li><li>Yerel terminal, konuk kabuğu, giriş ve sohbetin başlatma davranışlarını amaçlarına göre doğrula. Engellenen eylemde odağı başka bir komut giriş alanına taşıma.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Açık sohbet varken Open local terminal seçildiğinde ya yerel terminal açılır ya da görünür gerekçeyle işlem durur. Kullanıcı kendisini sessizce sohbetin giriş alanında bulmaz.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L552-L575">src/main.ts · 552–575</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L349-L355">src-tauri/src/terminal.rs · 349–355</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L167">index.html · 163–167</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-17">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-17" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-18" data-durum="dogrulandi" data-kanit="Yeni terminal açılışı bitmiş çıktıları kapatmıyor. Terminals listesi tamamlanmış test ve tanılamayı çıkış koduyla yeniden açıyor; Close output açıkça kapatıyor. Ayrı 16 canlı süreç ve 32 tamamlanmış çıktı sınırı var; yalnız en eski tamamlanmış görünümler temizleniyor. Sonuç geri açma/kapatma arayüz testi, karışık yaşam döngüsü kapasite testi, 60 Rust testi, 37 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-18</span><span class="pill p2">P2 · Orta</span><span>Test ve tanılama terminalleri</span></div>
+<h3>Biten testlerin çıktısı başka bir terminal açılırken kayboluyor</h3></header>
+<p class="proof"><span class="kind">Kod akışı.</span> <code>terminal::start</code> aynı projedeki bitmiş terminallerin tamamını kapatıyor. Kenar çubuğu yalnız çalışan sohbetleri listeliyor. Başka sohbete dönmüş kullanıcı biten testin çıktısını tekrar açamadan kaybedebilir. Diğer projelerdeki bitmiş terminaller ise genel 16 kayıt sınırına dâhil kalıyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Her proje için test ve tanılama işlemlerinin son çıktısını kullanıcıya tekrar açtır. Açıkça kapatılan terminal ile işlemden geriye kalan görüntü durumunu ayrı ele al.</li><li>16 sınırını ve bitmiş kayıtların temizlenmesini aynı yaşam döngüsüne göre düzenle. Bir projedeki yeni sohbetin başka bir işlemin okunabilir sonucunu silmesini önle.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Sohbet sırasında bir test biter. Kullanıcı yeni bir sohbet açıp test sonucunu yeniden çalıştırmadan okuyabilir. Ayrı projelerde bitmiş 16 işlem yeni bir canlı terminali engellemez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L340-L348">src-tauri/src/terminal.rs · 340–348</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L388-L399">src-tauri/src/terminal.rs · 388–399</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L58-L79">src/main.ts · 58–79</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-18">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-18" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-19" data-durum="dogrulandi" data-kanit="Erişilemeyen klasör kütüphanede belirtiliyor ve Forget… yalnız Tugboat kaydı için kapsamı açık bir onay açıyor. Backend kaydı kimlikle kaldırıyor, yeniden erişilebilir klasörü reddediyor ve izlemeyi bırakıyor; Brig komutu veya dosya silme çalışmıyor. Taşınmış klasörün dosyalarını ve diğer kayıtları koruma Rust testi, iptal/onay arayüz testi, 38 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-19</span><span class="pill p2">P2 · Orta</span><span>Proje kütüphanesi</span></div>
+<h3>Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor</h3></header>
+<p class="proof"><span class="kind">Kod ve arayüz deneyi.</span> <code>open_project</code> önce klasör kimliğini ve erişimini doğruluyor. Klasör artık yoksa kayıt açılamıyor. Kütüphane satırında tek eylem açma, kaldırma önizlemesi ise yalnız proje ayarlarında. Deneyde hata göründü ve ayarlar düğmesi gizli kaldı.</p>
+<p class="deps">İlgili önceki işler <a href="#is-13" aria-label="KR-13 Kaldırılan proje uygulama kapanana kadar izleniyor">KR-13</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Kütüphanede erişilemeyen kayıt için yalnız Tugboat kaydını unutma eylemi sun. Hâlâ mevcut bir Brig ortamının veya proje dosyalarının silinmesini bu eyleme bağlama.</li><li>Taşınmış klasörü yeniden seçme yolunu koru. Kaydın unutulmasını kimlik üzerinden doğrula ve arka plan izlemesini kapat.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Klasör haricen silindikten sonra projeyi açmadan listeden kaldırmak mümkündür. Diğer projeler, Brig ortamları ve fiziksel dosyalar korunur. Geçici olarak bağlı olmayan bir disk kendiliğinden kaydı silmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L392-L412">src-tauri/src/projects.rs · 392–412</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/projects.ts#L70-L89">src/projects.ts · 70–89</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L170">index.html · 163–170</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-19">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-19" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-20" data-durum="dogrulandi" data-kanit="Kaldırma günlüğü hedefi, girişten çıkış tercihini ve tamamlanan adımları saklıyor. Yeniden açılış normal hazırlığı ve yeni süreçleri durdurup devam önizlemesini gösteriyor. VM silinmeden önce/sonra ve iki politika adımında hata enjeksiyonu, eski onayın reddi, yeniden oluşturulmuş VM’nin korunması ve yeniden açılış testi geçti. Tamamlanan girişten çıkış ve durdurma tekrarlanmıyor; 63 Rust testi, 39 arayüz testi ve üretim derlemesi geçti. Canlı kullanıcı VM’si kaldırılmadı.">
+<header><div class="trail"><span class="id">KR-20</span><span class="pill p2">P2 · Orta</span><span>Kaldırma ve yeniden deneme</span></div>
+<h3>Yarım kalan proje kaldırma, yeniden açılışta normal hazırlığa dönüşüyor</h3></header>
+<p class="proof"><span class="kind">Rust deneyi ve kod akışı.</span> Kaldırma işlemi dış komutlardan önce <code>removing</code> yazar. Sonraki bir adım hata verirse bu kayıt kalabilir. Bu durumdaki geçici projede açılışın çağırdığı <code>prepare</code>, durumu <code>ready</code> olarak yazdı. Hangi kaldırma adımlarının tamamlandığı bilgisi kayboluyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-03" aria-label="KR-03 Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor">KR-03</a>, <a href="#is-19" aria-label="KR-19 Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor">KR-19</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Kaldırma sürerken veya yarım kalmışken normal hazırlığa geçme. Tamamlanan adımları ve yeniden kontrol edilmesi gereken kaynakları sakla.</li><li>Projeyi tekrar açarken güncel Brig durumundan yeni bir önizleme üret. Devam etme ve uygunsa vazgeçme işlemlerini kullanıcıya sun. Tamamlanan adımları ikinci kez çalıştırma.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Konuktan çıkış, durdurma ve kaldırma sonrasında ayrı ayrı hata verilen örnekler yeniden açılır. Uygulama hiçbirinde politikayı otomatik bağlamaz. Yeni önizlemeyle devam edildiğinde doğru kayıt kaldırılır.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L327-L344">src-tauri/src/operations.rs · 327–344</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L114-L119">src-tauri/src/preparation.rs · 114–119</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L229-L240">src-tauri/src/preparation.rs · 229–240</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-20">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-20" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-21" data-durum="dogrulandi" data-kanit="Mevcut politika adı doluysa belgeye veya sahipliğine dokunulmadan yeni bir ad seçiliyor ve yaratmadan önce kaydediliyor. Gerçek Brig ile yalıtılmış kayıtlarda harici düzenlenmiş politikayı koruyarak kaldırma, aynı klasörü yeniden ekleme, yeni plan, iki tekrar deneme ve ikinci kaldırma zinciri geçti. Korunan belgenin baytları aynı kaldı ve yalnız yeni uygulama politikası silindi. VM başlatılmadı.">
+<header><div class="trail"><span class="id">KR-21</span><span class="pill p2">P2 · Orta</span><span>Kaldırılan projeyi yeniden ekleme</span></div>
+<h3>Korunan eski politika aynı klasörün yeniden kurulmasını engelliyor</h3></header>
+<p class="proof"><span class="kind">Rust ve gerçek Brig ile geçici proje.</span> Kaldırma, dışarıdan değiştirilmiş bir politikayı koruyup uygulama kaydını silebiliyor. Aynı klasör aynı proje kimliğini, dolayısıyla aynı varsayılan politika adını alıyor. Korunmuş politika mevcutken yeniden kayıt deneyi <code>This project policy name is already in use</code> hatasıyla sonuçlandı.</p>
+<p class="deps">İlgili önceki işler <a href="#is-03" aria-label="KR-03 Projeyi açmak, kullanıcının ayırdığı politikayı yeniden bağlıyor">KR-03</a>, <a href="#is-20" aria-label="KR-20 Yarım kalan proje kaldırma, yeniden açılışta normal hazırlığa dönüşüyor">KR-20</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Çakışan politika adını dışarıya ait kaynak olarak koru. Kullanıcının gözden geçirerek uygun bir politikayı seçmesini veya yeni ve benzersiz bir uygulama politikası oluşturmasını sağla.</li><li>Yeni seçimi kayıt altına al. Yarım kalan kurulumun tekrarında birden fazla politika üretme ve eski belgenin sahipliğini varsayma.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Haricen değiştirilmiş politika korunarak kaldırılan proje aynı klasörden tekrar eklenebilir. Yeni plan geçerlidir. Korunan politika dosyasının içeriği değişmez ve sonraki kaldırma ona dokunmaz.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L369-L391">src-tauri/src/operations.rs · 369–391</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L189-L205">src-tauri/src/projects.rs · 189–205</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L166-L179">src-tauri/src/preparation.rs · 166–179</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-21">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-21" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-22" data-durum="dogrulandi" data-kanit="Kurulum başlangıcı mevcut CLI sürümünü okuyor; eski günlüğün install tamamlandı kaydı mevcut kurulumun kanıtı sayılmıyor. Eksik CLI için install, uyumsuz mevcut CLI için reinstall çalışıyor. Son sürüm yeniden doğrulanmadan başarı bildirilmiyor. Üç kurulum testi: kesilen adımdan devam, iki kur/kaldır/yeniden kur döngüsü, eksik/uyumsuz/geçersiz son sürüm ve kapanışta iptal geçti. Gerçek Homebrew kurulumu yapılmadı.">
+<header><div class="trail"><span class="id">KR-22</span><span class="pill p2">P2 · Orta</span><span>Brig kurulumu</span></div>
+<h3>Önceki başarılı kurulum, yeni kurulumun hiç çalışmadan bitmesine yol açıyor</h3></header>
+<p class="proof"><span class="kind">Rust deneyi.</span> <code>installation.json</code> içinde dört adım da tamamlanmışsa her adım atlanıyor. Bu kayıtla yapılan tekrar denemesinde Homebrew hiç çağrılmadan <code>Brig installation finished</code> döndü. Kullanıcı Brig’i sonradan kaldırdığında Install düğmesi sorunu gideremiyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Yeni kurulum denemesinin başında mevcut Brig çalıştırılabilir dosyasını ve sürümünü denetle. Önceden tamamlanan adımları bu sonuçla uzlaştır.</li><li>Kesintiye uğrayan kurulumun doğru adımdan devam etmesini koru. Başarı bildirmeden önce bulunan CLI’ı tekrar kontrol et ve uyumsuz sürümü açıkça bildir.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Kurulum, Brig’in kaldırılması ve yeniden kurulum senaryosunda install adımı yeniden çağrılır. Ara adım hatasından devam testi de geçer. Başarı mesajının ardından Check this Mac uyumlu kurulum gösterir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L40-L51">src-tauri/src/installation.rs · 40–51</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L66-L83">src-tauri/src/installation.rs · 66–83</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L141-L157">src-tauri/src/host.rs · 141–157</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-22">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-22" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-23" data-durum="dogrulandi" data-kanit="İstek sayacı olmayanlar dahil her tur sıra ve durumuyla gösteriliyor. Kesilen turda token ve maliyetin bilinmediği açıklanıyor, tablo ve sıfır maliyet üretilmiyor. Hiç prompt olmaması ile ölçümsüz prompt bulunması ayrı durum metinleri taşıyor. Karışık iki tur, yalnız ölçümsüz tur ve boş oturum senaryolarıyla 40 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-23</span><span class="pill p2">P2 · Orta</span><span>Prompt dökümü</span></div>
+<h3>İstek kaydı oluşmadan kesilen prompt rapordan düşüyor</h3></header>
+<p class="proof"><span class="kind">Arayüz deneyi.</span> Defterde ilk prompt <code>interrupted</code> durumundaydı ve henüz ona ait bir istek kaydı yoktu. Tamamlanmış ikinci promptta bir istek vardı. Session usage yalnız <code>Prompt 2 · complete</code> başlığını gösterdi. <code>renderUsageDetails</code> boş istek dizisini atlıyor. Böylece kesilen turun durumu kullanıcının gözünden kayboluyor.</p>
+<p class="deps">İlgili önceki işler <a href="#is-10" aria-label="KR-10 Bir sohbetin istek tablosu diğer sohbetin başlığı altında görünebiliyor">KR-10</a>.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Defterdeki her tur için durumunu ve sıra bilgisini göster. Ölçüm oluşmadan biten tur için boş durumu ve kaydın bulunmadığını açıkla.</li><li>Pencerenin genel durum metninde hiç tur bulunmaması ile tur bulunduğu halde istek sayacı gelmemesini ayır.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>İki turluk örnekte Prompt 1’in kesildiği ve henüz istek ölçülmediği okunur. Prompt 2’nin satırları ve toplamı görünür. Ölçülmemiş ilk tura kendiliğinden sıfır maliyet atanmaz.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L313-L325">src-tauri/src/usage.rs · 313–325</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L126-L136">src/dashboard.ts · 126–136</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L219-L223">src/main.ts · 219–223</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-23">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-23" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-24" data-durum="dogrulandi" data-kanit="Klasör kimliği yeniden bulunduğunda kayıtlı görünen ad artık değiştirilmiyor; yol ve son açılış zamanı yenileniyor. Customer billing adıyla eski kayıt yükleme, aynı klasörü yeniden seçme, klasörü taşıma, tek kayıt kimliği ve yeniden açılış sırası regresyon testi geçti.">
+<header><div class="trail"><span class="id">KR-24</span><span class="pill p3">P3 · Düşük</span><span>Proje adı</span></div>
+<h3>Aynı klasörü yeniden seçmek özel proje adını siliyor</h3></header>
+<p class="proof"><span class="kind">Rust deneyi.</span> Görünen adı <code>Customer billing</code> olarak kaydedilmiş klasör yeniden eklendi. Proje kimliği aynı kaldı ama ad, klasörün adına döndü. <code>register</code> mevcut kaydı bulunca <code>name</code> alanını koşulsuz yazıyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Aynı klasörün yeniden seçilmesinde mevcut görünen adı koru. Yolu ve son açılış zamanını güncelle.</li><li>Klasör taşındığında kullanıcı tarafından verilen adın korunmasını sağla. Eski kayıtlarda görünen ad için geriye uyumlu davranışı test et.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Özel adı olan projeyi yeniden seçmek veya aynı diskte taşındıktan sonra bulmak o adı korur. Listede tek kayıt vardır ve son açılış sırası yenilenir.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L166-L187">src-tauri/src/projects.rs · 166–187</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L472-L479">src-tauri/src/projects.rs · 472–479</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-24">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-24" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-25" data-durum="dogrulandi" data-kanit="Kenar çubuğu sohbet ve terminal odağını kimlikle, kaydırmadan geri yüklüyor. Kaybolan satır için komşu veya Refresh seçiliyor; WebView odakta değilse odak istenmiyor. Ana tablonun kenar çubuğundan odak çalmasına yol açan kapsam hatası da giderildi. Kimlik/başlık güncellemesi, terminal sonucu, ayar alanı, arşivlenen satır ve boş liste testleriyle 41 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-25</span><span class="pill p3">P3 · Düşük</span><span>Klavye ile gezinme</span></div>
+<h3>Arka plan yenilemesi kenar çubuğundaki klavye odağını kaybettiriyor</h3></header>
+<p class="proof"><span class="kind">Arayüz deneyi.</span> Bir sohbet düğmesinde odak varken <code>project-usage-updated</code> olayı verildi. Aynı sohbet listede kalmasına rağmen odak <code>BUTTON</code> üzerinden <code>BODY</code> öğesine geçti. Kenar çubuğu her yenilemede bütün satırları yeniden oluşturuyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Yenilemeden önce odak kenar çubuğundaysa sohbet ya da terminal kimliğini sakla. Aynı satır kalıyorsa yeni düğmeye kaydırmadan odak ver.</li><li>Odak başka bir görünümdeyse o görünümü koru. Seçili satır arşivlenmişse öngörülebilir komşu eyleme geç.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Klavye ile seçilmiş satır, kullanım ve meşguliyet güncellemelerinden sonra odakta kalır. Ardından Enter hâlâ aynı sohbeti açar. Açık ayar penceresinden odak çalınmaz.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/projects.ts#L107-L135">src/projects.ts · 107–135</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L527-L532">src/main.ts · 527–532</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L85-L90">src/dashboard.ts · 85–90</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-25">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-25" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-26" data-durum="dogrulandi" data-kanit="Denetim iptal, zaman aşımı, geçersiz yanıt, komut hatası ve yalnız okunmuş bir sürümün uyuşmazlığını ayrı sınıflandırıyor. Arayüz İngilizce durum metinleri kullanıyor; iptal/zaman aşımında önceki başarılı sonuç açıkça eski denetim olarak etiketlenip korunuyor. Gerçek yavaş alt süreçte iptal/yeniden deneme, gerçek uyuşmazlık ve geçersiz yanıt testleri, 4 host testi, 42 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-26</span><span class="pill p3">P3 · Düşük</span><span>Mac tanılaması</span></div>
+<h3>Sürüm sorgusu iptal edilirse uyumlu Brig için uyumsuzluk uyarısı çıkıyor</h3></header>
+<p class="proof"><span class="kind">Kod akışı.</span> Sürüm komutunun iptali <code>envelope</code> içinde hata döndürüyor. <code>inspect</code> sürüm sorgusundan gelen bütün hataları <code>incompatible</code> olarak sınıflandırıyor. Arayüz ayrıca İngilizce ürünün bu bekleme durumunda <code>Mac denetleniyor…</code> metnini kullanıyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Kullanıcı iptalini, zaman aşımını, geçersiz yanıtı ve doğrulanmış sürüm uyuşmazlığını ayrı sonuçlarla taşı. İptalde önceki geçerli bilgiyi açık bir durumla koru.</li><li>Bekleme, iptal ve yeniden deneme metinlerini uygulamanın İngilizce arayüzüyle uyumlu hale getir.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Yavaşlatılmış uyumlu bir sürüm sorgusu iptal edildiğinde Unsupported Brig version görünmez. Gerçek uyumsuz sürüm uyarı verir. İptalden sonra ikinci denetim tamamlanır.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L59-L70">src-tauri/src/host.rs · 59–70</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L141-L157">src-tauri/src/host.rs · 141–157</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/host.ts#L24-L32">src/host.ts · 24–32</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/PRODUCT.md#L33-L35">PRODUCT.md · 33–35</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-26">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-26" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-27" data-durum="dogrulandi" data-kanit="Settings ve About aynı Tauri paket metadata’sını kullanıyor; HTML sürüm içermiyor. Dağıtım doğrulaması config, Info.plist ve --package-version çıktısını karşılaştırıyor. Geçici 9.8.7 config ile gerçek QA .app üretildi; Info.plist ve metadata 9.8.7, yanlış 9.8.6 beklentisi reddedildi. Native QA uygulamasında Settings 9.8.7 ekranda görüldü ve Cmd+Q ile kapandı. 43 arayüz testi ve paket imza bütünlüğü denetimi geçti. QA paketi ad hoc imzalıdır; noter doğrulaması değildir.">
+<header><div class="trail"><span class="id">KR-27</span><span class="pill p3">P3 · Düşük</span><span>Sürüm bilgisi</span></div>
+<h3>Settings ekranındaki sürüm bir sonraki yayında eski kalacak</h3></header>
+<p class="proof"><span class="kind">Kaynak ve canlı arayüz.</span> Mevcut sürüm 0.1.0 ve ekranda doğru görünüyor. Settings içinde değer sabit HTML metni. About menüsü paket sürümünü, GitHub Actions ise Tauri config’indeki sürümü okuyor. Sürüm artırıldığında iki yüzey farklı değerler gösterecek.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Settings sürüm alanını uygulamanın paket metadata’sından veya aynı yapılandırmadan derleme sırasında doldur.</li><li>Release doğrulamasına config sürümü, uygulama paketi ve kullanıcıya gösterilen sürümün eşleştiği bir kontrol ekle.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Geçici yapılandırmada sürüm değiştiğinde Settings, About ve DMG içindeki bundle aynı yeni değeri gösterir. HTML’de ayrıca sürüm değişikliği gerekmez.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L74-L81">index.html · 74–81</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/menu.rs#L12-L18">src-tauri/src/menu.rs · 12–18</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/.github/workflows/macos-release.yml#L22-L26">.github/workflows/macos-release.yml · 22–26</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-27">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-27" autocomplete="off"></details>
+</article>
+<article class="finding" id="is-28" data-durum="dogrulandi" data-kanit="Working tree diff ve Staged diff ayrı eylemler ve terminal sonuçlarıdır. Aynı konuk proje dizininde --no-ext-diff ve --no-textconv kullanılır; temiz sonuç açıkça belirtilir. Gerçek geçici Git deposunda yalnız indeks, yalnız çalışma ağacı, ikisi birlikte ve temiz durum geçti; harici diff/textconv sürücüsü hiç çağrılmadı. Ayrı işlem/fingerprint arayüz testiyle 44 arayüz testi ve üretim derlemesi geçti.">
+<header><div class="trail"><span class="id">KR-28</span><span class="pill p3">P3 · Düşük</span><span>Git değişiklikleri</span></div>
+<h3>İndekse alınmış değişiklikler için fark görünümü yok</h3></header>
+<p class="proof"><span class="kind">Geçici Git deposu ve kaynak.</span> Yalnız <code>git add</code> ile indekse alınmış bir dosya Git status ekranında listeleniyor. Uygulamanın Git diff komutu aynı örnekte 0 bayt çıktı verdi. <code>git diff --cached</code> 145 bayt çıktı üretti. Arayüzde indeks için ayrı bir seçim bulunmuyor.</p>
+<p class="deps">Bağımsız uygulanabilir.</p>
+<h4 class="sublabel">Düzeltme adımları</h4>
+<ol><li>Değişiklik inceleme alanında çalışma ağacı ve indekse alınmış değişiklikler için ayrı eylemler ya da açıkça etiketlenmiş iki bölüm sun.</li><li>Her iki sorguyu da aynı doğrulanmış konuk proje dizininde, mevcut dış fark ve dönüştürme araçlarını kapalı tutarak çalıştır.</li></ol>
+<div class="accept"><strong>Kabul ölçütü</strong>Sadece indekste, sadece çalışma ağacında ve ikisinde birden değişiklik olan depolarda kullanıcı ilgili farkı görür. Temiz depoda boş sonucun nedeni anlaşılır.</div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L74-L81">src-tauri/src/operations.rs · 74–81</a>
+<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L167">index.html · 163–167</a></div>
+
+<details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
+<label for="kanit-28">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-28" autocomplete="off"></details>
+</article>
+</section>
+<section id="kabul" aria-labelledby="kabul-baslik"><h2 id="kabul-baslik">Açık kabul senaryoları</h2>
+<p>Bu akışlarda kod, bileşen testi veya kısmi çalışma kanıtı var. Tam kullanıcı akışının kabulü için aşağıdaki sonuçlar hâlâ gerekli.</p>
+<ol class="pending">
+<li><strong>İlk kurulum.</strong> İnternetten indirilmiş yeni DMG’yi temiz bir Apple Silicon Mac’te aç. İmza ve noter denetiminin geçmesini, varsayılan ayarlarla uygulamanın başlamasını doğrula. <a href="#is-01" aria-label="KR-01 Dağıtılan uygulama Gatekeeper denetiminde reddediliyor">KR-01</a></li>
+<li><strong>Yeni ChatGPT girişi ve devam.</strong> Ayrı bir test hesabıyla cihaz kodu girişini tamamla. İki sohbet aç, aralarında geçiş yap, bir onay isteğini yanıtla ve uygulamayı yeniden açtıktan sonra kayıtlı sohbeti sürdür. Bu incelemede mevcut giriş durumu ve yerel oturum akışları doğrulandı.</li>
+<li><strong>Ortam ve proje işlemleri.</strong> Geçici bir projede UI üzerinden VM hazırlama, proje testini çalıştırma, sınır denetimi, durdurma, yeniden başlatma ve onaylı kaldırmayı sırayla tamamla. Başka bir projenin dosyaları ve oturumları korunmalı.</li>
+<li><strong>Kapanış ve kurulum.</strong> Canlı bir terminal ve devam eden test kurulumu varken iptal ile onayı ayrı dene. Son kullanım kaydı, sürecin bitişi ve kurulumun devam edebildiği adım doğrulanmalı. <a href="#is-16" aria-label="KR-16 Çıkış onayı açık işlemlerin sona erdiğini doğrulamıyor">KR-16</a> <a href="#is-22" aria-label="KR-22 Önceki başarılı kurulum, yeni kurulumun hiç çalışmadan bitmesine yol açıyor">KR-22</a></li>
+</ol>
+</section></main>
+<footer><a href="#baslangic">Raporun başına dön</a></footer>
+<script>
+(() => {
+  const findings = Array.from(document.querySelectorAll(".finding"));
+  const progress = document.getElementById("progress");
+  const labels = {dogrulandi:"Doğrulandı", "dis-dogrulama":"Dış doğrulama bekliyor", suruyor:"Üzerinde çalışılıyor", bekliyor:"Bekliyor"};
+  function updateProgress() {
+    const finished = findings.filter(finding => finding.dataset.durum === "dogrulandi").length;
+    const external = findings.filter(finding => finding.dataset.durum === "dis-dogrulama").length;
+    const active = findings.filter(finding => finding.dataset.durum === "suruyor").length;
+    const waiting = findings.length - finished - external - active;
+    progress.textContent = finished + " / " + findings.length + " madde doğrulandı" + (external ? " · " + external + " madde dış doğrulama bekliyor" : "");
+    document.getElementById("implementation-summary").textContent = finished + " / " + findings.length + " doğrulandı · " + active + " üzerinde çalışılıyor · " + external + " dış doğrulama bekliyor · " + waiting + " bekliyor";
+    document.getElementById("implementation-bar").value = finished;
+    document.getElementById("implementation-rows").replaceChildren(...findings.map(finding => {
+      const row = document.createElement("tr"); row.dataset.durum = finding.dataset.durum;
+      const title = document.createElement("th"); title.scope = "row";
+      const link = document.createElement("a"); link.href = "#" + finding.id;
+      link.textContent = "KR-" + finding.id.slice(-2) + " · " + finding.querySelector("h3").textContent;
+      title.append(link);
+      const status = document.createElement("td"); status.textContent = labels[finding.dataset.durum] || labels.bekliyor;
+      const evidence = document.createElement("td"); evidence.textContent = finding.dataset.kanit || "Uygulamaya başlanmadı.";
+      row.append(title, status, evidence); return row;
+    }));
+  }
+  for (const finding of findings) {
+    const done = finding.querySelector(".done");
+    const evidence = finding.querySelector(".evidence");
+    done.checked = finding.dataset.durum === "dogrulandi";
+    evidence.value = finding.dataset.kanit || "";
+    done.addEventListener("change", () => {
+      finding.dataset.durum = done.checked ? "dogrulandi" : "bekliyor";
+      done.toggleAttribute("checked", done.checked);
+      updateProgress();
+    });
+    evidence.addEventListener("input", () => {
+      finding.dataset.kanit = evidence.value;
+      evidence.setAttribute("value", evidence.value);
+      updateProgress();
+    });
+  }
+  updateProgress();
+  document.getElementById("save-report").addEventListener("click", () => {
+    const file = new Blob(["<!doctype html>\n", document.documentElement.outerHTML], {type:"text/html;charset=utf-8"});
+    const url = URL.createObjectURL(file);
+    const download = document.createElement("a");
+    download.href = url;
+    download.download = "tugboat-kod-incelemesi.html";
+    document.body.append(download);
+    download.click();
+    download.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  });
+})();</script>
+</body>
+</html>

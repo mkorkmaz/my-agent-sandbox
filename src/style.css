@@ -62,6 +62,7 @@ button:disabled { opacity: .65; }
 .sidebar > .navigation-item, .sidebar > .app-name { flex-shrink: 0; }
 .sidebar-projects { flex: 1; min-height: 0; margin-top: 12px; overflow-y: auto; overflow-x: hidden; padding: 3px; }
 .sidebar-list { margin: 0; padding: 0; list-style: none; }
+.project-record-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 8px; color: var(--secondary); font-size: 12px; }
 .sidebar-project { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 10px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--sidebar-text); text-align: left; }
 .sidebar-project:hover, .sidebar-session:hover, .sidebar-text-button:hover { background: var(--sidebar-hover); }
 .sidebar-project[aria-current="page"], .sidebar-session[aria-current="true"] { background: var(--sidebar-selection); color: var(--sidebar-selected-text); }
@@ -146,7 +147,7 @@ button:focus, button:active { outline: none; box-shadow: none; }
 .session-table th { padding: 13px 12px; }
 .number-column { text-align: right; }
 .session-title { display: block; width: 100%; padding: 0; margin: 0; border: 0; background: transparent; color: var(--text); font-weight: 550; font-size: 13px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.session-title:hover { color: var(--accent); }
+.session-title:is(button):hover { color: var(--accent); }
 .session-title:disabled { opacity: 1; }
 .session-date { display: block; margin-top: 5px; color: var(--secondary); font-size: 11px; }
 .session-row-actions { white-space: nowrap; text-align: right; }
@@ -264,3 +265,20 @@ fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .usage-session-title { margin: 10px 0 18px; font-size: 14px; font-weight: 550; overflow-wrap: anywhere; line-height: 1.5; }
 
 .usage-summary dd small { font-size: 12px; font-weight: 400; color: var(--secondary); white-space: nowrap; }
+
+.unlinked-subagents { margin-top: 32px; }
+.unlinked-subagents h2 { margin: 0 0 8px; font-size: 16px; font-weight: 650; }
+.unlinked-subagents > p { margin: 0 0 16px; max-width: 75ch; }
+
+.usage-scope-table { min-width: 650px; table-layout: auto; }
+.usage-scope-table th, .usage-scope-table td { padding: 10px 12px; }
+.usage-scope-table tbody th { border-top: 1px solid var(--line); color: var(--text); background: inherit; font-weight: 550; }
+.usage-scope-table th:not(:first-child), .usage-scope-table td { text-align: right; white-space: nowrap; }
+.turn-usage h4 { margin: 0 0 8px; font-size: 13px; font-weight: 550; overflow-wrap: anywhere; }
+.usage-agent summary { overflow-wrap: anywhere; }
+.usage-agent > p, .prompt-attribution { margin: 8px 0; }
+.usage-source-heading { margin: 12px 0 4px; font-size: 12px; }
+.usage-source-list { margin: 0; padding-left: 18px; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.usage-source-list a { color: var(--secondary); text-underline-offset: 3px; }
+.usage-source-list a:hover, .usage-source-list a:focus-visible { color: var(--text); }
+#session-usage-details :is([tabindex="-1"], .table-scroll):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

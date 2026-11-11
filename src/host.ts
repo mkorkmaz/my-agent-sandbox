@@ -21,15 +21,22 @@ export async function initializeHost(): Promise<void> {
   const doctor = document.getElementById('host-doctor') as HTMLElement;
   const message = document.getElementById('installation-status') as HTMLElement;
   const path = document.getElementById('cli-path') as HTMLInputElement;
+  let previous: HostStatus | null = null;
   async function inspect(): Promise<void> {
     check.disabled = true;
     cancel.hidden = false;
-    status.textContent = 'Mac denetleniyor…';
+    cancel.disabled = false;
+    status.textContent = 'Checking this Mac…';
     try {
       const result = await invoke<HostStatus>('inspect_host', { cliPath: path.value.trim() || null });
-      const labels: Record<string, string> = { missing: 'Brig not found', incompatible: 'Unsupported Brig version', installed: 'Brig installed', error: 'Brig check failed' };
+      const labels: Record<string, string> = { missing: 'Brig not found', incompatible: 'Unsupported Brig version', installed: 'Brig installed', error: 'Brig check failed', cancelled: 'Mac check cancelled', 'timed-out': 'Mac check timed out', 'invalid-response': 'Invalid Brig response' };
+      if (previous && ['cancelled', 'timed-out'].includes(result.brigStatus)) {
+        status.textContent = labels[result.brigStatus] + '. Showing the previous completed check: Brig ' + previous.version?.data.version + ' · macOS ' + previous.osVersion + '. Run Check this Mac to refresh it.';
+        return;
+      }
       status.textContent = [labels[result.brigStatus], result.version?.data.version, 'macOS ' + result.osVersion, result.architecture].filter(Boolean).join(' · ');
       if (result.message) status.textContent += '. ' + result.message;
+      if (result.brigStatus === 'installed') previous = result;
       tools.replaceChildren();
       for (const [name, value] of Object.entries(result.tools)) {
         const row = document.createElement('div');
@@ -57,7 +64,7 @@ export async function initializeHost(): Promise<void> {
     }
   }
   check.addEventListener('click', () => { void inspect(); });
-  cancel.addEventListener('click', () => { void invoke('cancel_inspection'); });
+  cancel.addEventListener('click', () => { cancel.disabled = true; status.textContent = 'Cancelling the Mac check…'; void invoke('cancel_inspection'); });
   install.addEventListener('click', async () => {
     install.disabled = true;
     installationCancel.hidden = false;
@@ -71,7 +78,7 @@ export async function initializeHost(): Promise<void> {
   });
   installationCancel.addEventListener('click', () => { void invoke('cancel_installation'); });
   await listen<{ current: string | null }>('installation-progress', event => {
-    const labels: Record<string, string> = { update: 'Updating Homebrew…', tap: 'Adding Brig tap…', trust: 'Trusting Brig tap…', install: 'Installing Brig…' };
+    const labels: Record<string, string> = { update: 'Updating Homebrew…', tap: 'Adding Brig tap…', trust: 'Trusting Brig tap…', install: 'Installing Brig…', verify: 'Verifying the installed Brig CLI…' };
     message.textContent = labels[event.payload.current ?? ''] ?? 'Finishing installation…';
   });
   await inspect();

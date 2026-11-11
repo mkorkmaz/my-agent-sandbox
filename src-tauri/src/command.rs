@@ -5,11 +5,43 @@ use std::os::unix::process::CommandExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 use std::{io, thread};
 
 const OUTPUT_LIMIT: usize = 1_048_576;
+static ACTIVE: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
+
+struct Running;
+impl Running {
+    fn enter() -> Result<Self, String> {
+        let mut count = ACTIVE.0.lock().map_err(|error| error.to_string())?;
+        if crate::lifecycle::is_closing() {
+            return Err("The app is closing.".into());
+        }
+        *count += 1;
+        Ok(Self)
+    }
+}
+impl Drop for Running {
+    fn drop(&mut self) {
+        let mut count = ACTIVE.0.lock().unwrap_or_else(|error| error.into_inner());
+        *count -= 1;
+        ACTIVE.1.notify_all();
+    }
+}
+
+pub fn wait_for_idle(timeout: Duration) -> Result<(), String> {
+    let count = ACTIVE.0.lock().map_err(|error| error.to_string())?;
+    let (count, _) = ACTIVE
+        .1
+        .wait_timeout_while(count, timeout, |count| *count > 0)
+        .map_err(|error| error.to_string())?;
+    if *count > 0 {
+        return Err("A background command has not exited. Retry closing the app.".into());
+    }
+    Ok(())
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,6 +103,7 @@ pub fn run(
     timeout: Duration,
     cancellation: &AtomicBool,
 ) -> Result<CommandOutput, String> {
+    let _running = Running::enter()?;
     let mut command = Command::new(executable);
     command
         .args(arguments)
@@ -111,7 +144,7 @@ pub fn run(
             break Err(error.to_string());
         }
         timed_out = started.elapsed() >= timeout;
-        cancelled = cancellation.load(Ordering::SeqCst);
+        cancelled = cancellation.load(Ordering::SeqCst) || crate::lifecycle::is_closing();
         if timed_out || cancelled || exceeded.load(Ordering::SeqCst) {
             unsafe {
                 libc::kill(-(child.id() as i32), libc::SIGKILL);
@@ -142,6 +175,43 @@ pub fn run(
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn confirmed_shutdown_cancels_and_reaps_background_commands() {
+        if std::env::var_os("TUGBOAT_SHUTDOWN_TEST").is_some() {
+            let query = thread::spawn(|| {
+                run(
+                    Path::new("/bin/sleep"),
+                    &["60".into()],
+                    None,
+                    &environment(),
+                    Duration::from_secs(70),
+                    &AtomicBool::new(false),
+                )
+                .unwrap()
+            });
+            while *ACTIVE.0.lock().unwrap() == 0 {
+                thread::yield_now();
+            }
+            // Before confirmation, the same running command remains active.
+            assert!(wait_for_idle(Duration::from_millis(30)).is_err());
+            crate::lifecycle::set_closing_for_test(true);
+            wait_for_idle(Duration::from_secs(2)).unwrap();
+            assert!(query.join().unwrap().cancelled);
+            assert!(Running::enter().is_err());
+            return;
+        }
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "command::tests::confirmed_shutdown_cancels_and_reaps_background_commands",
+                "--nocapture",
+            ])
+            .env("TUGBOAT_SHUTDOWN_TEST", "1")
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
 
     #[test]
     fn executable_and_arguments_with_spaces_are_not_shell_text() {

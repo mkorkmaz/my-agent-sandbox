@@ -13,6 +13,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
+const CHECK_VERSION: u32 = 1;
+
 #[derive(Default)]
 pub struct BoundaryTests(pub Arc<Mutex<()>>);
 
@@ -28,6 +30,8 @@ pub struct Probe {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Report {
+    #[serde(default)]
+    pub check_version: u32,
     pub project_id: String,
     pub plan_fingerprint: String,
     pub checked_at: u64,
@@ -98,6 +102,9 @@ fn denial(
     allowed: bool,
     host_reachable: bool,
 ) -> (&'static str, &'static str) {
+    if output.cancelled || output.timed_out || output.output_exceeded {
+        return ("inconclusive", "The network probe was cancelled, exceeded its time limit or returned incomplete output.");
+    }
     if connected(output) {
         return ("fail", "The guest connected to the denied destination.");
     }
@@ -120,6 +127,131 @@ fn denial(
         Some(125) | Some(127) => ("inconclusive", "curl was not found in the guest."),
         _ => ("inconclusive", "Could not verify the cause of the connection failure."),
     }
+}
+
+struct NetworkScenario {
+    allowed_url: Option<String>,
+    denied_url: Option<String>,
+    requires_allowed: bool,
+    offline: bool,
+}
+
+fn network_scenario(plan: &serde_json::Value) -> Result<NetworkScenario, &'static str> {
+    let data = &plan["data"];
+    if data["posture"] == "offline" {
+        return Ok(NetworkScenario {
+            allowed_url: None,
+            denied_url: Some("https://example.com".into()),
+            requires_allowed: false,
+            offline: true,
+        });
+    }
+    if data["posture"] != "isolated" || data["egress"]["default"] != "deny" {
+        return Err("The effective network mode or default rule is unsupported by this check.");
+    }
+    let egress = &data["egress"];
+    if egress["deny"]
+        .as_array()
+        .is_some_and(|rules| !rules.is_empty())
+        || (!egress["deny"].is_null() && !egress["deny"].is_array())
+        || egress.as_object().is_none_or(|fields| {
+            fields
+                .keys()
+                .any(|key| !["default", "allow", "deny"].contains(&key.as_str()))
+        })
+    {
+        return Err("Advanced egress rules need a manual check. A suitable comparison could not be verified.");
+    }
+    let rules = match egress["allow"].as_array() {
+        Some(rules) => rules.as_slice(),
+        None if egress["allow"].is_null() => &[],
+        None => return Err("The resolved allow rules could not be read."),
+    };
+    let mut hosts = Vec::new();
+    for rule in rules {
+        let host = rule["host"]
+            .as_str()
+            .unwrap_or_default()
+            .trim()
+            .trim_end_matches('.')
+            .to_ascii_lowercase();
+        if !settings_host(&host) || rule.as_object().is_none_or(|fields| fields.len() != 1) {
+            return Err("CIDR, wildcard or advanced rules need a manual check. A suitable comparison could not be verified.");
+        }
+        hosts.push(host);
+    }
+    let denied = ["example.com", "example.org", "www.iana.org", "www.ietf.org"]
+        .into_iter()
+        .find(|candidate| !hosts.iter().any(|host| host == candidate));
+    Ok(NetworkScenario {
+        allowed_url: hosts.first().map(|host| format!("https://{host}")),
+        denied_url: denied.map(|host| format!("https://{host}")),
+        requires_allowed: !hosts.is_empty(),
+        offline: false,
+    })
+}
+
+fn network_probes(
+    plan: &serde_json::Value,
+    mut run_guest: impl FnMut(&[String]) -> Result<command::CommandOutput, String>,
+    mut run_host: impl FnMut(&[String]) -> Result<command::CommandOutput, String>,
+) -> Result<Vec<Probe>, String> {
+    let scenario = match network_scenario(plan) {
+        Ok(scenario) => scenario,
+        Err(message) => {
+            return Ok(vec![probe(
+                "Network policy",
+                "Current execution plan".into(),
+                "A verified comparison for the effective policy",
+                message,
+                "inconclusive",
+            )])
+        }
+    };
+    let mut results = Vec::new();
+    let mut allowed_ok = false;
+    if let Some(target) = &scenario.allowed_url {
+        let output = run_guest(&curl_arguments(target))?;
+        allowed_ok = connected(&output);
+        results.push(probe("Allowed guest destination", target.clone(), "An HTTPS connection must succeed", if allowed_ok { "HTTPS response received." } else { "The allowed destination could not be reached. DNS, TLS, missing curl or network failure may be responsible." }, if allowed_ok { "pass" } else { "inconclusive" }));
+    }
+    let Some(target) = &scenario.denied_url else {
+        results.push(probe(
+            "Denied guest destination",
+            "None".into(),
+            "A comparison host outside the allow rules",
+            "All built-in comparison hosts are allowed. No denied target could be verified.",
+            "inconclusive",
+        ));
+        return Ok(results);
+    };
+    let arguments = curl_arguments(target);
+    let host = run_host(&arguments)?;
+    let guest = run_guest(&arguments)?;
+    let (outcome, observed) = if scenario.requires_allowed && connected(&guest) {
+        ("inconclusive", "The guest reached the comparison host. Host rules can permit shared IP addresses, so this check cannot prove that the connection was outside the policy.")
+    } else {
+        denial(
+            &guest,
+            !scenario.requires_allowed || allowed_ok,
+            connected(&host),
+        )
+    };
+    let name = if scenario.offline {
+        "Offline guest network"
+    } else if !scenario.requires_allowed {
+        "Deny-all guest network"
+    } else {
+        "Denied guest destination"
+    };
+    results.push(probe(
+        name,
+        target.clone(),
+        "Host connects and guest connection is denied",
+        observed,
+        outcome,
+    ));
+    Ok(results)
 }
 
 struct Canary {
@@ -204,6 +336,7 @@ fn run(app: &AppHandle, identifier: &str) -> Result<Report, String> {
     storage::write(
         &file(app, identifier)?,
         &Report {
+            check_version: CHECK_VERSION,
             project_id: identifier.into(),
             plan_fingerprint: checked.fingerprint.clone(),
             checked_at: projects::now(),
@@ -276,64 +409,22 @@ fn run(app: &AppHandle, identifier: &str) -> Result<Report, String> {
         },
         if absent { "pass" } else { "fail" },
     ));
-    let allowed = checked.plan["data"]["egress"]["allow"]
-        .as_array()
-        .and_then(|rules| {
-            rules
-                .iter()
-                .filter_map(|rule| rule["host"].as_str())
-                .find(|host| settings_host(host))
-        });
-    let allowed_url = allowed.map(|host| format!("https://{host}"));
-    let mut allowed_ok = false;
-    if let Some(target) = &allowed_url {
-        let output = guest(&checked, &curl_arguments(target))?;
-        allowed_ok = connected(&output);
-        let observation = match output.exit_code {
-            Some(125) | Some(127) => "curl was not found in the guest.",
-            Some(6) => "DNS lookup failed for the allowed destination.",
-            Some(35) | Some(51) | Some(58) | Some(60) => "TLS failed for the allowed destination.",
-            _ if allowed_ok => "HTTPS response received.",
-            _ => "The allowed destination could not be reached.",
-        };
-        results.push(probe(
-            "Allowed network destination",
-            target.clone(),
-            "An HTTPS connection must succeed",
-            observation,
-            if allowed_ok { "pass" } else { "inconclusive" },
-        ));
-    }
-    if allowed_url.is_none() {
-        results.push(probe(
-            "Allowed network destination",
-            "None".into(),
-            "The policy must contain an explicit host to test",
-            "No suitable host was found.",
-            "inconclusive",
-        ));
-    }
-    let denied_url = "https://example.com";
-    let arguments = curl_arguments(denied_url);
-    let host_output = command::run(
-        Path::new("/usr/bin/curl"),
-        &arguments[1..],
-        None,
-        &command::environment(),
-        Duration::from_secs(15),
-        &AtomicBool::new(false),
-    )?;
-    let guest_output = guest(&checked, &arguments)?;
-    let (outcome, observed) = denial(&guest_output, allowed_ok, connected(&host_output));
-    results.push(probe(
-        "Denied network destination",
-        denied_url.into(),
-        "Host connects and guest connection is denied",
-        observed,
-        outcome,
-    ));
-    let unchanged =
-        environment::checked_project(app, identifier, Some(&checked.fingerprint)).is_ok();
+    results.extend(network_probes(
+        &checked.plan,
+        |arguments| guest(&checked, arguments),
+        |arguments| {
+            command::run(
+                Path::new("/usr/bin/curl"),
+                &arguments[1..],
+                None,
+                &command::environment(),
+                Duration::from_secs(15),
+                &AtomicBool::new(false),
+            )
+        },
+    )?);
+    let unchanged = environment::checked_project(app, identifier, Some(&checked.fingerprint))
+        .is_ok_and(|current| current.project.stage == "environment-ready");
     let cleanup = canary.clean();
     if !unchanged {
         results.push(probe(
@@ -346,6 +437,7 @@ fn run(app: &AppHandle, identifier: &str) -> Result<Report, String> {
     }
     let passed = cleanup && unchanged && results.iter().all(|result| result.outcome == "pass");
     let report = Report {
+        check_version: CHECK_VERSION,
         project_id: identifier.into(),
         plan_fingerprint: checked.fingerprint,
         checked_at: projects::now(),
@@ -367,8 +459,11 @@ pub fn require_pass(app: &AppHandle, identifier: &str, fingerprint: &str) -> Res
         .ok_or("Complete the Brig file and network boundary checks first.")?;
     let now = projects::now();
     if report.project_id != identifier
+        || report.check_version != CHECK_VERSION
         || !report.passed
         || !report.cleanup
+        || report.results.is_empty()
+        || report.results.iter().any(|probe| probe.outcome != "pass")
         || report.plan_fingerprint != fingerprint
         || report.checked_at > now
         || now.saturating_sub(report.checked_at) > 3600
@@ -436,5 +531,115 @@ mod tests {
             ..result(0)
         };
         assert_eq!(denial(&connected, true, true).0, "fail");
+        for output in [
+            command::CommandOutput {
+                timed_out: true,
+                ..result(28)
+            },
+            command::CommandOutput {
+                cancelled: true,
+                ..result(6)
+            },
+            command::CommandOutput {
+                output_exceeded: true,
+                ..result(7)
+            },
+        ] {
+            assert_eq!(denial(&output, true, true).0, "inconclusive");
+        }
+    }
+
+    #[test]
+    fn network_checks_select_targets_from_the_effective_mode_and_policy() {
+        let plan = |posture, allow| serde_json::json!({"data":{"posture":posture,"egress":{"default":"deny","allow":allow,"deny":[]}}});
+        let success = || command::CommandOutput {
+            stdout: "http=200".into(),
+            ..result(0)
+        };
+        let allow_example = plan("isolated", serde_json::json!([{"host":"example.com"}]));
+        let scenario = network_scenario(&allow_example).unwrap();
+        assert_eq!(scenario.allowed_url.as_deref(), Some("https://example.com"));
+        assert_eq!(scenario.denied_url.as_deref(), Some("https://example.org"));
+        let probes = network_probes(
+            &allow_example,
+            |arguments| {
+                Ok(if arguments.last().unwrap() == "https://example.com" {
+                    success()
+                } else {
+                    result(6)
+                })
+            },
+            |_| Ok(success()),
+        )
+        .unwrap();
+        assert!(probes.iter().all(|probe| probe.outcome == "pass"));
+        let regular = plan("isolated", serde_json::json!([{"host":"api.openai.com"}]));
+        let probes = network_probes(
+            &regular,
+            |arguments| {
+                Ok(if arguments.last().unwrap() == "https://api.openai.com" {
+                    success()
+                } else {
+                    result(7)
+                })
+            },
+            |_| Ok(success()),
+        )
+        .unwrap();
+        assert_eq!(probes[1].target, "https://example.com");
+        assert!(probes.iter().all(|probe| probe.outcome == "pass"));
+        for (posture, rules, name) in [
+            ("isolated", serde_json::json!([]), "Deny-all guest network"),
+            (
+                "offline",
+                serde_json::json!([{"host":"example.com"}]),
+                "Offline guest network",
+            ),
+        ] {
+            let current = plan(posture, rules);
+            let probes = network_probes(&current, |_| Ok(result(6)), |_| Ok(success())).unwrap();
+            assert_eq!(probes.len(), 1);
+            assert_eq!(probes[0].name, name);
+            assert_eq!(probes[0].outcome, "pass");
+            assert_eq!(
+                network_probes(&current, |_| Ok(result(6)), |_| Ok(result(6))).unwrap()[0].outcome,
+                "inconclusive"
+            );
+            assert_eq!(
+                network_probes(&current, |_| Ok(success()), |_| Ok(success())).unwrap()[0].outcome,
+                "fail"
+            );
+        }
+        let probes = network_probes(&regular, |_| Ok(result(60)), |_| Ok(success())).unwrap();
+        assert!(probes.iter().all(|probe| probe.outcome == "inconclusive"));
+        let all_hosts = plan(
+            "isolated",
+            serde_json::json!([{"host":"example.com"},{"host":"example.org"},{"host":"www.iana.org"},{"host":"www.ietf.org"}]),
+        );
+        assert_eq!(
+            network_probes(
+                &all_hosts,
+                |_| Ok(success()),
+                |_| panic!("No denied target exists")
+            )
+            .unwrap()
+            .last()
+            .unwrap()
+            .outcome,
+            "inconclusive"
+        );
+        let advanced = plan("isolated", serde_json::json!([{"cidr":"0.0.0.0/0"}]));
+        assert_eq!(
+            network_probes(
+                &advanced,
+                |_| panic!("Unproven target"),
+                |_| panic!("Unproven target")
+            )
+            .unwrap()[0]
+                .outcome,
+            "inconclusive"
+        );
+        let shared = network_probes(&regular, |_| Ok(success()), |_| Ok(success())).unwrap();
+        assert_eq!(shared[1].outcome, "inconclusive");
     }
 }

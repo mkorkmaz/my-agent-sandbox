@@ -58,7 +58,7 @@ fn simple_hosts(document: &Value) -> Option<Vec<String>> {
         .collect()
 }
 
-fn sole_binding(list: &str, policy: &str, project: &Project) -> bool {
+pub(crate) fn sole_binding(list: &str, policy: &str, project: &Project) -> bool {
     let mut selected = false;
     let mut found = false;
     for line in list.lines() {
@@ -105,8 +105,10 @@ pub(crate) fn change(
     action: Action,
     hosts: Vec<String>,
 ) -> Result<Project, String> {
+    let _file_guard = storage::lock(file)?;
     let mut registry = Registry::load(file)?;
     let mut project = registry.project(identifier)?;
+    project.require_active()?;
     project.check_path()?;
     let current = view(brig, &project, settings)?;
     if current.fingerprint != expected {
@@ -135,6 +137,9 @@ pub(crate) fn change(
     let mut template = settings.clone();
     template.allowed_hosts = hosts;
     template.validate()?;
+    if matches!(action, Action::Detach) {
+        project.policy_detached = true;
+    }
     project.stage = "editing-policy".into();
     registry.update(project.clone())?;
     storage::write(file, &registry)?;
@@ -192,6 +197,9 @@ pub(crate) fn change(
         if matches!(action, Action::Detach) {
             project.owns_binding = false;
         }
+        if matches!(action, Action::Attach) {
+            project.policy_detached = false;
+        }
     }
     if matches!(action, Action::Accept) {
         let plan = brig.plan(&project, settings)?;
@@ -202,7 +210,7 @@ pub(crate) fn change(
             .ok_or("Policy record is missing.")?
             .fingerprint = Some(current.fingerprint);
     }
-    project.stage = if matches!(action, Action::Detach) {
+    project.stage = if project.policy_detached {
         "policy-detached"
     } else {
         "ready"

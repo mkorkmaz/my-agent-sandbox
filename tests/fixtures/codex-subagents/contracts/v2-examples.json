@@ -1,0 +1,2950 @@
+{
+  "contractId": "tugboat-subagent-usage-v2",
+  "contractVersion": 1,
+  "provenance": "synthetic-wire-contract-examples",
+  "realProviderEvidence": false,
+  "examples": [
+    {
+      "name": "legacy-single",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000005",
+          "title": "Legacy single",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 1000,
+            "cached": 500,
+            "cacheWrite": 0,
+            "output": 100,
+            "reasoning": 0,
+            "total": 1100,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "unknown",
+            "parentSessionId": null,
+            "agentPath": null,
+            "nickname": null,
+            "sourceVersion": null,
+            "lineageVersion": 1
+          },
+          "relationStatus": "unknown",
+          "rootSessionId": null,
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 1000,
+            "cached": 500,
+            "cacheWrite": 0,
+            "output": 100,
+            "reasoning": 0,
+            "total": 1100,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "unknown",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000005"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000005",
+        "rootSessionId": null,
+        "ownUsage": {
+          "input": 1000,
+          "cached": 500,
+          "cacheWrite": 0,
+          "output": 100,
+          "reasoning": 0,
+          "total": 1100,
+          "costUsd": 0,
+          "unpricedRequests": 1,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 1000,
+          "cached": 500,
+          "cacheWrite": 0,
+          "output": 100,
+          "reasoning": 0,
+          "total": 1100,
+          "costUsd": 0,
+          "unpricedRequests": 1,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "unknown",
+        "warnings": [],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000005",
+            "title": "Legacy single",
+            "available": true,
+            "lineage": {
+              "kind": "unknown",
+              "parentSessionId": null,
+              "agentPath": null,
+              "nickname": null,
+              "sourceVersion": null,
+              "lineageVersion": 1
+            },
+            "relationStatus": "unknown",
+            "ownUsage": {
+              "input": 1000,
+              "cached": 500,
+              "cacheWrite": 0,
+              "output": 100,
+              "reasoning": 0,
+              "total": 1100,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "unknown",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000007",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "2026-10-01T00:00:00.000Z/1000:100:500",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 1000,
+                      "cached": 500,
+                      "cacheWrite": 0,
+                      "output": 100,
+                      "reasoning": 0,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": null,
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": null,
+                "rootTurnId": null,
+                "parentTurnId": null
+              }
+            ]
+          }
+        ],
+        "userPromptCount": null,
+        "agentTurnCount": 1,
+        "prompts": [],
+        "unassigned": {
+          "usage": {
+            "input": 1000,
+            "cached": 500,
+            "cacheWrite": 0,
+            "output": 100,
+            "reasoning": 0,
+            "total": 1100,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [
+            {
+              "sessionId": "50000000-0000-4000-8000-000000000005",
+              "turnId": "60000000-0000-4000-8000-000000000007",
+              "requestKey": "2026-10-01T00:00:00.000Z/1000:100:500"
+            }
+          ],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "showLegacyOwnTurnsOnce": true,
+        "showChildWarning": false,
+        "allowResumeWhenExistingChecksPass": true
+      }
+    },
+    {
+      "name": "root-two-children-grandchild-followup",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000001",
+          "title": "Primary R",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 10000,
+            "cached": 6000,
+            "cacheWrite": 0,
+            "output": 1000,
+            "reasoning": 200,
+            "total": 11000,
+            "costUsd": 0,
+            "unpricedRequests": 2,
+            "requests": 2,
+            "completedTurns": 2,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "primary",
+            "parentSessionId": null,
+            "agentPath": null,
+            "nickname": null,
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "root",
+          "rootSessionId": "50000000-0000-4000-8000-000000000001",
+          "subagentCount": 3,
+          "familyUsage": {
+            "input": 22000,
+            "cached": 14000,
+            "cacheWrite": 0,
+            "output": 2200,
+            "reasoning": 440,
+            "total": 24200,
+            "costUsd": 0,
+            "unpricedRequests": 6,
+            "requests": 6,
+            "completedTurns": 6,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "50000000-0000-4000-8000-000000000002",
+          "title": "Child A",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 4000,
+            "cached": 2000,
+            "cacheWrite": 0,
+            "output": 400,
+            "reasoning": 80,
+            "total": 4400,
+            "costUsd": 0,
+            "unpricedRequests": 2,
+            "requests": 2,
+            "completedTurns": 2,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "subagent",
+            "parentSessionId": "50000000-0000-4000-8000-000000000001",
+            "agentPath": "/root/a",
+            "nickname": "a",
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "resolved",
+          "rootSessionId": "50000000-0000-4000-8000-000000000001",
+          "subagentCount": 1,
+          "familyUsage": {
+            "input": 6000,
+            "cached": 4000,
+            "cacheWrite": 0,
+            "output": 600,
+            "reasoning": 120,
+            "total": 6600,
+            "costUsd": 0,
+            "unpricedRequests": 3,
+            "requests": 3,
+            "completedTurns": 3,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "50000000-0000-4000-8000-000000000004",
+          "title": "Grandchild C",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 2000,
+            "cached": 2000,
+            "cacheWrite": 0,
+            "output": 200,
+            "reasoning": 40,
+            "total": 2200,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "subagent",
+            "parentSessionId": "50000000-0000-4000-8000-000000000002",
+            "agentPath": "/root/a/c",
+            "nickname": "c",
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "resolved",
+          "rootSessionId": "50000000-0000-4000-8000-000000000001",
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 2000,
+            "cached": 2000,
+            "cacheWrite": 0,
+            "output": 200,
+            "reasoning": 40,
+            "total": 2200,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000004"
+        },
+        {
+          "id": "50000000-0000-4000-8000-000000000003",
+          "title": "Child B",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 6000,
+            "cached": 4000,
+            "cacheWrite": 0,
+            "output": 600,
+            "reasoning": 120,
+            "total": 6600,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "subagent",
+            "parentSessionId": "50000000-0000-4000-8000-000000000001",
+            "agentPath": "/root/b",
+            "nickname": "b",
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "resolved",
+          "rootSessionId": "50000000-0000-4000-8000-000000000001",
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 6000,
+            "cached": 4000,
+            "cacheWrite": 0,
+            "output": 600,
+            "reasoning": 120,
+            "total": 6600,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000003"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000001",
+        "rootSessionId": "50000000-0000-4000-8000-000000000001",
+        "ownUsage": {
+          "input": 10000,
+          "cached": 6000,
+          "cacheWrite": 0,
+          "output": 1000,
+          "reasoning": 200,
+          "total": 11000,
+          "costUsd": 0,
+          "unpricedRequests": 2,
+          "requests": 2,
+          "completedTurns": 2,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 12000,
+          "cached": 8000,
+          "cacheWrite": 0,
+          "output": 1200,
+          "reasoning": 240,
+          "total": 13200,
+          "costUsd": 0,
+          "unpricedRequests": 4,
+          "requests": 4,
+          "completedTurns": 4,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 22000,
+          "cached": 14000,
+          "cacheWrite": 0,
+          "output": 2200,
+          "reasoning": 440,
+          "total": 24200,
+          "costUsd": 0,
+          "unpricedRequests": 6,
+          "requests": 6,
+          "completedTurns": 6,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "complete",
+        "warnings": [],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000001",
+            "title": "Primary R",
+            "available": true,
+            "lineage": {
+              "kind": "primary",
+              "parentSessionId": null,
+              "agentPath": null,
+              "nickname": null,
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "root",
+            "ownUsage": {
+              "input": 10000,
+              "cached": 6000,
+              "cacheWrite": 0,
+              "output": 1000,
+              "reasoning": 200,
+              "total": 11000,
+              "costUsd": 0,
+              "unpricedRequests": 2,
+              "requests": 2,
+              "completedTurns": 2,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000001",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000001\",\"resp_contract_001\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 5000,
+                      "cached": 3000,
+                      "cacheWrite": 0,
+                      "output": 500,
+                      "reasoning": 100,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000001",
+                      "originTurnId": "60000000-0000-4000-8000-000000000001",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                      "responseId": "resp_contract_001"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000001",
+                "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                "parentTurnId": null
+              },
+              {
+                "id": "60000000-0000-4000-8000-000000000002",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000001\",\"resp_contract_002\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 5000,
+                      "cached": 3000,
+                      "cacheWrite": 0,
+                      "output": 500,
+                      "reasoning": 100,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000001",
+                      "originTurnId": "60000000-0000-4000-8000-000000000002",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000002",
+                      "responseId": "resp_contract_002"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000001",
+                "rootTurnId": "60000000-0000-4000-8000-000000000002",
+                "parentTurnId": null
+              }
+            ]
+          },
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000002",
+            "title": "Child A",
+            "available": true,
+            "lineage": {
+              "kind": "subagent",
+              "parentSessionId": "50000000-0000-4000-8000-000000000001",
+              "agentPath": "/root/a",
+              "nickname": "a",
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "resolved",
+            "ownUsage": {
+              "input": 4000,
+              "cached": 2000,
+              "cacheWrite": 0,
+              "output": 400,
+              "reasoning": 80,
+              "total": 4400,
+              "costUsd": 0,
+              "unpricedRequests": 2,
+              "requests": 2,
+              "completedTurns": 2,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000003",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_003\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 2000,
+                      "cached": 1000,
+                      "cacheWrite": 0,
+                      "output": 200,
+                      "reasoning": 40,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000002",
+                      "originTurnId": "60000000-0000-4000-8000-000000000003",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                      "responseId": "resp_contract_003"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000002",
+                "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                "parentTurnId": "60000000-0000-4000-8000-000000000001"
+              },
+              {
+                "id": "60000000-0000-4000-8000-000000000004",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_004\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 2000,
+                      "cached": 1000,
+                      "cacheWrite": 0,
+                      "output": 200,
+                      "reasoning": 40,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000002",
+                      "originTurnId": "60000000-0000-4000-8000-000000000004",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000002",
+                      "responseId": "resp_contract_004"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000002",
+                "rootTurnId": "60000000-0000-4000-8000-000000000002",
+                "parentTurnId": "60000000-0000-4000-8000-000000000002"
+              }
+            ]
+          },
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000004",
+            "title": "Grandchild C",
+            "available": true,
+            "lineage": {
+              "kind": "subagent",
+              "parentSessionId": "50000000-0000-4000-8000-000000000002",
+              "agentPath": "/root/a/c",
+              "nickname": "c",
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "resolved",
+            "ownUsage": {
+              "input": 2000,
+              "cached": 2000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000006",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000004\",\"resp_contract_006\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 2000,
+                      "cached": 2000,
+                      "cacheWrite": 0,
+                      "output": 200,
+                      "reasoning": 40,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000004",
+                      "originTurnId": "60000000-0000-4000-8000-000000000006",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                      "responseId": "resp_contract_006"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000004",
+                "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                "parentTurnId": "60000000-0000-4000-8000-000000000003"
+              }
+            ]
+          },
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000003",
+            "title": "Child B",
+            "available": true,
+            "lineage": {
+              "kind": "subagent",
+              "parentSessionId": "50000000-0000-4000-8000-000000000001",
+              "agentPath": "/root/b",
+              "nickname": "b",
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "resolved",
+            "ownUsage": {
+              "input": 6000,
+              "cached": 4000,
+              "cacheWrite": 0,
+              "output": 600,
+              "reasoning": 120,
+              "total": 6600,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000005",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000003\",\"resp_contract_005\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 6000,
+                      "cached": 4000,
+                      "cacheWrite": 0,
+                      "output": 600,
+                      "reasoning": 120,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000003",
+                      "originTurnId": "60000000-0000-4000-8000-000000000005",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                      "responseId": "resp_contract_005"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000003",
+                "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                "parentTurnId": "60000000-0000-4000-8000-000000000001"
+              }
+            ]
+          }
+        ],
+        "userPromptCount": 2,
+        "agentTurnCount": 6,
+        "prompts": [
+          {
+            "turnId": "60000000-0000-4000-8000-000000000001",
+            "status": "complete",
+            "ownUsage": {
+              "input": 5000,
+              "cached": 3000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 100,
+              "total": 5500,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "descendantsUsage": {
+              "input": 10000,
+              "cached": 7000,
+              "cacheWrite": 0,
+              "output": 1000,
+              "reasoning": 200,
+              "total": 11000,
+              "costUsd": 0,
+              "unpricedRequests": 3,
+              "requests": 3,
+              "completedTurns": 3,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 15000,
+              "cached": 10000,
+              "cacheWrite": 0,
+              "output": 1500,
+              "reasoning": 300,
+              "total": 16500,
+              "costUsd": 0,
+              "unpricedRequests": 4,
+              "requests": 4,
+              "completedTurns": 4,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "requestRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000001",
+                "turnId": "60000000-0000-4000-8000-000000000001",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000001\",\"resp_contract_001\"]"
+              },
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000002",
+                "turnId": "60000000-0000-4000-8000-000000000003",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_003\"]"
+              },
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000004",
+                "turnId": "60000000-0000-4000-8000-000000000006",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000004\",\"resp_contract_006\"]"
+              },
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000003",
+                "turnId": "60000000-0000-4000-8000-000000000005",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000003\",\"resp_contract_005\"]"
+              }
+            ],
+            "unmeasuredTurnRefs": []
+          },
+          {
+            "turnId": "60000000-0000-4000-8000-000000000002",
+            "status": "complete",
+            "ownUsage": {
+              "input": 5000,
+              "cached": 3000,
+              "cacheWrite": 0,
+              "output": 500,
+              "reasoning": 100,
+              "total": 5500,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "descendantsUsage": {
+              "input": 2000,
+              "cached": 1000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 7000,
+              "cached": 4000,
+              "cacheWrite": 0,
+              "output": 700,
+              "reasoning": 140,
+              "total": 7700,
+              "costUsd": 0,
+              "unpricedRequests": 2,
+              "requests": 2,
+              "completedTurns": 2,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "requestRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000001",
+                "turnId": "60000000-0000-4000-8000-000000000002",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000001\",\"resp_contract_002\"]"
+              },
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000002",
+                "turnId": "60000000-0000-4000-8000-000000000004",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_004\"]"
+              }
+            ],
+            "unmeasuredTurnRefs": []
+          }
+        ],
+        "unassigned": {
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "projectUsage": {
+        "input": 22000,
+        "cached": 14000,
+        "cacheWrite": 0,
+        "output": 2200,
+        "reasoning": 440,
+        "total": 24200,
+        "costUsd": 0,
+        "unpricedRequests": 6,
+        "requests": 6,
+        "completedTurns": 6,
+        "assumedTierRequests": 0,
+        "missingCacheRequests": 0,
+        "missingCachedRequests": 0,
+        "missingCacheWriteRequests": 0,
+        "unmeasuredTurns": 0
+      },
+      "expect": {
+        "visibleRootRows": [
+          "50000000-0000-4000-8000-000000000001"
+        ],
+        "ownTotal": 11000,
+        "descendantsTotal": 13200,
+        "combinedTotal": 24200,
+        "subagentCount": 3,
+        "userPromptCount": 2,
+        "agentTurnCount": 6,
+        "combinedCompletedTurns": 6,
+        "pricingKnown": false,
+        "coverage": "complete"
+      }
+    },
+    {
+      "name": "selected-child-subtree",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000002",
+          "title": "Child A",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 4000,
+            "cached": 2000,
+            "cacheWrite": 0,
+            "output": 400,
+            "reasoning": 80,
+            "total": 4400,
+            "costUsd": 0,
+            "unpricedRequests": 2,
+            "requests": 2,
+            "completedTurns": 2,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "subagent",
+            "parentSessionId": "50000000-0000-4000-8000-000000000001",
+            "agentPath": "/root/a",
+            "nickname": "a",
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "resolved",
+          "rootSessionId": "50000000-0000-4000-8000-000000000001",
+          "subagentCount": 1,
+          "familyUsage": {
+            "input": 6000,
+            "cached": 4000,
+            "cacheWrite": 0,
+            "output": 600,
+            "reasoning": 120,
+            "total": 6600,
+            "costUsd": 0,
+            "unpricedRequests": 3,
+            "requests": 3,
+            "completedTurns": 3,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000002"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000002",
+        "rootSessionId": "50000000-0000-4000-8000-000000000001",
+        "ownUsage": {
+          "input": 4000,
+          "cached": 2000,
+          "cacheWrite": 0,
+          "output": 400,
+          "reasoning": 80,
+          "total": 4400,
+          "costUsd": 0,
+          "unpricedRequests": 2,
+          "requests": 2,
+          "completedTurns": 2,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 2000,
+          "cached": 2000,
+          "cacheWrite": 0,
+          "output": 200,
+          "reasoning": 40,
+          "total": 2200,
+          "costUsd": 0,
+          "unpricedRequests": 1,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 6000,
+          "cached": 4000,
+          "cacheWrite": 0,
+          "output": 600,
+          "reasoning": 120,
+          "total": 6600,
+          "costUsd": 0,
+          "unpricedRequests": 3,
+          "requests": 3,
+          "completedTurns": 3,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "complete",
+        "warnings": [],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000002",
+            "title": "Child A",
+            "available": true,
+            "lineage": {
+              "kind": "subagent",
+              "parentSessionId": "50000000-0000-4000-8000-000000000001",
+              "agentPath": "/root/a",
+              "nickname": "a",
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "resolved",
+            "ownUsage": {
+              "input": 4000,
+              "cached": 2000,
+              "cacheWrite": 0,
+              "output": 400,
+              "reasoning": 80,
+              "total": 4400,
+              "costUsd": 0,
+              "unpricedRequests": 2,
+              "requests": 2,
+              "completedTurns": 2,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000003",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_003\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 2000,
+                      "cached": 1000,
+                      "cacheWrite": 0,
+                      "output": 200,
+                      "reasoning": 40,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000002",
+                      "originTurnId": "60000000-0000-4000-8000-000000000003",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                      "responseId": "resp_contract_003"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000002",
+                "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                "parentTurnId": "60000000-0000-4000-8000-000000000001"
+              },
+              {
+                "id": "60000000-0000-4000-8000-000000000004",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_004\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 2000,
+                      "cached": 1000,
+                      "cacheWrite": 0,
+                      "output": 200,
+                      "reasoning": 40,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000002",
+                      "originTurnId": "60000000-0000-4000-8000-000000000004",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000002",
+                      "responseId": "resp_contract_004"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000002",
+                "rootTurnId": "60000000-0000-4000-8000-000000000002",
+                "parentTurnId": "60000000-0000-4000-8000-000000000002"
+              }
+            ]
+          },
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000004",
+            "title": "Grandchild C",
+            "available": true,
+            "lineage": {
+              "kind": "subagent",
+              "parentSessionId": "50000000-0000-4000-8000-000000000002",
+              "agentPath": "/root/a/c",
+              "nickname": "c",
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "resolved",
+            "ownUsage": {
+              "input": 2000,
+              "cached": 2000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000006",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000004\",\"resp_contract_006\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 2000,
+                      "cached": 2000,
+                      "cacheWrite": 0,
+                      "output": 200,
+                      "reasoning": 40,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000004",
+                      "originTurnId": "60000000-0000-4000-8000-000000000006",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                      "responseId": "resp_contract_006"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000004",
+                "rootTurnId": "60000000-0000-4000-8000-000000000001",
+                "parentTurnId": "60000000-0000-4000-8000-000000000003"
+              }
+            ]
+          }
+        ],
+        "userPromptCount": 2,
+        "agentTurnCount": 3,
+        "prompts": [
+          {
+            "turnId": "60000000-0000-4000-8000-000000000001",
+            "status": "complete",
+            "ownUsage": {
+              "input": 2000,
+              "cached": 1000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "descendantsUsage": {
+              "input": 2000,
+              "cached": 2000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 4000,
+              "cached": 3000,
+              "cacheWrite": 0,
+              "output": 400,
+              "reasoning": 80,
+              "total": 4400,
+              "costUsd": 0,
+              "unpricedRequests": 2,
+              "requests": 2,
+              "completedTurns": 2,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "requestRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000002",
+                "turnId": "60000000-0000-4000-8000-000000000003",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_003\"]"
+              },
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000004",
+                "turnId": "60000000-0000-4000-8000-000000000006",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000004\",\"resp_contract_006\"]"
+              }
+            ],
+            "unmeasuredTurnRefs": []
+          },
+          {
+            "turnId": "60000000-0000-4000-8000-000000000002",
+            "status": "complete",
+            "ownUsage": {
+              "input": 2000,
+              "cached": 1000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "descendantsUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 0,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 2000,
+              "cached": 1000,
+              "cacheWrite": 0,
+              "output": 200,
+              "reasoning": 40,
+              "total": 2200,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "requestRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000002",
+                "turnId": "60000000-0000-4000-8000-000000000004",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000002\",\"resp_contract_004\"]"
+              }
+            ],
+            "unmeasuredTurnRefs": []
+          }
+        ],
+        "unassigned": {
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "selectedSessionId": "50000000-0000-4000-8000-000000000002",
+        "ancestorInfoOnly": "50000000-0000-4000-8000-000000000001",
+        "ownTotal": 4400,
+        "descendantsTotal": 2200,
+        "combinedTotal": 6600,
+        "excludedAgentIds": [
+          "50000000-0000-4000-8000-000000000001",
+          "50000000-0000-4000-8000-000000000003"
+        ],
+        "independentResumeAllowed": false
+      }
+    },
+    {
+      "name": "orphan",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000006",
+          "title": "Orphan child",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 1000,
+            "cached": 500,
+            "cacheWrite": 0,
+            "output": 100,
+            "reasoning": 0,
+            "total": 1100,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "subagent",
+            "parentSessionId": "50000000-0000-4000-8000-000000000099",
+            "agentPath": "/root/orphan",
+            "nickname": "orphan",
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "orphan",
+          "rootSessionId": null,
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 1000,
+            "cached": 500,
+            "cacheWrite": 0,
+            "output": 100,
+            "reasoning": 0,
+            "total": 1100,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "partial",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000006"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000006",
+        "rootSessionId": null,
+        "ownUsage": {
+          "input": 1000,
+          "cached": 500,
+          "cacheWrite": 0,
+          "output": 100,
+          "reasoning": 0,
+          "total": 1100,
+          "costUsd": 0,
+          "unpricedRequests": 1,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 1000,
+          "cached": 500,
+          "cacheWrite": 0,
+          "output": 100,
+          "reasoning": 0,
+          "total": 1100,
+          "costUsd": 0,
+          "unpricedRequests": 1,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "warnings": [
+          "Parent session is unavailable."
+        ],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000006",
+            "title": "Orphan child",
+            "available": true,
+            "lineage": {
+              "kind": "subagent",
+              "parentSessionId": "50000000-0000-4000-8000-000000000099",
+              "agentPath": "/root/orphan",
+              "nickname": "orphan",
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "orphan",
+            "ownUsage": {
+              "input": 1000,
+              "cached": 500,
+              "cacheWrite": 0,
+              "output": 100,
+              "reasoning": 0,
+              "total": 1100,
+              "costUsd": 0,
+              "unpricedRequests": 1,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "partial",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000008",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000006\",\"resp_contract_008\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 1000,
+                      "cached": 500,
+                      "cacheWrite": 0,
+                      "output": 100,
+                      "reasoning": 0,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": null,
+                    "costUsd": null,
+                    "partial": false,
+                    "unpricedReason": "Rate snapshot unavailable in this synthetic contract example.",
+                    "serviceTier": "default",
+                    "tierSource": "thread-settings",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000006",
+                      "originTurnId": "60000000-0000-4000-8000-000000000008",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000099",
+                      "responseId": "resp_contract_008"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000006",
+                "rootTurnId": "60000000-0000-4000-8000-000000000099",
+                "parentTurnId": "60000000-0000-4000-8000-000000000099"
+              }
+            ]
+          }
+        ],
+        "userPromptCount": null,
+        "agentTurnCount": 1,
+        "prompts": [],
+        "unassigned": {
+          "usage": {
+            "input": 1000,
+            "cached": 500,
+            "cacheWrite": 0,
+            "output": 100,
+            "reasoning": 0,
+            "total": 1100,
+            "costUsd": 0,
+            "unpricedRequests": 1,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [
+            {
+              "sessionId": "50000000-0000-4000-8000-000000000006",
+              "turnId": "60000000-0000-4000-8000-000000000008",
+              "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000006\",\"resp_contract_008\"]"
+            }
+          ],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "visibleDetachedRow": true,
+        "combinedTotal": 1100,
+        "userPromptCount": null,
+        "unassignedTotal": 1100,
+        "independentResumeAllowed": false
+      }
+    },
+    {
+      "name": "normal-fork-inherited-amount-correction",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000007",
+          "title": "Separate normal fork",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 15877,
+            "cached": 12288,
+            "cacheWrite": 0,
+            "output": 5,
+            "reasoning": 0,
+            "total": 15882,
+            "costUsd": 0.0084568,
+            "unpricedRequests": 0,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 1,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "primary",
+            "parentSessionId": null,
+            "agentPath": null,
+            "nickname": null,
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "root",
+          "rootSessionId": "50000000-0000-4000-8000-000000000007",
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 15877,
+            "cached": 12288,
+            "cacheWrite": 0,
+            "output": 5,
+            "reasoning": 0,
+            "total": 15882,
+            "costUsd": 0.0084568,
+            "unpricedRequests": 0,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 1,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000007"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000007",
+        "rootSessionId": "50000000-0000-4000-8000-000000000007",
+        "ownUsage": {
+          "input": 15877,
+          "cached": 12288,
+          "cacheWrite": 0,
+          "output": 5,
+          "reasoning": 0,
+          "total": 15882,
+          "costUsd": 0.0084568,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 1,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 15877,
+          "cached": 12288,
+          "cacheWrite": 0,
+          "output": 5,
+          "reasoning": 0,
+          "total": 15882,
+          "costUsd": 0.0084568,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 1,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "complete",
+        "warnings": [],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000007",
+            "title": "Separate normal fork",
+            "available": true,
+            "lineage": {
+              "kind": "primary",
+              "parentSessionId": null,
+              "agentPath": null,
+              "nickname": null,
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "root",
+            "ownUsage": {
+              "input": 15877,
+              "cached": 12288,
+              "cacheWrite": 0,
+              "output": 5,
+              "reasoning": 0,
+              "total": 15882,
+              "costUsd": 0.0084568,
+              "unpricedRequests": 0,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 1,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000009",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "2026-11-01T12:00:00.001Z/139241:677:131456",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 15877,
+                      "cached": 12288,
+                      "cacheWrite": 0,
+                      "output": 5,
+                      "reasoning": 0,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": {
+                      "date": "2026-11-10",
+                      "source": "https://developers.openai.com/api/docs/pricing",
+                      "input": 2,
+                      "cached": 0.1,
+                      "write30m": 2.5,
+                      "write12h": 5,
+                      "output": 10,
+                      "tier": "standard",
+                      "tierAssumed": true,
+                      "longContext": false
+                    },
+                    "costUsd": 0.0084568,
+                    "partial": false,
+                    "unpricedReason": null,
+                    "serviceTier": null,
+                    "tierSource": "assumed",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000007",
+                      "originTurnId": "60000000-0000-4000-8000-000000000009",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000009",
+                      "responseId": "resp_contract_009"
+                    },
+                    "amountCorrection": {
+                      "previousTokens": {
+                        "input": 139241,
+                        "cached": 131456,
+                        "cacheWrite": 0,
+                        "output": 677,
+                        "reasoning": 166,
+                        "write12h": 0,
+                        "cacheKnown": true,
+                        "cachedKnown": true,
+                        "cacheWriteKnown": true
+                      },
+                      "previousCostUsd": null,
+                      "previousPartial": true,
+                      "previousUnpricedReason": "Usage counter reset or aggregated requests; coverage is partial",
+                      "reason": "Recovered exact request amount; excluded inherited cumulative prefix."
+                    }
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000007",
+                "rootTurnId": "60000000-0000-4000-8000-000000000009",
+                "parentTurnId": null
+              }
+            ]
+          }
+        ],
+        "userPromptCount": 1,
+        "agentTurnCount": 1,
+        "prompts": [
+          {
+            "turnId": "60000000-0000-4000-8000-000000000009",
+            "status": "complete",
+            "ownUsage": {
+              "input": 15877,
+              "cached": 12288,
+              "cacheWrite": 0,
+              "output": 5,
+              "reasoning": 0,
+              "total": 15882,
+              "costUsd": 0.0084568,
+              "unpricedRequests": 0,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 1,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "descendantsUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 0,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 15877,
+              "cached": 12288,
+              "cacheWrite": 0,
+              "output": 5,
+              "reasoning": 0,
+              "total": 15882,
+              "costUsd": 0.0084568,
+              "unpricedRequests": 0,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 1,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "requestRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000007",
+                "turnId": "60000000-0000-4000-8000-000000000009",
+                "requestKey": "2026-11-01T12:00:00.001Z/139241:677:131456"
+              }
+            ],
+            "unmeasuredTurnRefs": []
+          }
+        ],
+        "unassigned": {
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "kind": "primary",
+        "parentSessionId": null,
+        "ownTotal": 15882,
+        "previousTotal": 139918,
+        "keyUnchanged": true,
+        "savedRateDateUnchanged": "2026-11-10"
+      }
+    },
+    {
+      "name": "genuine-unmeasured-own-turn",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000008",
+          "title": "Unmeasured own turn",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 1
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "primary",
+            "parentSessionId": null,
+            "agentPath": null,
+            "nickname": null,
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "root",
+          "rootSessionId": "50000000-0000-4000-8000-000000000008",
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 1,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 1
+          },
+          "coverage": "unknown",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000008"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000008",
+        "rootSessionId": "50000000-0000-4000-8000-000000000008",
+        "ownUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 1
+        },
+        "descendantsUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 1
+        },
+        "coverage": "unknown",
+        "warnings": [
+          "An owned turn has no recorded request usage."
+        ],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000008",
+            "title": "Unmeasured own turn",
+            "available": true,
+            "lineage": {
+              "kind": "primary",
+              "parentSessionId": null,
+              "agentPath": null,
+              "nickname": null,
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "root",
+            "ownUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 1
+            },
+            "coverage": "unknown",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000010",
+                "status": "complete",
+                "requests": [],
+                "originThreadId": "50000000-0000-4000-8000-000000000008",
+                "rootTurnId": "60000000-0000-4000-8000-000000000010",
+                "parentTurnId": null
+              }
+            ]
+          }
+        ],
+        "userPromptCount": 1,
+        "agentTurnCount": 1,
+        "prompts": [
+          {
+            "turnId": "60000000-0000-4000-8000-000000000010",
+            "status": "complete",
+            "ownUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 1
+            },
+            "descendantsUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 0,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 1,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 1
+            },
+            "requestRefs": [],
+            "unmeasuredTurnRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000008",
+                "turnId": "60000000-0000-4000-8000-000000000010"
+              }
+            ]
+          }
+        ],
+        "unassigned": {
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "requests": 0,
+        "unmeasuredTurns": 1,
+        "userPromptCount": 1,
+        "costDisplay": "unknown"
+      }
+    },
+    {
+      "name": "valid-zero-token-exact-request",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000009",
+          "title": "Zero-token exact request",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 1,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "primary",
+            "parentSessionId": null,
+            "agentPath": null,
+            "nickname": null,
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "root",
+          "rootSessionId": "50000000-0000-4000-8000-000000000009",
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 1,
+            "completedTurns": 1,
+            "assumedTierRequests": 1,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000009"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000009",
+        "rootSessionId": "50000000-0000-4000-8000-000000000009",
+        "ownUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 1,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 1,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "complete",
+        "warnings": [],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000009",
+            "title": "Zero-token exact request",
+            "available": true,
+            "lineage": {
+              "kind": "primary",
+              "parentSessionId": null,
+              "agentPath": null,
+              "nickname": null,
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "root",
+            "ownUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 1,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": [
+              {
+                "id": "60000000-0000-4000-8000-000000000011",
+                "status": "complete",
+                "requests": [
+                  {
+                    "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000009\",\"resp_contract_011\"]",
+                    "at": "2026-11-01T12:00:00.000Z",
+                    "model": "gpt-6.1-sol",
+                    "tokens": {
+                      "input": 0,
+                      "cached": 0,
+                      "cacheWrite": 0,
+                      "output": 0,
+                      "reasoning": 0,
+                      "write12h": 0,
+                      "cacheKnown": true,
+                      "cachedKnown": true,
+                      "cacheWriteKnown": true
+                    },
+                    "rates": {
+                      "date": "2026-11-10",
+                      "source": "https://developers.openai.com/api/docs/pricing",
+                      "input": 2,
+                      "cached": 0.1,
+                      "write30m": 2.5,
+                      "write12h": 5,
+                      "output": 10,
+                      "tier": "standard",
+                      "tierAssumed": true,
+                      "longContext": false
+                    },
+                    "costUsd": 0,
+                    "partial": false,
+                    "unpricedReason": null,
+                    "serviceTier": null,
+                    "tierSource": "assumed",
+                    "rateCorrection": null,
+                    "source": {
+                      "guestNamespace": "fixture-guest",
+                      "modelProvider": "openai",
+                      "originThreadId": "50000000-0000-4000-8000-000000000009",
+                      "originTurnId": "60000000-0000-4000-8000-000000000011",
+                      "rootTurnId": "60000000-0000-4000-8000-000000000011",
+                      "responseId": "resp_contract_011"
+                    },
+                    "amountCorrection": null
+                  }
+                ],
+                "originThreadId": "50000000-0000-4000-8000-000000000009",
+                "rootTurnId": "60000000-0000-4000-8000-000000000011",
+                "parentTurnId": null
+              }
+            ]
+          }
+        ],
+        "userPromptCount": 1,
+        "agentTurnCount": 1,
+        "prompts": [
+          {
+            "turnId": "60000000-0000-4000-8000-000000000011",
+            "status": "complete",
+            "ownUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 1,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "descendantsUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 0,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "combinedUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 1,
+              "completedTurns": 1,
+              "assumedTierRequests": 1,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "requestRefs": [
+              {
+                "sessionId": "50000000-0000-4000-8000-000000000009",
+                "turnId": "60000000-0000-4000-8000-000000000011",
+                "requestKey": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000009\",\"resp_contract_011\"]"
+              }
+            ],
+            "unmeasuredTurnRefs": []
+          }
+        ],
+        "unassigned": {
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "requests": 1,
+        "unmeasuredTurns": 0,
+        "userPromptCount": 1,
+        "costDisplay": "0.00"
+      }
+    },
+    {
+      "name": "empty-history",
+      "conversations": [
+        {
+          "id": "50000000-0000-4000-8000-000000000010",
+          "title": "No turns yet",
+          "updatedAt": 1793534400000,
+          "state": "active",
+          "available": true,
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "warning": null,
+          "lineage": {
+            "kind": "primary",
+            "parentSessionId": null,
+            "agentPath": null,
+            "nickname": null,
+            "sourceVersion": "0.167.0",
+            "lineageVersion": 1
+          },
+          "relationStatus": "root",
+          "rootSessionId": "50000000-0000-4000-8000-000000000010",
+          "subagentCount": 0,
+          "familyUsage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "coverage": "complete",
+          "usageRevision": "fixture-revision:50000000-0000-4000-8000-000000000010"
+        }
+      ],
+      "details": {
+        "sessionId": "50000000-0000-4000-8000-000000000010",
+        "rootSessionId": "50000000-0000-4000-8000-000000000010",
+        "ownUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "descendantsUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "combinedUsage": {
+          "input": 0,
+          "cached": 0,
+          "cacheWrite": 0,
+          "output": 0,
+          "reasoning": 0,
+          "total": 0,
+          "costUsd": 0,
+          "unpricedRequests": 0,
+          "requests": 0,
+          "completedTurns": 0,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "complete",
+        "warnings": [],
+        "agents": [
+          {
+            "sessionId": "50000000-0000-4000-8000-000000000010",
+            "title": "No turns yet",
+            "available": true,
+            "lineage": {
+              "kind": "primary",
+              "parentSessionId": null,
+              "agentPath": null,
+              "nickname": null,
+              "sourceVersion": "0.167.0",
+              "lineageVersion": 1
+            },
+            "relationStatus": "root",
+            "ownUsage": {
+              "input": 0,
+              "cached": 0,
+              "cacheWrite": 0,
+              "output": 0,
+              "reasoning": 0,
+              "total": 0,
+              "costUsd": 0,
+              "unpricedRequests": 0,
+              "requests": 0,
+              "completedTurns": 0,
+              "assumedTierRequests": 0,
+              "missingCacheRequests": 0,
+              "missingCachedRequests": 0,
+              "missingCacheWriteRequests": 0,
+              "unmeasuredTurns": 0
+            },
+            "coverage": "complete",
+            "turns": []
+          }
+        ],
+        "userPromptCount": 0,
+        "agentTurnCount": 0,
+        "prompts": [],
+        "unassigned": {
+          "usage": {
+            "input": 0,
+            "cached": 0,
+            "cacheWrite": 0,
+            "output": 0,
+            "reasoning": 0,
+            "total": 0,
+            "costUsd": 0,
+            "unpricedRequests": 0,
+            "requests": 0,
+            "completedTurns": 0,
+            "assumedTierRequests": 0,
+            "missingCacheRequests": 0,
+            "missingCachedRequests": 0,
+            "missingCacheWriteRequests": 0,
+            "unmeasuredTurns": 0
+          },
+          "requestRefs": [],
+          "unmeasuredTurnRefs": []
+        }
+      },
+      "expect": {
+        "requests": 0,
+        "unmeasuredTurns": 0,
+        "userPromptCount": 0,
+        "costDisplay": "0.00"
+      }
+    }
+  ],
+  "correctionEdgeExamples": [
+    {
+      "name": "changed-historical-long-context-class",
+      "request": {
+        "key": "source:[\"fixture-guest\",\"openai\",\"50000000-0000-4000-8000-000000000011\",\"resp_contract_012\"]",
+        "at": "2026-11-01T12:00:00.000Z",
+        "model": "gpt-6.1-sol",
+        "tokens": {
+          "input": 200000,
+          "cached": 150000,
+          "cacheWrite": 0,
+          "output": 500,
+          "reasoning": 50,
+          "write12h": 0,
+          "cacheKnown": true,
+          "cachedKnown": true,
+          "cacheWriteKnown": true
+        },
+        "rates": {
+          "date": "2026-11-10",
+          "source": "https://developers.openai.com/api/docs/pricing",
+          "input": 4,
+          "cached": 0.2,
+          "write30m": 5,
+          "write12h": 10,
+          "output": 15,
+          "tier": "default",
+          "tierAssumed": false,
+          "longContext": true
+        },
+        "costUsd": null,
+        "partial": false,
+        "unpricedReason": "Corrected token amount changes historical pricing class; a compatible dated rate is unavailable.",
+        "serviceTier": "default",
+        "tierSource": "thread-settings",
+        "rateCorrection": {
+          "previousRates": {
+            "date": "2026-11-10",
+            "source": "https://developers.openai.com/api/docs/pricing",
+            "input": 8,
+            "cached": 0.4,
+            "write30m": 10,
+            "write12h": 20,
+            "output": 30,
+            "tier": "priority",
+            "tierAssumed": false,
+            "longContext": true
+          },
+          "previousCostUsd": 0.53,
+          "reason": "Earlier independent recorded-tier correction retained."
+        },
+        "source": {
+          "guestNamespace": "fixture-guest",
+          "modelProvider": "openai",
+          "originThreadId": "50000000-0000-4000-8000-000000000011",
+          "originTurnId": "60000000-0000-4000-8000-000000000012",
+          "rootTurnId": "60000000-0000-4000-8000-000000000012",
+          "responseId": "resp_contract_012"
+        },
+        "amountCorrection": {
+          "previousTokens": {
+            "input": 300000,
+            "cached": 250000,
+            "cacheWrite": 0,
+            "output": 1000,
+            "reasoning": 100,
+            "write12h": 0,
+            "cacheKnown": true,
+            "cachedKnown": true,
+            "cacheWriteKnown": true
+          },
+          "previousCostUsd": 0.265,
+          "previousPartial": false,
+          "previousUnpricedReason": null,
+          "reason": "Recovered exact request amount; historical short-context rates are not proven."
+        }
+      },
+      "expect": {
+        "costUsd": null,
+        "partial": false,
+        "coverageCanRemain": "complete",
+        "originalRatesRetained": true,
+        "independentRateCorrectionRetained": true,
+        "useCurrentRates": false
+      }
+    }
+  ]
+}

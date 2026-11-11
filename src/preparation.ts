@@ -33,10 +33,12 @@ export function renderPlan(plan: Plan): void {
     ['Runtime', data.runtime.kind + ' / ' + data.runtime.backend], ['Isolation', data.isolation],
     ['Writable folder', data.project.host], ['Guest project path', data.project.guest],
     ['Guest home', data.home.host], ['Resources', data.limits.cpus + ' CPU · ' + data.limits.mem + ' MB'],
-    ['Network', data.posture === 'offline' ? 'Offline' : 'Access allowed by policy'],
+    ['Guest network', data.posture === 'offline' ? 'Offline for guest commands' : 'Guest command traffic allowed by Brig policy'],
     ['Image', data.image.ref], ['Signature verification', data.verify.mode],
     ['Policies', data.policies.join(', ')],
-    ['Allowed destinations', data.egress.allow?.map(rule => rule.host ?? rule.cidr ?? '').join(', ') || 'None'],
+    ['Allowed guest destinations', data.egress.allow?.map(rule => rule.host ?? rule.cidr ?? '').join(', ') || 'None'],
+    ['Hosted Codex tools', 'Separate from the guest network policy'],
+    ['Codex web search', 'Mode not read or managed by Tugboat'],
     ['Host credentials', data.credentials.map(credential => credential.name + ' (' + (credential.state === 'unresolved' ? 'unresolved' : 'withheld') + ')').join(', ') || 'None'],
   ];
   list.replaceChildren();

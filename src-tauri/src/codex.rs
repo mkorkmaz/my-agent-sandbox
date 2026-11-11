@@ -60,6 +60,9 @@ fn classify_login(exit_code: Option<i32>, text: &str) -> LoginStatus {
 }
 
 fn login(checked: &CheckedProject) -> Result<LoginStatus, String> {
+    if checked.project.stage != "environment-ready" {
+        return Err("Prepare the Brig environment before checking sign-in status.".into());
+    }
     let output = checked.brig.run(
         &[
             "sh".into(),
@@ -100,12 +103,7 @@ fn arguments(
         return Err("Sign-in and online Codex sessions are unavailable in offline mode.".into());
     }
     if let Some(session_id) = session_id {
-        if !matches!(action, Action::Resume)
-            || !crate::conversations::valid_id(session_id)
-            || !crate::conversations::list(checked)?
-                .iter()
-                .any(|conversation| conversation.id == session_id)
-        {
+        if !matches!(action, Action::Resume) || !crate::conversations::valid_id(session_id) {
             return Err("This saved session does not belong to the selected project. Refresh the session list.".into());
         }
     }
@@ -197,6 +195,12 @@ pub async fn start_codex_session(
             crate::boundaries::require_pass(&app, &identifier, &checked.fingerprint)?;
         }
         crate::conversations::observe(&app, &checked)?;
+        if matches!(action, Action::Resume) {
+            let selected = session_id
+                .as_deref()
+                .ok_or("Choose a root chat to resume.")?;
+            crate::conversations::require_resume(&app, &checked, selected)?;
+        }
         let arguments = arguments(&checked, action, use_brig_boundary, session_id.as_deref())?;
         Ok::<_, String>(environment::command(&checked, arguments))
     })

@@ -5,11 +5,13 @@ mod brig;
 mod codex;
 mod command;
 mod conversations;
+mod conversation_graph;
 mod environment;
 mod host;
 mod hull;
 mod installation;
 mod lifecycle;
+mod lineage;
 mod menu;
 mod operations;
 mod policy_editor;
@@ -23,7 +25,7 @@ mod terminal;
 mod terminal_title;
 mod usage;
 
-use tauri::{Manager, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 
 unsafe extern "C" {
@@ -34,6 +36,11 @@ unsafe extern "C" {
 fn frontend_ready(window: WebviewWindow) -> Result<(), String> {
     window.show().map_err(|error| error.to_string())?;
     window.set_focus().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn application_version(app: AppHandle) -> String {
+    app.package_info().version.to_string()
 }
 
 #[tauri::command]
@@ -60,6 +67,12 @@ async fn choose_project_folder(window: WebviewWindow) -> Result<Option<String>, 
 }
 
 fn main() {
+    let context = tauri::generate_context!();
+    let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    if arguments.len() == 1 && arguments[0] == "--package-version" {
+        println!("{}", context.package_info().version);
+        return;
+    }
     tauri::Builder::default()
         .manage(host::Inspection::default())
         .manage(projects::Projects::default())
@@ -70,10 +83,12 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
+            application_version,
             choose_project_folder,
             projects::register_project,
             projects::recent_projects,
             projects::open_project,
+            projects::forget_project,
             projects::read_project_preferences,
             projects::save_project_preferences,
             conversations::project_dashboard,
@@ -127,7 +142,7 @@ fn main() {
         })
         .on_menu_event(menu::handle)
         .on_window_event(lifecycle::window_event)
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("Tugboat could not start")
         .run(lifecycle::event);
 }

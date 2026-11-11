@@ -1,0 +1,1499 @@
+{
+  "schemaVersion": 1,
+  "provenance": "real-request-reconciliation",
+  "tokenClasses": [
+    "input_tokens",
+    "cached_input_tokens",
+    "cache_write_input_tokens",
+    "output_tokens",
+    "reasoning_output_tokens",
+    "total_tokens"
+  ],
+  "files": [
+    {
+      "file": "primary.jsonl",
+      "role": "primary",
+      "threadId": "00000000-0000-4000-8000-000000000001",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000001"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000001",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000001",
+          "tokens": {
+            "input_tokens": 14857,
+            "cached_input_tokens": 12288,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 211,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15068
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000001",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000002",
+          "tokens": {
+            "input_tokens": 15089,
+            "cached_input_tokens": 14848,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 105,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15194
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000001",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000003",
+          "tokens": {
+            "input_tokens": 15215,
+            "cached_input_tokens": 14976,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 124,
+            "reasoning_output_tokens": 101,
+            "total_tokens": 15339
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000001",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000004",
+          "tokens": {
+            "input_tokens": 15399,
+            "cached_input_tokens": 15104,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 38,
+            "reasoning_output_tokens": 15,
+            "total_tokens": 15437
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000001",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000005",
+          "tokens": {
+            "input_tokens": 15531,
+            "cached_input_tokens": 15232,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 84,
+            "reasoning_output_tokens": 50,
+            "total_tokens": 15615
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000002",
+          "rootTurnId": "10000000-0000-4000-8000-000000000002",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000006",
+          "tokens": {
+            "input_tokens": 15669,
+            "cached_input_tokens": 15488,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 77,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15746
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000002",
+          "rootTurnId": "10000000-0000-4000-8000-000000000002",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000007",
+          "tokens": {
+            "input_tokens": 15759,
+            "cached_input_tokens": 15616,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 21,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15780
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000001",
+          "turnId": "10000000-0000-4000-8000-000000000002",
+          "rootTurnId": "10000000-0000-4000-8000-000000000002",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000008",
+          "tokens": {
+            "input_tokens": 15845,
+            "cached_input_tokens": 15616,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 12,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15857
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 123364,
+        "cached_input_tokens": 119168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 672,
+        "reasoning_output_tokens": 166,
+        "total_tokens": 124036
+      },
+      "matchedTokenCountNotifications": 8,
+      "firstCumulativeTokens": {
+        "input_tokens": 14857,
+        "cached_input_tokens": 12288,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 211,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 15068
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 123364,
+        "cached_input_tokens": 119168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 672,
+        "reasoning_output_tokens": 166,
+        "total_tokens": 124036
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 2,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000001",
+        "10000000-0000-4000-8000-000000000002"
+      ]
+    },
+    {
+      "file": "child-alpha.jsonl",
+      "role": "child-alpha",
+      "threadId": "00000000-0000-4000-8000-000000000002",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000002"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000002",
+          "turnId": "10000000-0000-4000-8000-000000000003",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000009",
+          "tokens": {
+            "input_tokens": 14691,
+            "cached_input_tokens": 7936,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 209,
+            "reasoning_output_tokens": 99,
+            "total_tokens": 14900
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000002",
+          "turnId": "10000000-0000-4000-8000-000000000003",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000010",
+          "tokens": {
+            "input_tokens": 14923,
+            "cached_input_tokens": 14720,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 49,
+            "reasoning_output_tokens": 26,
+            "total_tokens": 14972
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000002",
+          "turnId": "10000000-0000-4000-8000-000000000003",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000011",
+          "tokens": {
+            "input_tokens": 15040,
+            "cached_input_tokens": 14848,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 66,
+            "reasoning_output_tokens": 49,
+            "total_tokens": 15106
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000002",
+          "turnId": "10000000-0000-4000-8000-000000000003",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000012",
+          "tokens": {
+            "input_tokens": 15180,
+            "cached_input_tokens": 14976,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 233,
+            "reasoning_output_tokens": 192,
+            "total_tokens": 15413
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000002",
+          "turnId": "10000000-0000-4000-8000-000000000004",
+          "rootTurnId": "10000000-0000-4000-8000-000000000002",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000013",
+          "tokens": {
+            "input_tokens": 15483,
+            "cached_input_tokens": 15232,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 10,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15493
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 75317,
+        "cached_input_tokens": 67712,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 567,
+        "reasoning_output_tokens": 366,
+        "total_tokens": 75884
+      },
+      "matchedTokenCountNotifications": 5,
+      "firstCumulativeTokens": {
+        "input_tokens": 14691,
+        "cached_input_tokens": 7936,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 209,
+        "reasoning_output_tokens": 99,
+        "total_tokens": 14900
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 75317,
+        "cached_input_tokens": 67712,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 567,
+        "reasoning_output_tokens": 366,
+        "total_tokens": 75884
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 2,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000003",
+        "10000000-0000-4000-8000-000000000004"
+      ]
+    },
+    {
+      "file": "child-beta.jsonl",
+      "role": "child-beta",
+      "threadId": "00000000-0000-4000-8000-000000000003",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000003"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000003",
+          "turnId": "10000000-0000-4000-8000-000000000005",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000014",
+          "tokens": {
+            "input_tokens": 14611,
+            "cached_input_tokens": 14208,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 165,
+            "reasoning_output_tokens": 158,
+            "total_tokens": 14776
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 14611,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 165,
+        "reasoning_output_tokens": 158,
+        "total_tokens": 14776
+      },
+      "matchedTokenCountNotifications": 1,
+      "firstCumulativeTokens": {
+        "input_tokens": 14611,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 165,
+        "reasoning_output_tokens": 158,
+        "total_tokens": 14776
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 14611,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 165,
+        "reasoning_output_tokens": 158,
+        "total_tokens": 14776
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 1,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000005"
+      ]
+    },
+    {
+      "file": "grandchild-gamma.jsonl",
+      "role": "grandchild-gamma",
+      "threadId": "00000000-0000-4000-8000-000000000004",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000004"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000004",
+          "turnId": "10000000-0000-4000-8000-000000000006",
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "sessionId": "00000000-0000-4000-8000-000000000001",
+          "responseId": "resp_fixture_000015",
+          "tokens": {
+            "input_tokens": 14601,
+            "cached_input_tokens": 14208,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 54,
+            "reasoning_output_tokens": 47,
+            "total_tokens": 14655
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 14601,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 54,
+        "reasoning_output_tokens": 47,
+        "total_tokens": 14655
+      },
+      "matchedTokenCountNotifications": 1,
+      "firstCumulativeTokens": {
+        "input_tokens": 14601,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 54,
+        "reasoning_output_tokens": 47,
+        "total_tokens": 14655
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 14601,
+        "cached_input_tokens": 14208,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 54,
+        "reasoning_output_tokens": 47,
+        "total_tokens": 14655
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 1,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000006"
+      ]
+    },
+    {
+      "file": "normal-fork.jsonl",
+      "role": "normal-fork",
+      "threadId": "00000000-0000-4000-8000-000000000005",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000005"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000005",
+          "turnId": "10000000-0000-4000-8000-000000000007",
+          "rootTurnId": "10000000-0000-4000-8000-000000000007",
+          "sessionId": "00000000-0000-4000-8000-000000000005",
+          "responseId": "resp_fixture_000016",
+          "tokens": {
+            "input_tokens": 15877,
+            "cached_input_tokens": 12288,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 5,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15882
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": null,
+          "serviceTierSource": "missing"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 15877,
+        "cached_input_tokens": 12288,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 15882
+      },
+      "matchedTokenCountNotifications": 1,
+      "firstCumulativeTokens": {
+        "input_tokens": 139241,
+        "cached_input_tokens": 131456,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 677,
+        "reasoning_output_tokens": 166,
+        "total_tokens": 139918
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 139241,
+        "cached_input_tokens": 131456,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 677,
+        "reasoning_output_tokens": 166,
+        "total_tokens": 139918
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 1,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000007"
+      ]
+    },
+    {
+      "file": "guest-cli-baseline.jsonl",
+      "role": "guest-cli-baseline",
+      "threadId": "00000000-0000-4000-8000-000000000007",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000007"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000008",
+          "rootTurnId": "10000000-0000-4000-8000-000000000008",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000017",
+          "tokens": {
+            "input_tokens": 15238,
+            "cached_input_tokens": 12032,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 98,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15336
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000008",
+          "rootTurnId": "10000000-0000-4000-8000-000000000008",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000018",
+          "tokens": {
+            "input_tokens": 15459,
+            "cached_input_tokens": 15104,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 89,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15548
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000008",
+          "rootTurnId": "10000000-0000-4000-8000-000000000008",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000019",
+          "tokens": {
+            "input_tokens": 15685,
+            "cached_input_tokens": 15360,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 52,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15737
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000009",
+          "rootTurnId": "10000000-0000-4000-8000-000000000009",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000020",
+          "tokens": {
+            "input_tokens": 15789,
+            "cached_input_tokens": 12032,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 102,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15891
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000009",
+          "rootTurnId": "10000000-0000-4000-8000-000000000009",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000021",
+          "tokens": {
+            "input_tokens": 15971,
+            "cached_input_tokens": 15616,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 53,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 16024
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000010",
+          "rootTurnId": "10000000-0000-4000-8000-000000000010",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000022",
+          "tokens": {
+            "input_tokens": 16097,
+            "cached_input_tokens": 12032,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 79,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 16176
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000010",
+          "rootTurnId": "10000000-0000-4000-8000-000000000010",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000023",
+          "tokens": {
+            "input_tokens": 16326,
+            "cached_input_tokens": 15872,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 78,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 16404
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000010",
+          "rootTurnId": "10000000-0000-4000-8000-000000000010",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000024",
+          "tokens": {
+            "input_tokens": 16432,
+            "cached_input_tokens": 16256,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 43,
+            "reasoning_output_tokens": 10,
+            "total_tokens": 16475
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000010",
+          "rootTurnId": "10000000-0000-4000-8000-000000000010",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000025",
+          "tokens": {
+            "input_tokens": 16625,
+            "cached_input_tokens": 15744,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 47,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 16672
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000011",
+          "rootTurnId": "10000000-0000-4000-8000-000000000011",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000026",
+          "tokens": {
+            "input_tokens": 16720,
+            "cached_input_tokens": 16512,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 21,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 16741
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000012",
+          "rootTurnId": "10000000-0000-4000-8000-000000000012",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000027",
+          "tokens": {
+            "input_tokens": 16800,
+            "cached_input_tokens": 16256,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 83,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 16883
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000013",
+          "rootTurnId": "10000000-0000-4000-8000-000000000013",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000028",
+          "tokens": {
+            "input_tokens": 17062,
+            "cached_input_tokens": 16768,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 219,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 17281
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000013",
+          "rootTurnId": "10000000-0000-4000-8000-000000000013",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000029",
+          "tokens": {
+            "input_tokens": 17546,
+            "cached_input_tokens": 17152,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 90,
+            "reasoning_output_tokens": 11,
+            "total_tokens": 17636
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000014",
+          "rootTurnId": "10000000-0000-4000-8000-000000000014",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000030",
+          "tokens": {
+            "input_tokens": 17761,
+            "cached_input_tokens": 16512,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 133,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 17894
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000015",
+          "rootTurnId": "10000000-0000-4000-8000-000000000015",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000031",
+          "tokens": {
+            "input_tokens": 17934,
+            "cached_input_tokens": 17408,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 42,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 17976
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000007",
+          "turnId": "10000000-0000-4000-8000-000000000016",
+          "rootTurnId": "10000000-0000-4000-8000-000000000016",
+          "sessionId": "00000000-0000-4000-8000-000000000007",
+          "responseId": "resp_fixture_000032",
+          "tokens": {
+            "input_tokens": 18032,
+            "cached_input_tokens": 17664,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 81,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 18113
+          },
+          "model": "gpt-6.1-sol",
+          "effort": null,
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 265477,
+        "cached_input_tokens": 248320,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1310,
+        "reasoning_output_tokens": 21,
+        "total_tokens": 266787
+      },
+      "matchedTokenCountNotifications": 16,
+      "firstCumulativeTokens": {
+        "input_tokens": 15238,
+        "cached_input_tokens": 12032,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 98,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 15336
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 265477,
+        "cached_input_tokens": 248320,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1310,
+        "reasoning_output_tokens": 21,
+        "total_tokens": 266787
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 9,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000008",
+        "10000000-0000-4000-8000-000000000009",
+        "10000000-0000-4000-8000-000000000010",
+        "10000000-0000-4000-8000-000000000011",
+        "10000000-0000-4000-8000-000000000012",
+        "10000000-0000-4000-8000-000000000013",
+        "10000000-0000-4000-8000-000000000014",
+        "10000000-0000-4000-8000-000000000015",
+        "10000000-0000-4000-8000-000000000016"
+      ]
+    },
+    {
+      "file": "p02/history-primary.jsonl",
+      "role": "history-primary",
+      "threadId": "00000000-0000-4000-8000-000000000008",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000008"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000008",
+          "turnId": "10000000-0000-4000-8000-000000000018",
+          "rootTurnId": "10000000-0000-4000-8000-000000000018",
+          "sessionId": "00000000-0000-4000-8000-000000000008",
+          "responseId": "resp_fixture_000033",
+          "tokens": {
+            "input_tokens": 14769,
+            "cached_input_tokens": 12288,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 26,
+            "reasoning_output_tokens": 19,
+            "total_tokens": 14795
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000008",
+          "turnId": "10000000-0000-4000-8000-000000000019",
+          "rootTurnId": "10000000-0000-4000-8000-000000000019",
+          "sessionId": "00000000-0000-4000-8000-000000000008",
+          "responseId": "resp_fixture_000034",
+          "tokens": {
+            "input_tokens": 14874,
+            "cached_input_tokens": 12288,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 65,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 14939
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000008",
+          "turnId": "10000000-0000-4000-8000-000000000019",
+          "rootTurnId": "10000000-0000-4000-8000-000000000019",
+          "sessionId": "00000000-0000-4000-8000-000000000008",
+          "responseId": "resp_fixture_000035",
+          "tokens": {
+            "input_tokens": 14960,
+            "cached_input_tokens": 14720,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 48,
+            "reasoning_output_tokens": 25,
+            "total_tokens": 15008
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        },
+        {
+          "threadId": "00000000-0000-4000-8000-000000000008",
+          "turnId": "10000000-0000-4000-8000-000000000019",
+          "rootTurnId": "10000000-0000-4000-8000-000000000019",
+          "sessionId": "00000000-0000-4000-8000-000000000008",
+          "responseId": "resp_fixture_000036",
+          "tokens": {
+            "input_tokens": 15068,
+            "cached_input_tokens": 14848,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 10,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15078
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 59671,
+        "cached_input_tokens": 54144,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 149,
+        "reasoning_output_tokens": 44,
+        "total_tokens": 59820
+      },
+      "matchedTokenCountNotifications": 4,
+      "firstCumulativeTokens": {
+        "input_tokens": 14769,
+        "cached_input_tokens": 12288,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 26,
+        "reasoning_output_tokens": 19,
+        "total_tokens": 14795
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 59671,
+        "cached_input_tokens": 54144,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 149,
+        "reasoning_output_tokens": 44,
+        "total_tokens": 59820
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 2,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000018",
+        "10000000-0000-4000-8000-000000000019"
+      ]
+    },
+    {
+      "file": "p02/history-child.jsonl",
+      "role": "history-child",
+      "threadId": "00000000-0000-4000-8000-000000000009",
+      "sessionMetaIdsInOrder": [
+        "00000000-0000-4000-8000-000000000009",
+        "00000000-0000-4000-8000-000000000008"
+      ],
+      "ownRequests": [
+        {
+          "threadId": "00000000-0000-4000-8000-000000000009",
+          "turnId": "10000000-0000-4000-8000-000000000020",
+          "rootTurnId": "10000000-0000-4000-8000-000000000019",
+          "sessionId": "00000000-0000-4000-8000-000000000008",
+          "responseId": "resp_fixture_000037",
+          "tokens": {
+            "input_tokens": 15695,
+            "cached_input_tokens": 14720,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 34,
+            "reasoning_output_tokens": 27,
+            "total_tokens": 15729
+          },
+          "model": "gpt-6.1-sol",
+          "effort": "max",
+          "serviceTier": "default",
+          "serviceTierSource": "thread-settings"
+        }
+      ],
+      "ownTokens": {
+        "input_tokens": 15695,
+        "cached_input_tokens": 14720,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 34,
+        "reasoning_output_tokens": 27,
+        "total_tokens": 15729
+      },
+      "matchedTokenCountNotifications": 1,
+      "firstCumulativeTokens": {
+        "input_tokens": 15695,
+        "cached_input_tokens": 14720,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 34,
+        "reasoning_output_tokens": 27,
+        "total_tokens": 15729
+      },
+      "lastCumulativeTokens": {
+        "input_tokens": 15695,
+        "cached_input_tokens": 14720,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 34,
+        "reasoning_output_tokens": 27,
+        "total_tokens": 15729
+      },
+      "copiedForeignUsageRecords": 0,
+      "observedTaskStarted": 3,
+      "ownRequestTurnIds": [
+        "10000000-0000-4000-8000-000000000020"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "name": "p01-primary-family",
+      "rootRole": "primary",
+      "descendantRoles": [
+        "child-alpha",
+        "child-beta",
+        "grandchild-gamma"
+      ],
+      "descendantCount": 3,
+      "ownTokens": {
+        "input_tokens": 123364,
+        "cached_input_tokens": 119168,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 672,
+        "reasoning_output_tokens": 166,
+        "total_tokens": 124036
+      },
+      "descendantTokens": {
+        "input_tokens": 104529,
+        "cached_input_tokens": 96128,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 786,
+        "reasoning_output_tokens": 571,
+        "total_tokens": 105315
+      },
+      "combinedTokens": {
+        "input_tokens": 227893,
+        "cached_input_tokens": 215296,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1458,
+        "reasoning_output_tokens": 737,
+        "total_tokens": 229351
+      },
+      "ownResponseIds": [
+        "resp_fixture_000001",
+        "resp_fixture_000002",
+        "resp_fixture_000003",
+        "resp_fixture_000004",
+        "resp_fixture_000005",
+        "resp_fixture_000006",
+        "resp_fixture_000007",
+        "resp_fixture_000008"
+      ],
+      "descendantResponseIds": [
+        "resp_fixture_000009",
+        "resp_fixture_000010",
+        "resp_fixture_000011",
+        "resp_fixture_000012",
+        "resp_fixture_000013",
+        "resp_fixture_000014",
+        "resp_fixture_000015"
+      ],
+      "intersection": [],
+      "promptTotals": [
+        {
+          "rootTurnId": "10000000-0000-4000-8000-000000000001",
+          "ownTokens": {
+            "input_tokens": 76091,
+            "cached_input_tokens": 72448,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 562,
+            "reasoning_output_tokens": 166,
+            "total_tokens": 76653
+          },
+          "descendantTokens": {
+            "input_tokens": 89046,
+            "cached_input_tokens": 80896,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 776,
+            "reasoning_output_tokens": 571,
+            "total_tokens": 89822
+          },
+          "combinedTokens": {
+            "input_tokens": 165137,
+            "cached_input_tokens": 153344,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 1338,
+            "reasoning_output_tokens": 737,
+            "total_tokens": 166475
+          },
+          "ownResponseIds": [
+            "resp_fixture_000001",
+            "resp_fixture_000002",
+            "resp_fixture_000003",
+            "resp_fixture_000004",
+            "resp_fixture_000005"
+          ],
+          "descendantResponseIds": [
+            "resp_fixture_000009",
+            "resp_fixture_000010",
+            "resp_fixture_000011",
+            "resp_fixture_000012",
+            "resp_fixture_000014",
+            "resp_fixture_000015"
+          ]
+        },
+        {
+          "rootTurnId": "10000000-0000-4000-8000-000000000002",
+          "ownTokens": {
+            "input_tokens": 47273,
+            "cached_input_tokens": 46720,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 110,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 47383
+          },
+          "descendantTokens": {
+            "input_tokens": 15483,
+            "cached_input_tokens": 15232,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 10,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 15493
+          },
+          "combinedTokens": {
+            "input_tokens": 62756,
+            "cached_input_tokens": 61952,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 120,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 62876
+          },
+          "ownResponseIds": [
+            "resp_fixture_000006",
+            "resp_fixture_000007",
+            "resp_fixture_000008"
+          ],
+          "descendantResponseIds": [
+            "resp_fixture_000013"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "p02-inherited-family",
+      "rootRole": "history-primary",
+      "descendantRoles": [
+        "history-child"
+      ],
+      "descendantCount": 1,
+      "ownTokens": {
+        "input_tokens": 59671,
+        "cached_input_tokens": 54144,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 149,
+        "reasoning_output_tokens": 44,
+        "total_tokens": 59820
+      },
+      "descendantTokens": {
+        "input_tokens": 15695,
+        "cached_input_tokens": 14720,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 34,
+        "reasoning_output_tokens": 27,
+        "total_tokens": 15729
+      },
+      "combinedTokens": {
+        "input_tokens": 75366,
+        "cached_input_tokens": 68864,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 183,
+        "reasoning_output_tokens": 71,
+        "total_tokens": 75549
+      },
+      "ownResponseIds": [
+        "resp_fixture_000033",
+        "resp_fixture_000034",
+        "resp_fixture_000035",
+        "resp_fixture_000036"
+      ],
+      "descendantResponseIds": [
+        "resp_fixture_000037"
+      ],
+      "intersection": [],
+      "promptTotals": [
+        {
+          "rootTurnId": "10000000-0000-4000-8000-000000000018",
+          "ownTokens": {
+            "input_tokens": 14769,
+            "cached_input_tokens": 12288,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 26,
+            "reasoning_output_tokens": 19,
+            "total_tokens": 14795
+          },
+          "descendantTokens": {
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 0,
+            "reasoning_output_tokens": 0,
+            "total_tokens": 0
+          },
+          "combinedTokens": {
+            "input_tokens": 14769,
+            "cached_input_tokens": 12288,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 26,
+            "reasoning_output_tokens": 19,
+            "total_tokens": 14795
+          },
+          "ownResponseIds": [
+            "resp_fixture_000033"
+          ],
+          "descendantResponseIds": []
+        },
+        {
+          "rootTurnId": "10000000-0000-4000-8000-000000000019",
+          "ownTokens": {
+            "input_tokens": 44902,
+            "cached_input_tokens": 41856,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 123,
+            "reasoning_output_tokens": 25,
+            "total_tokens": 45025
+          },
+          "descendantTokens": {
+            "input_tokens": 15695,
+            "cached_input_tokens": 14720,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 34,
+            "reasoning_output_tokens": 27,
+            "total_tokens": 15729
+          },
+          "combinedTokens": {
+            "input_tokens": 60597,
+            "cached_input_tokens": 56576,
+            "cache_write_input_tokens": 0,
+            "output_tokens": 157,
+            "reasoning_output_tokens": 52,
+            "total_tokens": 60754
+          },
+          "ownResponseIds": [
+            "resp_fixture_000034",
+            "resp_fixture_000035",
+            "resp_fixture_000036"
+          ],
+          "descendantResponseIds": [
+            "resp_fixture_000037"
+          ]
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "name": "p01-sample-project",
+      "roles": [
+        "primary",
+        "child-alpha",
+        "child-beta",
+        "grandchild-gamma",
+        "normal-fork"
+      ],
+      "requests": 16,
+      "tokens": {
+        "input_tokens": 243770,
+        "cached_input_tokens": 227584,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1463,
+        "reasoning_output_tokens": 737,
+        "total_tokens": 245233
+      },
+      "responseIds": [
+        "resp_fixture_000001",
+        "resp_fixture_000002",
+        "resp_fixture_000003",
+        "resp_fixture_000004",
+        "resp_fixture_000005",
+        "resp_fixture_000006",
+        "resp_fixture_000007",
+        "resp_fixture_000008",
+        "resp_fixture_000009",
+        "resp_fixture_000010",
+        "resp_fixture_000011",
+        "resp_fixture_000012",
+        "resp_fixture_000013",
+        "resp_fixture_000014",
+        "resp_fixture_000015",
+        "resp_fixture_000016"
+      ]
+    },
+    {
+      "name": "p02-inherited-family-only",
+      "roles": [
+        "history-primary",
+        "history-child"
+      ],
+      "requests": 5,
+      "tokens": {
+        "input_tokens": 75366,
+        "cached_input_tokens": 68864,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 183,
+        "reasoning_output_tokens": 71,
+        "total_tokens": 75549
+      },
+      "responseIds": [
+        "resp_fixture_000033",
+        "resp_fixture_000034",
+        "resp_fixture_000035",
+        "resp_fixture_000036",
+        "resp_fixture_000037"
+      ]
+    },
+    {
+      "name": "all-new-guest-project-records",
+      "roles": [
+        "primary",
+        "child-alpha",
+        "child-beta",
+        "grandchild-gamma",
+        "normal-fork",
+        "history-primary",
+        "history-child"
+      ],
+      "requests": 21,
+      "tokens": {
+        "input_tokens": 319136,
+        "cached_input_tokens": 296448,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1646,
+        "reasoning_output_tokens": 808,
+        "total_tokens": 320782
+      },
+      "responseIds": [
+        "resp_fixture_000001",
+        "resp_fixture_000002",
+        "resp_fixture_000003",
+        "resp_fixture_000004",
+        "resp_fixture_000005",
+        "resp_fixture_000006",
+        "resp_fixture_000007",
+        "resp_fixture_000008",
+        "resp_fixture_000009",
+        "resp_fixture_000010",
+        "resp_fixture_000011",
+        "resp_fixture_000012",
+        "resp_fixture_000013",
+        "resp_fixture_000014",
+        "resp_fixture_000015",
+        "resp_fixture_000016",
+        "resp_fixture_000033",
+        "resp_fixture_000034",
+        "resp_fixture_000035",
+        "resp_fixture_000036",
+        "resp_fixture_000037"
+      ]
+    },
+    {
+      "name": "previous-guest-cli-baseline-only",
+      "roles": [
+        "guest-cli-baseline"
+      ],
+      "requests": 16,
+      "tokens": {
+        "input_tokens": 265477,
+        "cached_input_tokens": 248320,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 1310,
+        "reasoning_output_tokens": 21,
+        "total_tokens": 266787
+      },
+      "responseIds": [
+        "resp_fixture_000017",
+        "resp_fixture_000018",
+        "resp_fixture_000019",
+        "resp_fixture_000020",
+        "resp_fixture_000021",
+        "resp_fixture_000022",
+        "resp_fixture_000023",
+        "resp_fixture_000024",
+        "resp_fixture_000025",
+        "resp_fixture_000026",
+        "resp_fixture_000027",
+        "resp_fixture_000028",
+        "resp_fixture_000029",
+        "resp_fixture_000030",
+        "resp_fixture_000031",
+        "resp_fixture_000032"
+      ]
+    }
+  ],
+  "globalRequestCount": 37,
+  "globalUniqueResponseIds": [
+    "resp_fixture_000001",
+    "resp_fixture_000002",
+    "resp_fixture_000003",
+    "resp_fixture_000004",
+    "resp_fixture_000005",
+    "resp_fixture_000006",
+    "resp_fixture_000007",
+    "resp_fixture_000008",
+    "resp_fixture_000009",
+    "resp_fixture_000010",
+    "resp_fixture_000011",
+    "resp_fixture_000012",
+    "resp_fixture_000013",
+    "resp_fixture_000014",
+    "resp_fixture_000015",
+    "resp_fixture_000016",
+    "resp_fixture_000017",
+    "resp_fixture_000018",
+    "resp_fixture_000019",
+    "resp_fixture_000020",
+    "resp_fixture_000021",
+    "resp_fixture_000022",
+    "resp_fixture_000023",
+    "resp_fixture_000024",
+    "resp_fixture_000025",
+    "resp_fixture_000026",
+    "resp_fixture_000027",
+    "resp_fixture_000028",
+    "resp_fixture_000029",
+    "resp_fixture_000030",
+    "resp_fixture_000031",
+    "resp_fixture_000032",
+    "resp_fixture_000033",
+    "resp_fixture_000034",
+    "resp_fixture_000035",
+    "resp_fixture_000036",
+    "resp_fixture_000037"
+  ],
+  "historyBoundary": {
+    "file": "history-child.jsonl",
+    "ownerThreadId": "00000000-0000-4000-8000-000000000009",
+    "copiedParentThreadId": "00000000-0000-4000-8000-000000000008",
+    "firstOwnerMetaOrdinal": 0,
+    "copiedParentMetaOrdinal": 1,
+    "ownSettingsOrdinal": 23,
+    "ownSettingsThreadId": "00000000-0000-4000-8000-000000000009",
+    "ownTaskStartedOrdinal": 24,
+    "ownTurnId": "10000000-0000-4000-8000-000000000020",
+    "copiedLifecycleTurnIds": [
+      "10000000-0000-4000-8000-000000000018",
+      "10000000-0000-4000-8000-000000000019"
+    ],
+    "copiedTokenUsageRecords": 0,
+    "ownCompletedTurns": 1,
+    "interAgentMetadataOrdinal": 29,
+    "interAgentTriggerTurn": true,
+    "explicitCopiedPrefixEndMarker": "thread_settings_applied.thread_id == first session_meta.id",
+    "timestampUsedForOwnership": false,
+    "ordinalValueUsedForOwnership": false
+  },
+  "sourceCoverage": "persisted-records-only",
+  "knownNonPersistedExclusions": [
+    "P01 ephemeral fork has no JSONL/physical response record"
+  ]
+}

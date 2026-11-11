@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "codexVersion": "0.167.0",
+  "provenance": "filtered-real-guest-records",
+  "scenario": "one-full-history-child",
+  "spawn": {
+    "task_name": "inherited",
+    "fork_turns": "all",
+    "modelOverride": null,
+    "effortOverride": null,
+    "inheritedModel": "gpt-6.1-sol",
+    "inheritedEffort": "max"
+  },
+  "fixtures": [
+    {
+      "file": "history-primary.jsonl",
+      "role": "history-primary",
+      "threadId": "00000000-0000-4000-8000-000000000008",
+      "rawSha256": "19c4ddef6f31e6dc64586a0a9141a8f5fc7273bbbcfe459d0e0cb5cb26b41d33",
+      "fixtureSha256": "faf55caf50045b8e5f661634aeef9ecc1e8585f1a4f3f65ab0b969d67ec68569",
+      "sourceRecordCount": 48,
+      "retainedRecordCount": 18,
+      "sessionMetaRecords": 1
+    },
+    {
+      "file": "history-child.jsonl",
+      "role": "history-child",
+      "threadId": "00000000-0000-4000-8000-000000000009",
+      "rawSha256": "f7f954fcafaa27d6f89539769d6ccb8baf312e0b692e606e7d06062bbbf2027f",
+      "fixtureSha256": "407ad3f7f909f4c9e9f012ade6c89a36927a317646a2ea32647e6b010b461ba6",
+      "sourceRecordCount": 38,
+      "retainedRecordCount": 15,
+      "sessionMetaRecords": 2
+    }
+  ]
+}
