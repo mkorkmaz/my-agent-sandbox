@@ -18,6 +18,7 @@ pub fn is_closing() -> bool {
 enum Target {
     Window(Box<Window>),
     App,
+    Restart,
 }
 
 fn begin(app: AppHandle, target: Target) {
@@ -35,6 +36,9 @@ fn begin(app: AppHandle, target: Target) {
             errors.push(error);
         }
         if let Err(error) = command::wait_for_idle(Duration::from_secs(4)) {
+            errors.push(error);
+        }
+        if let Err(error) = crate::shared_chatgpt::flush(&app) {
             errors.push(error);
         }
         if errors.is_empty() {
@@ -60,6 +64,7 @@ fn begin(app: AppHandle, target: Target) {
             ALLOW_EXIT.store(true, Ordering::SeqCst);
             match target {
                 Target::App => complete.exit(0),
+                Target::Restart => complete.restart(),
                 Target::Window(window) => {
                     if let Err(error) = window.close() {
                         ALLOW_CLOSE.store(false, Ordering::SeqCst);
@@ -88,10 +93,14 @@ fn request(app: &AppHandle, target: Target) {
         .title(match &target {
             Target::Window(_) => "Close this window?".into(),
             Target::App => format!("Quit {}?", app.package_info().name),
+            Target::Restart => "Restart Tugboat?".into(),
         })
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::OkCancelCustom(
-            "End processes and close".into(),
+            match &target {
+                Target::Restart => "End processes and restart".into(),
+                _ => "End processes and close".into(),
+            },
             "Cancel".into(),
         ));
     if let Some(window) = app.get_webview_window("main") {
@@ -123,6 +132,10 @@ pub fn window_event(window: &Window, event: &WindowEvent) {
 
 pub fn request_quit(app: &AppHandle) {
     request(app, Target::App);
+}
+
+pub fn request_restart(app: &AppHandle) {
+    request(app, Target::Restart);
 }
 
 pub fn event(app: &AppHandle, event: RunEvent) {

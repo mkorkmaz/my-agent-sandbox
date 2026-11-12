@@ -28,6 +28,8 @@ pub struct Project {
     pub name: String,
     pub path: PathBuf,
     device: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    volume_uuid: Option<[u8; 16]>,
     inode: u64,
     created: u128,
     pub profile: String,
@@ -186,15 +188,27 @@ impl Project {
             .path
             .metadata()
             .map_err(|_| "The project moved or is unavailable. Select the folder again.")?;
-        if metadata.dev() != self.device
-            || metadata.ino() != self.inode
-            || creation_time(&metadata) != self.created
-        {
+        if !self.matches_folder(&metadata, volume_uuid(&self.path), false) {
             return Err(
                 "The folder at this path changed. Select it again to create a new record.".into(),
             );
         }
         Ok(())
+    }
+    fn matches_folder(
+        &self,
+        metadata: &fs::Metadata,
+        volume: Option<[u8; 16]>,
+        recover_legacy_remount: bool,
+    ) -> bool {
+        let same_volume = match self.volume_uuid {
+            Some(expected) => volume == Some(expected),
+            None => metadata.dev() == self.device || (recover_legacy_remount && self.created != 0),
+        };
+        metadata.is_dir()
+            && metadata.ino() == self.inode
+            && creation_time(metadata) == self.created
+            && same_volume
     }
     pub fn check_guest_path(&self) -> Result<(), String> {
         let name = self
@@ -261,15 +275,16 @@ impl Registry {
         let path = check_folder(selected)?;
         let metadata = path.metadata().map_err(|error| error.to_string())?;
         let created = creation_time(&metadata);
+        let volume = volume_uuid(&path);
         let opened_at = self.next_opened_at();
         let previous = self.projects.iter_mut().find(|project| {
-            project.device == metadata.dev()
-                && project.inode == metadata.ino()
-                && project.created == created
+            project.matches_folder(&metadata, volume, true)
                 && (project.path == path || !project.path.exists())
         });
         if let Some(project) = previous {
             project.path = path;
+            project.device = metadata.dev();
+            project.volume_uuid = volume;
             project.updated_at = now();
             project.last_opened_at = Some(opened_at);
             return Ok(project.clone());
@@ -292,6 +307,7 @@ impl Registry {
             name,
             path,
             device: metadata.dev(),
+            volume_uuid: volume,
             inode: metadata.ino(),
             created,
             profile: profile.into(),
@@ -318,6 +334,24 @@ impl Registry {
             .find(|project| project.id == id)
             .cloned()
             .ok_or("Project record not found. Select the folder again.".into())
+    }
+    fn rescan_paths(&mut self) -> bool {
+        let mut changed = false;
+        for project in &mut self.projects {
+            let Ok(metadata) = project.path.metadata() else {
+                continue;
+            };
+            let volume = volume_uuid(&project.path);
+            if !project.matches_folder(&metadata, volume, true) {
+                continue;
+            }
+            if project.device != metadata.dev() || project.volume_uuid != volume {
+                project.device = metadata.dev();
+                project.volume_uuid = volume;
+                changed = true;
+            }
+        }
+        changed
     }
     fn forget_unavailable(&mut self, id: &str) -> Result<(), String> {
         let project = self.project(id)?;
@@ -369,12 +403,62 @@ fn creation_time(metadata: &fs::Metadata) -> u128 {
         .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
         .map_or(0, |time| time.as_nanos())
 }
+
+// Device numbers can change after a remount. The volume UUID identifies the disk across boots.
+#[cfg(target_os = "macos")]
+fn volume_uuid(path: &Path) -> Option<[u8; 16]> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let path = CString::new(path.as_os_str().as_bytes()).ok()?;
+    let mut filesystem = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: statfs initializes the supplied buffer on success.
+    if unsafe { libc::statfs(path.as_ptr(), filesystem.as_mut_ptr()) } != 0 {
+        return None;
+    }
+    // SAFETY: statfs returned success and initialized the entire buffer.
+    let filesystem = unsafe { filesystem.assume_init() };
+    let mut attributes = libc::attrlist {
+        bitmapcount: libc::ATTR_BIT_MAP_COUNT,
+        reserved: 0,
+        commonattr: 0,
+        volattr: libc::ATTR_VOL_INFO | libc::ATTR_VOL_UUID,
+        dirattr: 0,
+        fileattr: 0,
+        forkattr: 0,
+    };
+    #[repr(C)]
+    struct VolumeAttributes {
+        length: u32,
+        uuid: [u8; 16],
+    }
+    let mut result = VolumeAttributes {
+        length: 0,
+        uuid: [0; 16],
+    };
+    // SAFETY: Both pointers refer to initialized buffers with the requested layout and size.
+    let status = unsafe {
+        libc::getattrlist(
+            filesystem.f_mntonname.as_ptr(),
+            &mut attributes as *mut libc::attrlist as *mut libc::c_void,
+            &mut result as *mut VolumeAttributes as *mut libc::c_void,
+            std::mem::size_of::<VolumeAttributes>(),
+            0,
+        )
+    };
+    // Some file systems do not provide a persistent UUID. Retain device checks for those volumes.
+    (status == 0
+        && result.length as usize == std::mem::size_of::<VolumeAttributes>()
+        && result.uuid != [0; 16])
+        .then_some(result.uuid)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn volume_uuid(_path: &Path) -> Option<[u8; 16]> {
+    None
+}
 pub fn file(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|error| error.to_string())?
-        .join("projects.json"))
+    Ok(crate::data_location::directory(app)?.join("projects.json"))
 }
 
 pub fn check_folder(selected: &Path) -> Result<PathBuf, String> {
@@ -419,6 +503,7 @@ pub fn register_project(
     let _file_guard = storage::lock(&file)?;
     let mut registry = Registry::load(&file)?;
     let project = registry.register(Path::new(&folder), &settings.profile)?;
+    crate::data_location::validate_project_records(&app, &registry)?;
     storage::write(&file, &registry)?;
     Ok(project)
 }
@@ -479,16 +564,42 @@ fn git_branch(project: &Project) -> Option<String> {
 #[tauri::command]
 pub async fn recent_projects(app: AppHandle) -> Result<Vec<ProjectSummary>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut projects = Registry::load(&file(&app)?)?.projects;
-        projects.sort_by_key(|project| std::cmp::Reverse(opened_at(project)));
-        Ok(projects
-            .into_iter()
-            .map(|project| ProjectSummary {
-                available: project.check_path().is_ok(),
-                git_branch: git_branch(&project),
-                project,
-            })
-            .collect())
+        Ok(project_summaries(Registry::load(&file(&app)?)?.projects))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn project_summaries(mut projects: Vec<Project>) -> Vec<ProjectSummary> {
+    projects.sort_by_key(|project| std::cmp::Reverse(opened_at(project)));
+    projects
+        .into_iter()
+        .map(|project| ProjectSummary {
+            available: project.check_path().is_ok(),
+            git_branch: git_branch(&project),
+            project,
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub async fn rescan_projects(
+    app: AppHandle,
+    state: State<'_, Projects>,
+) -> Result<Vec<ProjectSummary>, String> {
+    let lock = state.0.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let projects = {
+            let _guard = lock.lock().map_err(|error| error.to_string())?;
+            let file = file(&app)?;
+            let _file_guard = storage::lock(&file)?;
+            let mut registry = Registry::load(&file)?;
+            if registry.rescan_paths() {
+                storage::write(&file, &registry)?;
+            }
+            registry.projects
+        };
+        Ok(project_summaries(projects))
     })
     .await
     .map_err(|error| error.to_string())?
@@ -501,6 +612,12 @@ pub async fn forget_project(
     identifier: String,
 ) -> Result<(), String> {
     let lock = state.0.clone();
+    let mut account = app
+        .state::<crate::shared_chatgpt::SharedChatgpt>()
+        .0
+        .clone()
+        .lock_owned()
+        .await;
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock.lock().map_err(|error| error.to_string())?;
         if crate::terminal::terminal_sessions(identifier.clone())
@@ -515,6 +632,7 @@ pub async fn forget_project(
         let _file_guard = storage::lock(&file)?;
         let mut registry = Registry::load(&file)?;
         registry.forget_unavailable(&identifier)?;
+        crate::shared_chatgpt::detach_project(&app, &mut account, &identifier, false)?;
         storage::write(&file, &registry)?;
         crate::conversations::unobserve(&app, &identifier)
     })
@@ -620,6 +738,131 @@ pub async fn save_project_preferences(
 mod tests {
     use super::*;
     use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn persistent_volume_identity_accepts_a_new_device_number_but_rejects_another_volume() {
+        let root = std::env::temp_dir().join(format!("tugboat-volume-{}", std::process::id()));
+        fs::create_dir_all(root.join("project")).unwrap();
+        let mut registry = Registry::default();
+        let mut project = registry.register(&root.join("project"), "codex").unwrap();
+        assert!(
+            project.volume_uuid.is_some(),
+            "the test volume must provide a UUID"
+        );
+        assert_eq!(project.volume_uuid, volume_uuid(&root));
+        project.device = project.device.wrapping_add(1);
+        project.check_path().unwrap();
+        let metadata = project.path.metadata().unwrap();
+        assert!(!project.matches_folder(&metadata, Some([0; 16]), true));
+        assert!(!project.matches_folder(&metadata, None, true));
+        project.inode = project.inode.wrapping_add(1);
+        assert!(
+            project.check_path().is_err(),
+            "the same disk must not accept a replacement folder"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rescanning_a_legacy_remount_preserves_the_project_record_and_opening_order() {
+        let root =
+            std::env::temp_dir().join(format!("tugboat-rescan-legacy-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("projects.json");
+        let mut registry = Registry::load(&file).unwrap();
+        let mut project = registry.register(&root, "codex").unwrap();
+        project.name = "Saved project name".into();
+        project.stage = "environment-ready".into();
+        project.policy = Some(Policy {
+            name: "saved-policy".into(),
+            owned: true,
+            fingerprint: Some("saved-fingerprint".into()),
+        });
+        project.volume_uuid = None;
+        project.device = project.device.wrapping_add(1);
+        registry.update(project.clone()).unwrap();
+        storage::write(&file, &registry).unwrap();
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+        assert!(saved["projects"][0].get("volumeUuid").is_none());
+        let mut registry = Registry::load(&file).unwrap();
+        assert!(registry.project(&project.id).unwrap().check_path().is_err());
+        assert!(registry.rescan_paths());
+        let recovered = registry.project(&project.id).unwrap();
+        recovered.check_path().unwrap();
+        assert_eq!(recovered.device, recovered.path.metadata().unwrap().dev());
+        let mut expected = serde_json::to_value(&project).unwrap();
+        expected["device"] = serde_json::to_value(recovered.device).unwrap();
+        if let Some(volume) = recovered.volume_uuid {
+            expected["volumeUuid"] = serde_json::to_value(volume).unwrap();
+        }
+        assert_eq!(serde_json::to_value(&recovered).unwrap(), expected);
+        assert_eq!(registry.projects.len(), 1);
+        assert!(
+            !registry.rescan_paths(),
+            "a second scan must not change the record"
+        );
+        storage::write(&file, &registry).unwrap();
+        Registry::load(&file)
+            .unwrap()
+            .project(&project.id)
+            .unwrap()
+            .check_path()
+            .unwrap();
+        assert_eq!(registry.register(&root, "codex").unwrap().id, project.id);
+        assert_eq!(registry.projects.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rescanning_keeps_missing_or_replaced_folders_unavailable_until_the_original_returns() {
+        let root =
+            std::env::temp_dir().join(format!("tugboat-rescan-missing-{}", std::process::id()));
+        let folder = root.join("project");
+        fs::create_dir_all(&folder).unwrap();
+        let mut registry = Registry::default();
+        let mut project = registry.register(&folder, "codex").unwrap();
+        project.volume_uuid = None;
+        project.device = project.device.wrapping_add(1);
+        registry.update(project.clone()).unwrap();
+        fs::rename(&folder, root.join("disconnected")).unwrap();
+        assert!(!registry.rescan_paths());
+        assert!(registry.project(&project.id).unwrap().check_path().is_err());
+        fs::create_dir_all(&folder).unwrap();
+        let before = serde_json::to_value(&registry).unwrap();
+        assert!(!registry.rescan_paths());
+        assert_eq!(serde_json::to_value(&registry).unwrap(), before);
+        assert!(registry.project(&project.id).unwrap().check_path().is_err());
+        fs::remove_dir(&folder).unwrap();
+        fs::rename(root.join("disconnected"), &folder).unwrap();
+        assert!(registry.rescan_paths());
+        registry.project(&project.id).unwrap().check_path().unwrap();
+        assert_eq!(registry.projects.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn reselecting_a_legacy_remount_reuses_the_record_but_needs_a_known_creation_time() {
+        let root =
+            std::env::temp_dir().join(format!("tugboat-reselect-remount-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let mut registry = Registry::default();
+        let mut project = registry.register(&root, "codex").unwrap();
+        let metadata = root.metadata().unwrap();
+        project.volume_uuid = None;
+        project.device = project.device.wrapping_add(1);
+        let mut unknown_creation = project.clone();
+        unknown_creation.created = 0;
+        assert!(!unknown_creation.matches_folder(&metadata, volume_uuid(&root), true));
+        registry.update(project.clone()).unwrap();
+        let reopened = registry.register(&root, "codex").unwrap();
+        assert_eq!(reopened.id, project.id);
+        assert_eq!(reopened.reference(), project.reference());
+        assert!(reopened.last_opened_at > project.last_opened_at);
+        reopened.check_path().unwrap();
+        assert_eq!(registry.projects.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn forgetting_an_unavailable_record_preserves_other_records_and_all_external_files() {

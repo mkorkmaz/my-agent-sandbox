@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { sameProjectView, type ProjectContext } from './projects';
+import { setBusy } from './loading';
 
 interface Probe { name: string; target: string; expected: string; observed: string; outcome: string }
 interface Report { projectId: string; planFingerprint: string; checkedAt: number; passed: boolean; cleanup: boolean; results: Probe[] }
@@ -43,6 +44,7 @@ export function initializeBoundaryTests(current: () => ProjectContext | null): (
     if (!project) return;
     const pending = ++request;
     run.disabled = true;
+    setBusy(run, true);
     status.textContent = 'Checking file sharing and network boundaries…';
     resetBoundaryChoice();
     try {
@@ -66,14 +68,17 @@ export function initializeBoundaryTests(current: () => ProjectContext | null): (
       }
       renderChoice();
     } catch (error) { if (sameProjectView(current(), project) && pending === request) status.textContent = String(error); }
-    finally { if (sameProjectView(current(), project) && pending === request) run.disabled = false; }
+    finally { if (sameProjectView(current(), project) && pending === request) { setBusy(run, false); run.disabled = false; } }
   });
-  document.getElementById('copy-inner-boundary-prompt')!.addEventListener('click', async () => {
+  const copy = document.getElementById('copy-inner-boundary-prompt') as HTMLButtonElement;
+  copy.addEventListener('click', async () => {
     const context = current(); if (!context) return;
+    copy.disabled = true; setBusy(copy, true);
     try {
       await invoke('copy_inner_boundary_prompt');
       if (sameProjectView(current(), context)) status.textContent = 'Check prompt copied. Paste it into the open Codex conversation and review the results in the terminal.';
     } catch (error) { if (sameProjectView(current(), context)) status.textContent = String(error); }
+    finally { if (sameProjectView(current(), context)) { copy.disabled = false; setBusy(copy, false); } }
   });
-  return () => { ++request; run.disabled = false; status.textContent = ''; results.replaceChildren(); renderChoice(); };
+  return () => { ++request; run.disabled = false; copy.disabled = false; setBusy(run, false); setBusy(copy, false); status.textContent = ''; results.replaceChildren(); renderChoice(); };
 }

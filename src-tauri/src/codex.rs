@@ -4,7 +4,7 @@ use crate::{
     terminal::{self, Layout},
 };
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -68,6 +68,8 @@ fn login(checked: &CheckedProject) -> Result<LoginStatus, String> {
             "sh".into(),
             checked.project.reference(),
             "codex".into(),
+            "-c".into(),
+            "cli_auth_credentials_store=\"file\"".into(),
             "login".into(),
             "status".into(),
         ],
@@ -130,12 +132,14 @@ fn arguments(
             "sh".into(),
             checked.project.reference(),
             "codex".into(),
+            "-c".into(),
+            "cli_auth_credentials_store=\"file\"".into(),
             "login".into(),
             "--device-auth".into(),
         ]);
     }
     if login(checked)?.method != "chatgpt" {
-        return Err("Sign in with ChatGPT in the guest before starting Codex.".into());
+        return Err("This project's Codex configuration did not accept the shared ChatGPT account. Check its Codex settings or reconnect the account in Settings.".into());
     }
     let help = checked.brig.checked(
         &[
@@ -146,12 +150,16 @@ fn arguments(
         ],
         None,
     )?;
-    if !help.stdout.contains("--sandbox") || !help.stdout.contains("--ask-for-approval") {
+    if !help.stdout.contains("--sandbox")
+        || !help.stdout.contains("--ask-for-approval")
+        || !help.stdout.contains("--no-daemon")
+    {
         return Err(
             "Guest Codex does not support the required sandbox and approval options.".into(),
         );
     }
-    let mut codex_arguments = Vec::new();
+    // A shared background daemon can retain credentials after its terminal exits.
+    let mut codex_arguments = vec!["--no-daemon"];
     if matches!(action, Action::Resume) {
         codex_arguments.push("resume");
         if let Some(session_id) = session_id {
@@ -159,6 +167,8 @@ fn arguments(
         }
     }
     codex_arguments.extend([
+        "-c",
+        "cli_auth_credentials_store=\"file\"",
         "-c",
         "tui.terminal_title=[\"session-id\",\"status\"]",
         "--sandbox",
@@ -189,7 +199,16 @@ pub async fn start_codex_session(
     let app = window.app_handle().clone();
     let project_id = identifier.clone();
     let conversation_id = session_id.clone();
-    let command = tauri::async_runtime::spawn_blocking(move || {
+    let runtime = app
+        .state::<crate::shared_chatgpt::SharedChatgpt>()
+        .0
+        .clone()
+        .lock_owned()
+        .await;
+    let command_app = app.clone();
+    let (command, mut runtime, login_nonce) = tauri::async_runtime::spawn_blocking(move || {
+        let app = command_app;
+        let mut runtime = runtime;
         let checked = environment::checked_project(&app, &identifier, Some(&fingerprint))?;
         if use_brig_boundary && matches!(action, Action::Codex | Action::Resume) {
             crate::boundaries::require_pass(&app, &identifier, &checked.fingerprint)?;
@@ -201,20 +220,80 @@ pub async fn start_codex_session(
                 .ok_or("Choose a root chat to resume.")?;
             crate::conversations::require_resume(&app, &checked, selected)?;
         }
-        let arguments = arguments(&checked, action, use_brig_boundary, session_id.as_deref())?;
-        Ok::<_, String>(environment::command(&checked, arguments))
+        if matches!(action, Action::Codex | Action::Resume) {
+            let status = crate::shared_chatgpt::ensure(&app, &mut runtime, &checked)?;
+            if status.state != "signed-in" {
+                return Err(format!(
+                    "{} Open ChatGPT account in Settings.",
+                    status.message
+                ));
+            }
+        }
+        let mut arguments = arguments(&checked, action, use_brig_boundary, session_id.as_deref())?;
+        let nonce = if matches!(action, Action::Login) {
+            let (nonce, guest_path) =
+                crate::shared_chatgpt::begin_login(&app, &mut runtime, &checked)?;
+            let mut staged = vec![
+                "sh".into(),
+                checked.project.reference(),
+                "sh".into(),
+                "-c".into(),
+                "export CODEX_HOME=\"$1\"; shift; exec codex \"$@\"".into(),
+                "tugboat-chatgpt-login".into(),
+                guest_path,
+            ];
+            staged.extend(arguments.into_iter().skip(3));
+            arguments = staged;
+            Some(nonce)
+        } else {
+            None
+        };
+        Ok::<_, String>((environment::command(&checked, arguments), runtime, nonce))
     })
     .await
     .map_err(|error| error.to_string())??;
-    terminal::start(
+    let terminal_id = terminal::reserve_identifier();
+    let on_exit: Option<terminal::ExitHandler> = login_nonce.as_ref().map(|nonce| {
+        runtime.login_process = Some((nonce.clone(), terminal_id));
+        let app = app.clone();
+        let project = project_id.clone();
+        let nonce = nonce.clone();
+        Box::new(move |code| {
+            if let Err(message) =
+                crate::shared_chatgpt::finish_login(&app, &project, &nonce, code == Some(0))
+            {
+                let _ = app.emit("shared-chatgpt-error", message);
+            }
+        }) as terminal::ExitHandler
+    });
+    let result = terminal::start_reserved(
         window,
-        project_id,
+        project_id.clone(),
         action.purpose(),
         command,
         layout,
         conversation_id,
+        terminal::Reservation {
+            identifier: terminal_id,
+            on_exit,
+        },
     )
-    .await
+    .await;
+    drop(runtime);
+    if result.is_err() {
+        if let Some(nonce) = login_nonce {
+            tauri::async_runtime::spawn_blocking(move || {
+                if let Err(message) =
+                    crate::shared_chatgpt::finish_login(&app, &project_id, &nonce, false)
+                {
+                    let _ = app.emit("shared-chatgpt-error", message);
+                }
+            })
+            .await
+            .map_err(|_| "Could not roll back the ChatGPT sign-in.")?;
+        }
+    }
+    result
 }
 
 #[cfg(test)]

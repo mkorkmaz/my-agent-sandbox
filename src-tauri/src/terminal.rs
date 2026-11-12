@@ -236,11 +236,6 @@ fn status_for(project_id: &str, group: Option<&str>) -> Option<TerminalStatus> {
 }
 
 #[tauri::command]
-pub fn terminal_status(project_id: String) -> Option<TerminalStatus> {
-    status(&project_id)
-}
-
-#[tauri::command]
 pub fn terminal_sessions(project_id: String) -> Vec<TerminalStatus> {
     let Ok(states) = sessions().lock() else {
         return Vec::new();
@@ -712,6 +707,18 @@ pub fn any_running() -> bool {
     sessions()
         .lock()
         .is_ok_and(|sessions| sessions.values().any(|session| session.process.running()))
+}
+
+pub fn chatgpt_in_use(skip_finished_login: bool) -> bool {
+    sessions().lock().is_ok_and(|states| {
+        states.values().any(|session| {
+            session.process.running()
+                && matches!(session.purpose, "codex" | "resume" | "login" | "shell")
+                && !(skip_finished_login
+                    && session.purpose == "login"
+                    && session.exit_code.lock().is_ok_and(|code| code.is_some()))
+        })
+    })
 }
 
 fn runs_in_guest(purpose: &str) -> bool {

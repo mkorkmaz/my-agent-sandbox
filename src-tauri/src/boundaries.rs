@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 const CHECK_VERSION: u32 = 1;
 
@@ -51,10 +51,7 @@ fn probe(name: &str, target: String, expected: &str, observed: &str, outcome: &s
     }
 }
 fn file(app: &AppHandle, identifier: &str) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|error| error.to_string())?
+    Ok(crate::data_location::directory(app)?
         .join("boundaries")
         .join(format!("{identifier}.json")))
 }

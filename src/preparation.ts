@@ -18,7 +18,7 @@ export interface Plan {
     credentials: { name: string; state: string }[];
   };
 }
-export interface Preparation { project: Project; plan: Plan | null; candidates: string[]; message: string | null; fingerprint: string | null }
+interface Preparation { project: Project; plan: Plan | null; candidates: string[]; message: string | null; fingerprint: string | null }
 
 export async function prepareProject(project: Project, chosenReference: string | null = null): Promise<Preparation> {
   return invoke<Preparation>('prepare_project', { identifier: project.id, chosenReference });

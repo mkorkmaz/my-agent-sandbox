@@ -9,6 +9,11 @@ import { JSDOM } from 'jsdom';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const flush = async () => { for (let count = 0; count < 6; count++) await new Promise(resolve => setImmediate(resolve)); };
+function deferred() {
+  let resolve, reject;
+  const promise = new Promise((complete, fail) => { resolve = complete; reject = fail; });
+  return { promise, resolve, reject };
+}
 const project = { id: 'project-a', name: 'örnek proje', path: '/fixture/örnek proje', profile: 'codex', label: 'sample-a', stage: 'environment-ready', ownsBinding: true, ownsSession: true, policy: { name: 'sample', owned: true, fingerprint: 'policy' } };
 const plan = { data: { profile: 'codex', session: 'sample-a', runtime: { kind: 'hull', backend: 'hvi' }, isolation: 'microVM', project: { host: project.path, guest: '/work/örnek proje', mode: 'read-write' }, home: { host: '/fixture/guest-home', guest: '/root' }, limits: { cpus: 4, mem: 4096 }, posture: 'isolated', image: { ref: 'fixture' }, verify: { mode: 'require' }, policies: ['sample'], egress: { default: 'deny', allow: [] }, credentials: [] } };
 const emptyUsage = { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0, costUsd: 0, unpricedRequests: 0, requests: 0, completedTurns: 0, assumedTierRequests: 0, missingCacheRequests: 0, missingCachedRequests: 0, missingCacheWriteRequests: 0, unmeasuredTurns: 0 };
@@ -40,9 +45,24 @@ function sessionDetails(sessionId, sourceTurns, overrides = {}) {
   return { sessionId, rootSessionId: null, ownUsage: usage, descendantsUsage: { ...emptyUsage }, combinedUsage: usage, coverage: 'unknown', warnings: [], agents: [{ sessionId, title: 'Legacy single', available: true, lineage: { ...unknownLineage }, relationStatus: 'unknown', ownUsage: usage, coverage: 'unknown', turns }], userPromptCount: null, agentTurnCount: turns.length, prompts: [], unassigned: { usage, requestRefs, unmeasuredTurnRefs }, ...overrides };
 }
 const settings = { schemaVersion: 1, cliPath: null, profile: 'codex', cpus: 4, memoryMb: 4096, verification: 'require', network: 'isolated', allowedHosts: [], telemetry: false };
+const recordsLocation = { directory: '/fixture/Application Support/Tugboat', defaultDirectory: '/fixture/Application Support/Tugboat', pendingDirectory: null, available: true, canChange: true, message: null };
+const sharedAccount = { generation: 1, pendingProjectId: null, state: 'signed-in', email: 'fixture@example.invalid', message: 'Shared ChatGPT account ready.', candidates: [] };
 
-async function interfaceHarness(overrides = {}) {
+function captureProjectRescans(dom) {
+  const pending = new Map();
+  const set = dom.window.setTimeout.bind(dom.window), clear = dom.window.clearTimeout.bind(dom.window);
+  let next = -1;
+  dom.window.setTimeout = (callback, delay, ...args) => {
+    if (delay !== 8000) return set(callback, delay, ...args);
+    const id = next--; pending.set(id, callback); return id;
+  };
+  dom.window.clearTimeout = id => { if (!pending.delete(id)) clear(id); };
+  return { pending, run: () => { const entry = pending.entries().next().value; assert.ok(entry, 'Expected an automatic folder check'); pending.delete(entry[0]); entry[1](); } };
+}
+
+async function interfaceHarness(overrides = {}, configureDom = () => {}) {
   const dom = new JSDOM(fs.readFileSync(root + 'index.html', 'utf8'), { url: 'https://tauri.localhost/' });
+  configureDom(dom);
   dom.window.HTMLDialogElement.prototype.showModal = function() { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function() { this.open = false; this.dispatchEvent(new dom.window.Event('close')); };
   const calls = [], listeners = new Map(), modules = new Map();
@@ -50,10 +70,17 @@ async function interfaceHarness(overrides = {}) {
   let nextTerminal = 1;
   const handlers = {
     frontend_ready: () => null, update_menu_state: () => null,
-    application_version: () => '0.2.0',
+    application_version: () => '0.2.1',
+    storage_location: () => recordsLocation,
+    shared_chatgpt_status: () => sharedAccount,
+    sync_project_chatgpt: () => sharedAccount,
+    retry_shared_chatgpt: () => sharedAccount,
+    load_interface_preferences: () => ({ sidebarWidth: null }),
+    save_interface_preferences: () => null,
     load_settings: () => settings,
     telemetry_status: () => ({ recorded: 'off', effective: 'off', message: null }),
     recent_projects: () => [], choose_project_folder: () => project.path,
+    rescan_projects: () => handlers.recent_projects(),
     open_project: () => project, project_dashboard: () => sessionDashboard([]),
     read_project_preferences: () => ({ project, options: { cpus: 4, memoryMb: 4096, verification: 'require', network: 'isolated' } }),
     register_project: () => project,
@@ -98,6 +125,170 @@ async function interfaceHarness(overrides = {}) {
   await flush();
   return { dom, calls, handlers, ready, listeners, terminals, renderUsage: details => modules.get(path.join(root, 'src/dashboard.ts')).namespace.renderUsageDetails(details), element: id => dom.window.document.getElementById(id), setTerminal: value => { terminals.set(value.identifier, value); } };
 }
+
+test('initial project reads show skeletons and then show records or a real empty state', async () => {
+  for (const records of [[], [project]]) {
+    const pending = deferred();
+    const harness = await interfaceHarness({ rescan_projects: () => pending.promise });
+    assert.equal(harness.element('recent-projects').getAttribute('aria-busy'), 'true');
+    assert.equal(harness.element('empty-projects').hidden, true);
+    assert.equal(harness.element('recent-project-list').querySelectorAll('.skeleton-row').length, 3);
+    assert.equal(harness.element('sidebar-project-list').querySelectorAll('.skeleton-row').length, 3);
+    pending.resolve(records); await harness.ready;
+    assert.equal(harness.element('recent-projects').getAttribute('aria-busy'), 'false');
+    assert.equal(harness.element('recent-project-list').querySelector('.skeleton'), null);
+    assert.equal(harness.element('empty-projects').hidden, records.length > 0);
+    assert.equal(harness.element('recent-projects').hidden, records.length === 0);
+    harness.dom.window.close();
+  }
+});
+
+test('failed initial project reads remove skeletons and show an error without an empty state', async () => {
+  const pending = deferred();
+  const harness = await interfaceHarness({ rescan_projects: () => pending.promise });
+  pending.reject(new Error('Records drive unavailable')); await harness.ready;
+  assert.equal(harness.element('recent-project-list').querySelector('.skeleton'), null);
+  assert.equal(harness.element('recent-projects').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('empty-projects').hidden, true);
+  assert.match(harness.element('project-rescan-status').textContent, /Records drive unavailable/);
+  harness.dom.window.close();
+});
+
+test('settings use skeletons for reads and a button loader for saves with error recovery', async () => {
+  const read = deferred(), save = deferred();
+  const harness = await interfaceHarness({ load_settings: () => read.promise, save_settings: () => save.promise });
+  assert.equal(harness.element('settings-fields').getAttribute('aria-busy'), 'true');
+  assert.equal(harness.element('settings-fields').disabled, true);
+  read.resolve(settings); await harness.ready;
+  assert.equal(harness.element('settings-fields').getAttribute('aria-busy'), 'false');
+  harness.element('brig-settings').dispatchEvent(new harness.dom.window.Event('submit', { cancelable: true })); await flush();
+  assert.equal(harness.element('save-settings').getAttribute('aria-busy'), 'true');
+  assert.equal(harness.element('save-settings').disabled, true);
+  assert.equal(harness.element('settings-fields').classList.contains('is-loading'), false);
+  save.reject(new Error('Could not write settings')); await flush();
+  assert.equal(harness.element('save-settings').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('save-settings').disabled, false);
+  assert.match(harness.element('settings-status').textContent, /Could not write settings/);
+  harness.dom.window.close();
+});
+
+test('dashboard skeletons become data and a failed refresh preserves the recorded data', async () => {
+  const read = deferred(), refresh = deferred();
+  const harness = await interfaceHarness({ project_dashboard: () => read.promise });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.element('project-usage').getAttribute('aria-busy'), 'true');
+  assert.doesNotMatch(harness.element('project-usage').textContent, /\$0|\(0%\)/);
+  assert.equal(harness.element('session-table').hidden, false);
+  assert.equal(harness.element('session-table-body').querySelectorAll('.skeleton-row').length, 3);
+  assert.equal(harness.element('sidebar-session-list').querySelectorAll('.skeleton-row').length, 3);
+  read.resolve(sessionDashboard([{ id: 'loaded-chat', title: 'Recorded chat', updatedAt: 1000 }])); await flush();
+  assert.equal(harness.element('project-usage').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('session-table-body').querySelector('.skeleton'), null);
+  harness.handlers.project_dashboard = () => refresh.promise;
+  harness.element('refresh-sessions').click(); await flush();
+  assert.equal(harness.element('refresh-sessions').getAttribute('aria-busy'), 'true');
+  assert.equal(harness.element('project-usage').classList.contains('is-loading'), false);
+  assert.match(harness.element('session-table-body').textContent, /Recorded chat/);
+  refresh.reject(new Error('Refresh unavailable')); await flush();
+  assert.equal(harness.element('refresh-sessions').getAttribute('aria-busy'), 'false');
+  assert.match(harness.element('session-table-body').textContent, /Recorded chat/);
+  assert.match(harness.element('dashboard-session-status').textContent, /Refresh unavailable/);
+  harness.dom.window.close();
+});
+
+test('a live chat stays reachable while the first history read is pending or fails', async () => {
+  const pending = deferred();
+  const harness = await interfaceHarness({ project_dashboard: () => pending.promise });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('start-codex').click(); await flush();
+  assert.equal(harness.element('sidebar-session-list').querySelector('.skeleton'), null);
+  assert.ok(harness.element('sidebar-session-list').querySelector('.sidebar-session'));
+  harness.element('hide-terminal').click(); await flush();
+  pending.reject(new Error('History unavailable')); await flush();
+  const chat = harness.element('sidebar-session-list').querySelector('.sidebar-session');
+  assert.ok(chat); assert.equal(chat.disabled, false);
+  chat.click(); await flush();
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 1);
+  harness.dom.window.close();
+});
+
+test('usage skeletons clear after a read error and a closed read cannot clear a new skeleton', async () => {
+  const first = deferred(), second = deferred();
+  const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([{ id: 'chat', title: 'Usage chat', updatedAt: 1000 }]), conversation_usage: () => first.promise });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('usage-for-chat').click(); await flush();
+  assert.equal(harness.element('session-usage-details').getAttribute('aria-busy'), 'true');
+  assert.ok(harness.element('session-usage-details').querySelector('.skeleton'));
+  harness.element('close-session-usage').click();
+  harness.handlers.conversation_usage = () => second.promise;
+  harness.element('usage-for-chat').click(); await flush();
+  first.resolve(sessionDetails('chat', [])); await flush();
+  assert.equal(harness.element('session-usage-details').getAttribute('aria-busy'), 'true');
+  assert.ok(harness.element('session-usage-details').querySelector('.skeleton'));
+  second.reject(new Error('Usage read failed')); await flush();
+  assert.equal(harness.element('session-usage-details').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('session-usage-details').querySelector('.skeleton'), null);
+  assert.match(harness.element('session-usage-status').textContent, /Usage read failed/);
+  harness.dom.window.close();
+});
+
+test('project settings discard stale reads without clearing the current skeleton', async () => {
+  const first = deferred(), second = deferred(), save = deferred();
+  const harness = await interfaceHarness({ read_project_preferences: () => first.promise, save_project_preferences: () => save.promise });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  assert.equal(harness.element('project-preference-fields').getAttribute('aria-busy'), 'true');
+  harness.element('close-project-settings').click();
+  harness.handlers.read_project_preferences = () => second.promise;
+  harness.element('project-settings-button').click(); await flush();
+  first.resolve({ project: { ...project, name: 'Stale name' }, options: settings }); await flush();
+  assert.equal(harness.element('project-preference-fields').getAttribute('aria-busy'), 'true');
+  second.resolve({ project, options: settings }); await flush();
+  assert.equal(harness.element('project-preference-fields').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('project-name').value, project.name);
+  harness.element('project-preferences').dispatchEvent(new harness.dom.window.Event('submit', { cancelable: true })); await flush();
+  assert.equal(harness.element('save-project-preferences').getAttribute('aria-busy'), 'true');
+  assert.equal(harness.element('project-preference-fields').classList.contains('is-loading'), false);
+  save.reject(new Error('Project save failed')); await flush();
+  assert.equal(harness.element('save-project-preferences').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('project-preference-fields').disabled, false);
+  harness.dom.window.close();
+});
+
+test('policy reads show a skeleton and recover from errors before a later successful read', async () => {
+  const first = deferred();
+  const harness = await interfaceHarness({ read_project_policy: () => first.promise });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  harness.element('read-project-policy').click(); await flush();
+  assert.equal(harness.element('read-project-policy').getAttribute('aria-busy'), 'true');
+  assert.ok(harness.element('project-policy-document').querySelector('.skeleton'));
+  first.reject(new Error('Policy unavailable')); await flush();
+  assert.equal(harness.element('read-project-policy').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('project-policy-document').querySelector('.skeleton'), null);
+  harness.handlers.read_project_policy = () => ({ document: { name: 'Recovered policy' }, fingerprint: 'policy', editable: true, attached: true, allowedHosts: [] });
+  harness.element('read-project-policy').click(); await flush();
+  assert.match(harness.element('project-policy-document').textContent, /Recovered policy/);
+  assert.equal(harness.element('project-policy-document').getAttribute('aria-busy'), 'false');
+  harness.dom.window.close();
+});
+
+test('ending a terminal shows a loader and restores the control after failure', async () => {
+  const close = deferred();
+  const harness = await interfaceHarness({ terminal_close: () => close.promise });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('start-codex').click(); await flush();
+  harness.element('close-terminal').click(); harness.element('close-terminal').click(); await flush();
+  assert.equal(harness.element('close-terminal').getAttribute('aria-busy'), 'true');
+  assert.equal(harness.element('close-terminal').disabled, true);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 1);
+  close.reject(new Error('Process still running')); await flush();
+  assert.equal(harness.element('close-terminal').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.element('close-terminal').disabled, false);
+  assert.match(harness.element('terminal-status').textContent, /Process still running/);
+  harness.dom.window.close();
+});
 
 test('settings stay disabled until initialization installs the save handler', async () => {
   let release;
@@ -221,6 +412,8 @@ test('Add new project registers a folder and makes it available in both project 
   });
   await harness.ready;
   assert.equal(harness.element('choose-folder').textContent, 'Add new project');
+  assert.equal(harness.element('empty-projects').hidden, false);
+  assert.equal(harness.element('project-rescan-status').hidden, true);
   harness.element('choose-folder').click(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'register_project').length, 1);
   assert.match(harness.element('sidebar-current-project').textContent, /örnek proje/);
@@ -418,11 +611,14 @@ test('sidebar resizing clamps pointer and keyboard input, saves the width and pr
   key('ArrowLeft');
   assert.equal(handle.getAttribute('aria-valuenow'), '280');
   key('ArrowRight');
-  assert.equal(window.localStorage.getItem('tugboat.sidebarWidth'), '296');
+  await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'save_interface_preferences').at(-1).args.sidebarWidth, 296);
   handle.dispatchEvent(new window.PointerEvent('pointerdown', { button: 0, pointerId: 1 }));
   handle.dispatchEvent(new window.PointerEvent('pointermove', { pointerId: 1, clientX: 400 }));
   handle.dispatchEvent(new window.PointerEvent('pointerup', { pointerId: 1 }));
-  assert.equal(window.localStorage.getItem('tugboat.sidebarWidth'), '400');
+  await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'save_interface_preferences').at(-1).args.sidebarWidth, 400);
+  assert.equal(window.localStorage.getItem('tugboat.sidebarWidth'), null);
   assert.equal(harness.dom.window.document.querySelector('.app-shell').classList.contains('resizing-sidebar'), false);
   Object.defineProperty(window, 'innerWidth', { value: 760, configurable: true });
   window.dispatchEvent(new window.Event('resize'));
@@ -434,6 +630,92 @@ test('sidebar resizing clamps pointer and keyboard input, saves the width and pr
   assert.equal(handle.getAttribute('aria-valuenow'), '544');
   key('Home');
   assert.equal(handle.getAttribute('aria-valuenow'), '280');
+  await flush();
+  harness.dom.window.close();
+});
+
+test('sidebar preferences load from the records folder and migrate a legacy browser preference once', async () => {
+  const harness = await interfaceHarness({}, dom => { dom.window.localStorage.setItem('tugboat.sidebarWidth', '400'); });
+  await harness.ready; await flush();
+  assert.equal(harness.element('sidebar-resizer').getAttribute('aria-valuenow'), '400');
+  assert.equal(harness.calls.find(call => call.command === 'save_interface_preferences').args.sidebarWidth, 400);
+  assert.equal(harness.dom.window.localStorage.getItem('tugboat.sidebarWidth'), null);
+  harness.dom.window.close();
+  const saved = await interfaceHarness({ load_interface_preferences: () => ({ sidebarWidth: 360 }) });
+  await saved.ready;
+  assert.equal(saved.element('sidebar-resizer').getAttribute('aria-valuenow'), '360');
+  assert.equal(saved.calls.filter(call => call.command === 'save_interface_preferences').length, 0);
+  saved.dom.window.close();
+});
+
+test('choosing a records folder schedules a move and waits for an explicit restart', async () => {
+  let finishChoice;
+  let current = { ...recordsLocation };
+  const harness = await interfaceHarness({
+    storage_location: () => current,
+    choose_storage_folder: () => new Promise(resolve => { finishChoice = () => resolve('/Volumes/Records/Tugboat'); }),
+    change_storage_location: ({ folder, locate }) => { assert.equal(locate, false); current = { ...current, pendingDirectory: folder }; return current; },
+    cancel_storage_move: () => { current = { ...current, pendingDirectory: null }; return current; },
+    restart_for_storage_change: () => null,
+  });
+  await harness.ready;
+  assert.equal(harness.element('records-folder').textContent, recordsLocation.directory);
+  const choose = harness.element('change-records-folder');
+  choose.click(); choose.click(); await flush();
+  assert.equal(choose.disabled, true);
+  assert.equal(harness.calls.filter(call => call.command === 'choose_storage_folder').length, 1);
+  finishChoice(); await flush();
+  assert.equal(harness.element('records-folder').textContent, recordsLocation.directory);
+  assert.match(harness.element('records-folder-status').textContent, /Restart Tugboat.*\/Volumes\/Records\/Tugboat/);
+  assert.equal(harness.element('restart-for-records').hidden, false);
+  assert.equal(harness.calls.filter(call => call.command === 'restart_for_storage_change').length, 0);
+  harness.element('restart-for-records').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'restart_for_storage_change').length, 1);
+  harness.element('cancel-records-move').click(); await flush();
+  assert.equal(harness.element('restart-for-records').hidden, true);
+  assert.equal(harness.element('cancel-records-move').hidden, true);
+  assert.equal(harness.element('records-folder-status').textContent, '');
+  assert.equal(harness.calls.filter(call => ['terminal_close', 'forget_project', 'remove_project'].includes(call.command)).length, 0);
+  harness.dom.window.close();
+});
+
+test('a cancelled or rejected records folder preserves the current location and permits retry', async () => {
+  let folder = null;
+  const harness = await interfaceHarness({
+    choose_storage_folder: () => folder,
+    change_storage_location: () => { throw new Error('Choose an empty folder for Tugboat records.'); },
+  });
+  await harness.ready;
+  const choose = harness.element('change-records-folder');
+  choose.click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'change_storage_location').length, 0);
+  folder = '/fixture/not-empty'; choose.click(); await flush();
+  assert.match(harness.element('records-folder-status').textContent, /Choose an empty folder/);
+  assert.equal(harness.element('records-folder').textContent, recordsLocation.directory);
+  assert.equal(choose.disabled, false);
+  assert.equal(harness.element('restart-for-records').hidden, true);
+  harness.dom.window.close();
+});
+
+test('unavailable records keep location recovery enabled while ordinary settings stay disabled', async () => {
+  const unavailable = { ...recordsLocation, directory: '/Volumes/Offline/Tugboat', available: false, message: 'The records folder is unavailable.' };
+  const harness = await interfaceHarness({
+    storage_location: () => unavailable,
+    load_settings: () => { throw new Error('The records folder is unavailable.'); },
+    choose_storage_folder: () => '/Volumes/Reconnected/Tugboat',
+    change_storage_location: ({ folder, locate }) => { assert.equal(locate, true); return { ...unavailable, pendingDirectory: folder }; },
+  });
+  await harness.ready;
+  assert.equal(harness.element('settings-fields').disabled, true);
+  const locate = harness.element('change-records-folder');
+  assert.equal(locate.disabled, false);
+  assert.equal(locate.textContent, 'Locate records folder…');
+  assert.equal(harness.element('restart-for-records').hidden, false);
+  locate.click(); await flush();
+  assert.equal(locate.disabled, false);
+  assert.equal(harness.element('restart-for-records').hidden, false);
+  assert.equal(harness.calls.find(call => call.command === 'change_storage_location').args.folder, '/Volumes/Reconnected/Tugboat');
+  assert.match(harness.element('records-folder-status').textContent, /\/Volumes\/Reconnected\/Tugboat/);
   harness.dom.window.close();
 });
 
@@ -445,6 +727,211 @@ test('session refresh stays disabled while the selected project is being prepare
   assert.equal(harness.element('refresh-sessions').disabled, true);
   finishPreparation({ project, plan, fingerprint: 'plan-a', message: null, candidates: [] }); await flush();
   assert.equal(harness.element('refresh-sessions').disabled, false);
+  harness.dom.window.close();
+});
+
+test('opening a stopped project starts its saved environment in the background and reuses it on reopening', async () => {
+  const preferences = { cpus: 2, memoryMb: 2048, verification: 'require', network: 'isolated' };
+  let current = { ...project, stage: 'ready', options: preferences };
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    recent_projects: () => [current], open_project: () => current,
+    prepare_project: prepared, preview_project: prepared,
+    prepare_environment: () => {
+      current = { ...current, stage: 'environment-starting' };
+      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      return 70;
+    },
+  });
+  await harness.ready;
+  const open = () => harness.element('recent-project-list').querySelector('.recent-project').click();
+  open(); await flush();
+  const start = harness.calls.find(call => call.command === 'prepare_environment');
+  assert.equal(start.args.identifier, project.id);
+  assert.equal(start.args.fingerprint, 'saved-plan');
+  assert.equal(start.args.layout.visible, false);
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('project-setup').hidden, true);
+  assert.equal(harness.element('start-codex').disabled, true);
+  assert.equal(harness.element('project-overview').hidden, false);
+  assert.match(harness.element('project-plan-status').textContent, /Starting.*saved settings/);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, 0);
+  current = { ...current, stage: 'environment-ready' };
+  harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 0 });
+  await harness.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: null } }); await flush();
+  assert.equal(harness.element('start-codex').disabled, false);
+  assert.equal(harness.element('project-overview').hidden, false);
+  assert.equal(harness.element('project-plan-feedback').hidden, true);
+  assert.deepEqual(current.options, preferences);
+  harness.element('project-navigation').click(); await flush(); open(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
+  assert.equal(harness.calls.filter(call => ['save_project_preferences', 'save_settings', 'remove_project', 'terminal_close'].includes(call.command)).length, 0);
+  harness.dom.window.close();
+});
+
+test('an existing environment start is reused without a second process or terminal focus', async () => {
+  let current = { ...project, stage: 'environment-starting' };
+  const harness = await interfaceHarness({
+    recent_projects: () => [current], open_project: () => current,
+    preview_project: () => ({ project: current, plan, fingerprint: 'saved-plan' }),
+  });
+  await harness.ready;
+  harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+  harness.element('recent-project-list').querySelector('.recent-project').click(); await flush();
+  assert.equal(harness.calls.filter(call => ['prepare_project', 'prepare_environment', 'terminal_focus'].includes(call.command)).length, 0);
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('project-setup').hidden, true);
+  assert.match(harness.element('project-plan-status').textContent, /Starting/);
+  current = { ...current, stage: 'environment-ready' };
+  harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 0 });
+  await harness.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: null } }); await flush();
+  assert.equal(harness.element('start-codex').disabled, false);
+  harness.dom.window.close();
+});
+
+test('an environment that exits before its start response is verified without waiting for another event', async () => {
+  let current = { ...project, stage: 'ready' };
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    register_project: () => current, prepare_project: prepared, preview_project: prepared,
+    prepare_environment: async () => {
+      current = { ...current, stage: 'environment-ready' };
+      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: false, exitCode: 0, conversationId: null, busy: false });
+      await harness.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: null } });
+      return 70;
+    },
+    finish_environment: ({ identifier, terminalIdentifier }) => { assert.equal(identifier, project.id); assert.equal(terminalIdentifier, 70); return current; },
+  });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'finish_environment').length, 1);
+  assert.equal(harness.element('start-codex').disabled, false);
+  assert.equal(harness.element('project-setup').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('project-plan-feedback').hidden, true);
+  harness.dom.window.close();
+});
+
+test('a failed automatic environment start offers a retry without repeating project configuration', async () => {
+  let current = { ...project, stage: 'ready' }, attempts = 0;
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    register_project: () => current, prepare_project: prepared, preview_project: prepared,
+    prepare_environment: () => {
+      if (++attempts === 1) throw new Error('The runner is temporarily unavailable.');
+      current = { ...current, stage: 'environment-starting' };
+      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      return 70;
+    },
+  });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.element('retry-project-plan').hidden, false);
+  assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
+  assert.match(harness.element('project-plan-status').textContent, /temporarily unavailable/);
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('start-codex').disabled, true);
+  harness.element('retry-project-plan').click(); harness.element('retry-project-plan').click(); await flush();
+  assert.equal(attempts, 2);
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_project').length, 1);
+  assert.equal(harness.calls.filter(call => ['save_project_preferences', 'save_settings', 'terminal_close'].includes(call.command)).length, 0);
+  assert.match(harness.element('project-plan-status').textContent, /Starting/);
+  assert.equal(harness.element('retry-project-plan').hidden, true);
+  harness.dom.window.close();
+});
+
+test('a failed background environment check reports the failure and leaves New Chat disabled', async () => {
+  let current = { ...project, stage: 'ready' };
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    register_project: () => current, prepare_project: prepared, preview_project: prepared,
+    prepare_environment: () => {
+      current = { ...current, stage: 'environment-starting' };
+      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      return 70;
+    },
+  });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  current = { ...current, stage: 'ready', environmentAttempt: { completed: true, error: 'Guest version check failed.', terminalIdentifier: 70 } };
+  harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 2 });
+  await harness.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: 'Guest version check failed.' } }); await flush();
+  assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
+  assert.equal(harness.element('retry-project-plan').hidden, false);
+  assert.match(harness.element('project-plan-status').textContent, /Guest version check failed/);
+  assert.equal(harness.element('start-codex').disabled, true);
+  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('project-setup').hidden, true);
+  harness.dom.window.close();
+});
+
+test('automatic environment startup preserves a project settings dialog opened during launch', async () => {
+  let finishStart, current = { ...project, stage: 'ready' };
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    register_project: () => current, prepare_project: prepared, preview_project: prepared,
+    read_project_preferences: () => ({ project: current, options: { cpus: 2, memoryMb: 2048, verification: 'require', network: 'isolated' } }),
+    prepare_environment: () => new Promise(resolve => { finishStart = () => {
+      current = { ...current, stage: 'environment-starting' };
+      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      resolve(70);
+    }; }),
+  });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  harness.element('project-name').focus();
+  finishStart(); await flush();
+  assert.equal(harness.element('project-settings-dialog').open, true);
+  assert.equal(harness.dom.window.document.activeElement, harness.element('project-name'));
+  assert.equal(harness.element('project-cpus').value, '2');
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, 0);
+  harness.dom.window.close();
+});
+
+test('automatic environment startup keeps a running local terminal and returns to it on request', async () => {
+  let current = { ...project, stage: 'ready' };
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    register_project: () => current, prepare_project: prepared, preview_project: prepared,
+    prepare_environment: () => {
+      current = { ...current, stage: 'environment-starting' };
+      harness.setTerminal({ identifier: 71, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      return 71;
+    },
+  });
+  await harness.ready;
+  harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'local', running: true, exitCode: null, conversationId: null, busy: false });
+  harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
+  assert.equal(harness.calls.filter(call => ['terminal_close', 'terminal_focus'].includes(call.command)).length, 0);
+  current = { ...current, stage: 'environment-ready' };
+  harness.setTerminal({ ...harness.terminals.get(71), running: false, exitCode: 0 });
+  await harness.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 71, message: null } }); await flush();
+  assert.equal(harness.terminals.get(70).running, true);
+  assert.equal(harness.element('return-to-terminal').hidden, false);
+  harness.element('return-to-terminal').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 70);
+  harness.dom.window.close();
+});
+
+test('a stopped environment after completion never enables New Chat from a stale success event', async () => {
+  let current = { ...project, stage: 'ready' };
+  const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
+  const harness = await interfaceHarness({
+    register_project: () => current, prepare_project: prepared, preview_project: prepared,
+    prepare_environment: () => {
+      current = { ...current, stage: 'environment-starting' };
+      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      return 70;
+    },
+  });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  current = { ...current, stage: 'ready' };
+  harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 0 });
+  await harness.listeners.get('environment-preparation-finished')({ payload: { project: { ...current, stage: 'environment-ready' }, terminalIdentifier: 70, message: null } }); await flush();
+  assert.equal(harness.element('start-codex').disabled, true);
+  assert.match(harness.element('project-plan-status').textContent, /environment is not running/);
+  assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
   harness.dom.window.close();
 });
 
@@ -509,8 +996,10 @@ test('project settings use a modal, save scoped values and hide a native termina
   harness.element('project-name').value = 'Renamed project'; harness.element('project-cpus').value = '2'; harness.element('project-memory').value = '2048';
   harness.element('project-preferences').dispatchEvent(new harness.dom.window.Event('submit', { bubbles: true, cancelable: true })); await flush();
   assert.equal(harness.element('project-heading').textContent, 'Renamed project');
-  assert.equal(harness.element('project-overview').hidden, true);
-  assert.equal(harness.element('project-setup').hidden, false);
+  assert.equal(harness.element('project-overview').hidden, false);
+  assert.equal(harness.element('project-setup').hidden, true);
+  assert.match(harness.element('project-plan-status').textContent, /End running sessions/);
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
   harness.dom.window.close();
 });
 
@@ -585,7 +1074,7 @@ test('environment completion can update its project while a diagnostic terminal 
   environmentProject = { ...project, stage: 'ready' };
   await harness.listeners.get('environment-preparation-finished')({ payload: { project: environmentProject, terminalIdentifier: 90, message: 'Codex version could not be verified. Try again.' } });
   await flush();
-  assert.equal(harness.element('project-overview').hidden, true);
+  assert.equal(harness.element('project-overview').hidden, false);
   assert.equal(harness.element('prepare-environment').hidden, false);
   assert.match(harness.element('preparation-status').textContent, /Try again/);
   await harness.listeners.get('environment-preparation-finished')({ payload: { project, terminalIdentifier: 70, message: null } });
@@ -861,8 +1350,8 @@ test('a failed process close keeps the terminal visible and permits a retry', as
   harness.dom.window.close();
 });
 
-test('local, guest and login actions explain a conflicting process without entering the chat', async () => {
-  for (const [button, status] of [['start-terminal', 'local-terminal-status'], ['guest-shell', 'login-status'], ['codex-login', 'login-status']]) {
+test('local and guest actions explain a conflicting process without entering the chat', async () => {
+  for (const [button, status] of [['start-terminal', 'local-terminal-status'], ['guest-shell', 'login-status']]) {
     const harness = await interfaceHarness();
     await harness.ready; harness.element('choose-folder').click(); await flush();
     harness.element('start-codex').click(); await flush();
@@ -879,8 +1368,8 @@ test('local, guest and login actions explain a conflicting process without enter
   }
 });
 
-test('matching local, guest and login actions restore their own terminal only', async () => {
-  for (const [button, purpose] of [['start-terminal', 'local'], ['guest-shell', 'shell'], ['codex-login', 'login']]) {
+test('matching local and guest actions restore their own terminal only', async () => {
+  for (const [button, purpose] of [['start-terminal', 'local'], ['guest-shell', 'shell']]) {
     const harness = await interfaceHarness();
     await harness.ready; harness.element('choose-folder').click(); await flush();
     harness.setTerminal({ identifier: 70, projectId: project.id, purpose, running: true, exitCode: null, conversationId: null, busy: false });
@@ -892,6 +1381,169 @@ test('matching local, guest and login actions restore their own terminal only', 
     assert.equal(harness.calls.filter(call => ['terminal_start', 'start_codex_session'].includes(call.command)).length, 0);
     harness.dom.window.close();
   }
+});
+
+test('a new project connects the shared account without another login', async () => {
+  const harness = await interfaceHarness(); await harness.ready;
+  harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.element('start-codex').disabled, false);
+  assert.equal(harness.calls.filter(call => call.command === 'sync_project_chatgpt').length, 1);
+  assert.equal(harness.element('project-account-feedback').hidden, true);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0);
+  harness.element('project-settings-button').click(); await flush(); harness.element('codex-login').click(); await flush();
+  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('settings-view').hidden, false);
+  assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
+  assert.equal(harness.dom.window.document.activeElement, harness.element('shared-chatgpt-heading'));
+  harness.dom.window.close();
+});
+
+test('checking a connected account renews once and preserves its running chat', async () => {
+  let account = sharedAccount, completeRenewal;
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account, sync_project_chatgpt: () => account,
+    retry_shared_chatgpt: () => new Promise(resolve => { completeRenewal = () => { account = { ...sharedAccount, generation: 2 }; resolve(account); }; }) });
+  await harness.ready; harness.element('choose-folder').click(); await flush(); harness.element('start-codex').click(); await flush();
+  harness.element('settings-navigation').click(); await flush();
+  const check = harness.element('shared-chatgpt-retry'); assert.equal(check.hidden, false); assert.equal(check.textContent, 'Check connection');
+  check.click(); check.click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'retry_shared_chatgpt').length, 1);
+  completeRenewal(); await flush();
+  assert.equal(harness.terminals.size, 1); assert.equal([...harness.terminals.values()][0].running, true);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 0);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 1); harness.dom.window.close();
+});
+
+test('one global sign-in starts once and can be restored from Settings', async () => {
+  let account = { ...sharedAccount, state: 'signed-out', email: null };
+  let completeStart;
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account, sync_project_chatgpt: () => account,
+    start_codex_session: ({ action }) => {
+      assert.equal(action, 'login');
+      account = { ...account, generation: 2, state: 'signing-in', pendingProjectId: project.id };
+      return new Promise(resolve => { completeStart = () => { harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'login', running: true, exitCode: null }); resolve(70); }; });
+    } });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.element('start-codex').disabled, true);
+  assert.equal(harness.element('project-account-feedback').hidden, false);
+  harness.element('project-chatgpt-settings').click(); await flush();
+  harness.element('shared-chatgpt-sign-in').click(); harness.element('shared-chatgpt-sign-in').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 1);
+  completeStart(); await flush(); harness.element('settings-navigation').click(); await flush();
+  assert.equal(harness.element('shared-chatgpt-sign-in').textContent, 'Return to sign-in');
+  harness.element('shared-chatgpt-sign-in').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 70);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 1);
+  harness.dom.window.close();
+});
+
+test('saved account choices remain explicit and unchanged updates preserve selection and focus', async () => {
+  let account = { ...sharedAccount, state: 'signed-out', email: null, candidates: [
+    { projectId: 'source-a', name: 'First', email: 'first@example.invalid' },
+    { projectId: 'source-b', name: 'Second', email: 'second@example.invalid' },
+  ] };
+  let completeAdoption;
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account, sync_project_chatgpt: () => account,
+    use_project_chatgpt: ({ identifier }) => { assert.equal(identifier, 'source-b'); return new Promise(resolve => { completeAdoption = () => { account = { ...sharedAccount, generation: 2, email: 'second@example.invalid' }; resolve(account); }; }); } });
+  await harness.ready; harness.element('settings-navigation').click(); await flush();
+  const choices = harness.element('saved-chatgpt-project'); choices.value = 'source-b'; choices.focus();
+  const option = choices.options[1]; await harness.listeners.get('shared-chatgpt-changed')({ payload: account });
+  assert.equal(choices.options[1], option); assert.equal(choices.value, 'source-b'); assert.equal(harness.dom.window.document.activeElement, choices);
+  harness.element('use-saved-chatgpt').click(); harness.element('use-saved-chatgpt').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'use_project_chatgpt').length, 1);
+  completeAdoption(); await flush(); assert.equal(harness.element('shared-chatgpt-email').textContent, 'second@example.invalid');
+  assert.equal(harness.element('saved-chatgpt-accounts').hidden, true); harness.dom.window.close();
+});
+
+test('a rejected sign-out preserves the account and leaves active chats running', async () => {
+  const harness = await interfaceHarness({ disconnect_shared_chatgpt: () => { throw new Error('End running chats before changing the shared ChatGPT account.'); } });
+  await harness.ready; harness.element('choose-folder').click(); await flush(); harness.element('start-codex').click(); await flush();
+  harness.element('settings-navigation').click(); await flush(); harness.element('shared-chatgpt-disconnect').click(); await flush();
+  assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
+  assert.match(harness.element('shared-chatgpt-status').textContent, /End running chats/);
+  assert.equal(harness.element('shared-chatgpt-disconnect').disabled, false);
+  assert.equal(harness.terminals.size, 1); assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 0);
+  harness.dom.window.close();
+});
+
+test('old account generations and background errors do not change focus or navigation', async () => {
+  const harness = await interfaceHarness(); await harness.ready; harness.element('settings-navigation').click(); await flush();
+  harness.element('shared-chatgpt-disconnect').focus();
+  await harness.listeners.get('shared-chatgpt-changed')({ payload: { ...sharedAccount, generation: 8, email: 'new@example.invalid' } });
+  await harness.listeners.get('shared-chatgpt-changed')({ payload: { ...sharedAccount, generation: 2, state: 'signed-out', email: null } });
+  await harness.listeners.get('shared-chatgpt-error')({ payload: 'Network temporarily unavailable.' });
+  assert.equal(harness.element('shared-chatgpt-email').textContent, 'new@example.invalid');
+  assert.equal(harness.element('settings-view').hidden, false);
+  assert.equal(harness.dom.window.document.activeElement, harness.element('shared-chatgpt-disconnect'));
+  assert.match(harness.element('shared-chatgpt-status').textContent, /Network temporarily/); harness.dom.window.close();
+});
+
+test('a failed project connection blocks new chat until shared renewal and reconnect succeed', async () => {
+  let failed = true, account = sharedAccount;
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account,
+    sync_project_chatgpt: () => { if (failed) throw new Error('Connect the guest home and retry.'); return account; },
+    retry_shared_chatgpt: () => { failed = false; account = { ...sharedAccount, generation: 2 }; return account; } });
+  await harness.ready; harness.element('choose-folder').click(); await flush(); assert.equal(harness.element('start-codex').disabled, true);
+  harness.element('settings-navigation').click(); await flush();
+  assert.match(harness.element('shared-chatgpt-status').textContent, /Connect the guest home and retry/);
+  assert.equal(harness.element('shared-chatgpt-retry').hidden, false);
+  harness.element('shared-chatgpt-retry').click(); await flush(); assert.equal(harness.element('start-codex').disabled, false);
+  assert.equal(harness.calls.filter(call => call.command === 'sync_project_chatgpt').length, 2); harness.dom.window.close();
+});
+
+test('cancelling a global login restores the prior account through the native command', async () => {
+  let account = { ...sharedAccount, generation: 2, state: 'signing-in', pendingProjectId: project.id };
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account,
+    cancel_shared_chatgpt_login: () => { account = { ...sharedAccount, generation: 3 }; return account; } });
+  await harness.ready; harness.element('settings-navigation').click(); await flush();
+  assert.equal(harness.element('shared-chatgpt-cancel').hidden, false); harness.element('shared-chatgpt-cancel').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'cancel_shared_chatgpt_login').length, 1);
+  assert.equal(harness.element('shared-chatgpt-cancel').hidden, true); assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0); harness.dom.window.close();
+});
+
+test('a committed login retry finishes the saved connection without another device login', async () => {
+  let account = { ...sharedAccount, generation: 2, state: 'signing-in', pendingProjectId: project.id, pendingFinalizing: true };
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account,
+    retry_shared_chatgpt: () => { account = { ...sharedAccount, generation: 3 }; return account; } });
+  await harness.ready; harness.element('settings-navigation').click(); await flush();
+  assert.equal(harness.element('shared-chatgpt-cancel').hidden, true); assert.equal(harness.element('shared-chatgpt-sign-in').textContent, 'Retry connection');
+  harness.element('shared-chatgpt-sign-in').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'retry_shared_chatgpt').length, 1);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0); harness.dom.window.close();
+});
+
+test('global sign-in without a project opens the project list and starts no process', async () => {
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => ({ ...sharedAccount, state: 'signed-out', email: null }) });
+  await harness.ready; harness.element('settings-navigation').click(); await flush(); harness.element('shared-chatgpt-sign-in').click(); await flush();
+  assert.equal(harness.element('project-view').hidden, false);
+  assert.equal(harness.element('settings-view').hidden, true);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0); harness.dom.window.close();
+});
+
+test('an offline project keeps the shared account and explains its network setting without login', async () => {
+  const harness = await interfaceHarness({ sync_project_chatgpt: () => { throw new Error('This project is offline. Enable isolated networking in project settings to connect ChatGPT.'); } });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.element('start-codex').disabled, true);
+  assert.match(harness.element('project-account-status').textContent, /project is offline/);
+  assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0); harness.dom.window.close();
+});
+
+test('a project switch discards the old account connection before enabling the new chat', async () => {
+  let releaseFirst;
+  const second = { ...project, id: 'project-b', name: 'Second', path: '/fixture/second' };
+  const harness = await interfaceHarness({ sync_project_chatgpt: ({ identifier }) => identifier === project.id
+    ? new Promise(resolve => { releaseFirst = resolve; }) : sharedAccount });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('project-navigation').click(); await flush();
+  harness.handlers.register_project = () => second;
+  harness.handlers.prepare_project = () => ({ project:second, plan:{data:{...plan.data,project:{...plan.data.project,host:second.path}}}, fingerprint:'plan-b',message:null,candidates:[] });
+  harness.handlers.read_project_preferences = () => ({project:second,options:settings});
+  harness.element('choose-folder').click(); await flush(); assert.equal(harness.element('start-codex').disabled,true);
+  releaseFirst({ ...sharedAccount, state:'signed-out',email:null }); await flush();
+  assert.equal(harness.element('project-heading').textContent,'Second'); assert.equal(harness.element('start-codex').disabled,false);
+  assert.equal(harness.calls.filter(call => call.command==='sync_project_chatgpt').at(-1).args.identifier,second.id);
+  assert.equal(harness.element('shared-chatgpt-email').textContent,sharedAccount.email); harness.dom.window.close();
 });
 
 test('completed test output stays reachable after a new chat opens and closes explicitly', async () => {
@@ -940,6 +1592,122 @@ test('an unavailable library record can be forgotten without opening or removing
   assert.deepEqual(harness.calls.find(call => call.command === 'forget_project').args.identifier, project.id);
   assert.deepEqual(records.map(record => record.id), ['other']);
   assert.equal(harness.calls.filter(call => ['open_project', 'preview_removal', 'remove_project', 'prepare_project', 'terminal_close'].includes(call.command)).length, 0);
+  harness.dom.window.close();
+});
+
+test('startup checks folders automatically without displaying a rescan button or opening a project', async () => {
+  let projects = [{ ...project, available: false }];
+  let finishScan;
+  const harness = await interfaceHarness({
+    recent_projects: () => projects,
+    rescan_projects: () => new Promise(resolve => { finishScan = () => { projects = [{ ...project, available: true }]; resolve(projects); }; }),
+  });
+  assert.equal(harness.element('rescan-projects'), null);
+  assert.equal(harness.element('project-rescan-status').hidden, false);
+  assert.equal(harness.element('project-rescan-status').textContent, 'Checking project folders…');
+  assert.equal(harness.element('empty-projects').hidden, true);
+  harness.dom.window.dispatchEvent(new harness.dom.window.Event('focus'));
+  harness.dom.window.dispatchEvent(new harness.dom.window.Event('focus'));
+  await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 1);
+  assert.equal(harness.element('choose-folder').disabled, false);
+  finishScan(); await harness.ready;
+  const button = harness.element('recent-project-list').querySelector('.recent-project');
+  assert.equal(button.disabled, false);
+  assert.equal(button.dataset.projectId, project.id);
+  assert.equal(harness.element('sidebar-project-list').querySelector('button').disabled, false);
+  assert.equal(harness.element('recent-project-list').querySelector('.project-record-forget'), null);
+  assert.equal(harness.element('project-rescan-status').hidden, true);
+  assert.equal(harness.calls.filter(call => ['register_project', 'open_project', 'prepare_project', 'prepare_environment', 'forget_project', 'remove_project', 'terminal_close'].includes(call.command)).length, 0);
+  button.click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'open_project').at(-1).args.identifier, project.id);
+  assert.match(harness.element('project-heading').textContent, /örnek proje/);
+  harness.dom.window.close();
+});
+
+test('unavailable folders and failed automatic checks retry until the drive reconnects', async () => {
+  let fail = false, clock;
+  let projects = [{ ...project, available: false }];
+  const harness = await interfaceHarness({
+    recent_projects: () => projects,
+    rescan_projects: () => { if (fail) throw new Error('Registry temporarily locked'); return projects; },
+  }, dom => { clock = captureProjectRescans(dom); });
+  await harness.ready;
+  assert.equal(clock.pending.size, 1);
+  assert.match(harness.element('project-rescan-status').textContent, /Connect the drive.*automatically/);
+  assert.equal(harness.element('recent-project-list').querySelector('.recent-project').disabled, true);
+  fail = true; clock.run(); await flush();
+  assert.match(harness.element('project-rescan-status').textContent, /try again automatically.*Registry temporarily locked/);
+  assert.equal(harness.element('recent-project-list').querySelectorAll('tr').length, 1);
+  assert.equal(harness.element('choose-folder').disabled, false);
+  assert.equal(harness.element('recent-project-list').querySelector('.project-record-forget').disabled, false);
+  fail = false; clock.run(); await flush();
+  assert.match(harness.element('project-rescan-status').textContent, /unavailable.*automatically/);
+  projects = [{ ...project, available: true }];
+  clock.run(); await flush();
+  assert.equal(harness.element('recent-project-list').querySelector('.recent-project').disabled, false);
+  assert.equal(harness.element('project-rescan-status').hidden, true);
+  assert.equal(clock.pending.size, 0);
+  assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 4);
+  harness.dom.window.close();
+});
+
+test('an automatic check that finishes after navigation keeps the selected project', async () => {
+  const other = { ...project, id: 'other', name: 'Other project', available: true };
+  let projects = [{ ...project, available: false }, other];
+  let finishScan, first = true;
+  const harness = await interfaceHarness({
+    recent_projects: () => projects,
+    open_project: () => other,
+    prepare_project: () => ({ project: other, plan, fingerprint: 'other-plan', message: null, candidates: [] }),
+    rescan_projects: () => { if (first) { first = false; return projects; } return new Promise(resolve => { finishScan = () => { projects = [{ ...project, available: true }, other]; resolve(projects); }; }); },
+  });
+  await harness.ready;
+  harness.dom.window.dispatchEvent(new harness.dom.window.Event('focus')); await flush();
+  const otherButton = harness.element('recent-project-list').querySelector('[data-project-id="other"]');
+  assert.equal(otherButton.disabled, false);
+  otherButton.click(); await flush();
+  finishScan(); await flush();
+  assert.equal(harness.element('project-heading').textContent, 'Other project');
+  assert.equal(harness.element('project-rescan-status').hidden, true);
+  assert.equal(harness.calls.filter(call => call.command === 'open_project').length, 1);
+  harness.element('project-navigation').click(); await flush();
+  assert.equal(harness.element('recent-project-list').querySelector('[data-project-id="project-a"]').disabled, false);
+  harness.dom.window.close();
+});
+
+test('automatic folder checks retain keyboard focus and stop when all folders become available', async () => {
+  let clock;
+  const other = { ...project, id: 'other', name: 'Other project', available: true };
+  let projects = [{ ...project, available: false }, other];
+  const harness = await interfaceHarness({ recent_projects: () => projects }, dom => { clock = captureProjectRescans(dom); });
+  await harness.ready;
+  const otherButton = () => harness.element('recent-project-list').querySelector('[data-project-id="other"]');
+  otherButton().focus();
+  const original = otherButton();
+  clock.run(); await flush();
+  assert.equal(otherButton(), original);
+  assert.equal(harness.dom.window.document.activeElement, original);
+  projects = [{ ...project, available: true }, other];
+  clock.run(); await flush();
+  assert.equal(harness.dom.window.document.activeElement, otherButton());
+  assert.equal(clock.pending.size, 0);
+  harness.dom.window.close();
+});
+
+test('automatic checks pause in Settings and resume when the project library is shown', async () => {
+  let clock;
+  const harness = await interfaceHarness({ recent_projects: () => [{ ...project, available: false }] }, dom => { clock = captureProjectRescans(dom); });
+  await harness.ready;
+  assert.equal(clock.pending.size, 1);
+  harness.element('settings-navigation').click(); await flush();
+  assert.equal(clock.pending.size, 0);
+  harness.dom.window.dispatchEvent(new harness.dom.window.Event('focus')); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 1);
+  harness.element('project-navigation').click(); await flush();
+  assert.equal(clock.pending.size, 1);
+  clock.run(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 2);
   harness.dom.window.close();
 });
 
@@ -1045,7 +1813,7 @@ test('Settings displays the native package version without a version in the HTML
   const harness = await interfaceHarness({ application_version: () => '9.8.7' });
   await harness.ready;
   assert.equal(harness.element('application-version').textContent, '9.8.7');
-  assert.match(fs.readFileSync(root + 'index.html', 'utf8'), /id="application-version">Loading…/);
+  assert.match(fs.readFileSync(root + 'index.html', 'utf8'), /id="application-version"[^>]*>Loading…/);
   harness.dom.window.close();
 });
 
@@ -1596,7 +2364,11 @@ test('a supported unknown-relation child refreshes its legacy parent detail whil
 });
 
 test('stopping Brig refreshes the surviving local shell and completed output', async () => {
-  const h = await interfaceHarness({ stop_project: () => ({ ...project, stage: 'ready' }) });
+  let current = { ...project };
+  const h = await interfaceHarness({
+    stop_project: () => { current = { ...project, stage: 'ready' }; return current; },
+    preview_project: () => ({ project: current, plan, fingerprint: 'plan-a' }),
+  });
   h.element('choose-folder').click();
   await flush();
   h.setTerminal({ identifier: 81, projectId: project.id, purpose: 'local', running: true, exitCode: null });
@@ -1608,6 +2380,10 @@ test('stopping Brig refreshes the surviving local shell and completed output', a
   await flush();
   assert.ok(h.calls.slice(before).some(call => call.command === 'terminal_sessions'));
   assert.equal(h.element('sidebar-terminal-list').children.length, 2);
+  assert.equal(h.calls.filter(call => call.command === 'prepare_environment').length, 0);
+  assert.equal(h.element('start-codex').disabled, true);
+  assert.equal(h.element('retry-project-plan').textContent, 'Start environment');
+  assert.match(h.element('project-plan-status').textContent, /environment is stopped/);
   h.dom.window.close();
 });
 

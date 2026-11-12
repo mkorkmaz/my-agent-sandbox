@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { setBusy } from './loading';
 
 interface HostStatus {
   architecture: string;
@@ -23,7 +24,9 @@ export async function initializeHost(): Promise<void> {
   const path = document.getElementById('cli-path') as HTMLInputElement;
   let previous: { cliPath: string | null; result: HostStatus } | null = null;
   async function inspect(): Promise<void> {
+    if (check.disabled) return;
     check.disabled = true;
+    setBusy(check, true);
     cancel.hidden = false;
     cancel.disabled = false;
     status.textContent = 'Checking this Mac…';
@@ -60,6 +63,7 @@ export async function initializeHost(): Promise<void> {
     } catch (error) {
       status.textContent = String(error);
     } finally {
+      setBusy(check, false);
       check.disabled = false;
       cancel.hidden = true;
     }
@@ -68,6 +72,7 @@ export async function initializeHost(): Promise<void> {
   cancel.addEventListener('click', () => { cancel.disabled = true; status.textContent = 'Cancelling the Mac check…'; void invoke('cancel_inspection'); });
   install.addEventListener('click', async () => {
     install.disabled = true;
+    setBusy(install, true);
     installationCancel.hidden = false;
     message.textContent = 'Preparing Homebrew…';
     try {
@@ -75,7 +80,7 @@ export async function initializeHost(): Promise<void> {
       message.textContent = progress.message;
       await inspect();
     } catch (error) { message.textContent = String(error); }
-    finally { install.disabled = false; installationCancel.hidden = true; }
+    finally { setBusy(install, false); install.disabled = false; installationCancel.hidden = true; }
   });
   installationCancel.addEventListener('click', () => { void invoke('cancel_installation'); });
   await listen<{ current: string | null }>('installation-progress', event => {

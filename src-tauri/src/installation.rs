@@ -4,7 +4,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 #[derive(Default, Clone)]
 pub struct Installation {
@@ -70,15 +70,13 @@ fn install(app: &AppHandle, cancel: &AtomicBool) -> Result<Progress, String> {
     let configured = crate::settings::load(&crate::settings::file(app)?)?.cli_path;
     let brew = host::discover("brew", None)
         .ok_or("Homebrew was not found. Install it from brew.sh first.")?;
-    let file = app
-        .path()
-        .app_config_dir()
-        .map_err(|error| error.to_string())?
-        .join("installation.json");
+    let records_directory = crate::data_location::records_directory(app)?;
+    let file = crate::data_location::directory(app)?.join("installation.json");
     install_steps(
         &brew,
         &file,
         cancel,
+        Some(&records_directory),
         || installed_version(configured.as_deref(), cancel),
         |progress| {
             app.emit("installation-progress", progress)
@@ -108,9 +106,19 @@ fn install_steps(
     brew: &Path,
     file: &Path,
     cancel: &AtomicBool,
+    records_directory: Option<&crate::data_location::RecordsDirectory>,
     mut version: impl FnMut() -> Result<Option<String>, String>,
     emit: impl Fn(&Progress) -> Result<(), String>,
 ) -> Result<Progress, String> {
+    let save = |progress: &Progress| -> Result<(), String> {
+        if let Some(directory) = records_directory {
+            directory.verify()?;
+        }
+        storage::write(file, progress)
+    };
+    if let Some(directory) = records_directory {
+        directory.verify()?;
+    }
     let mut progress: Progress = storage::read(file)?.unwrap_or_default();
     let installed = version()?;
     if installed.as_deref() == Some(host::SUPPORTED_BRIG_VERSION) {
@@ -119,7 +127,7 @@ fn install_steps(
             "Brig {} is already available. Run the Mac check again.",
             host::SUPPORTED_BRIG_VERSION
         ));
-        storage::write(file, &progress)?;
+        save(&progress)?;
         return Ok(progress);
     }
     // Old completion describes the previous install, not the CLI currently on disk.
@@ -141,7 +149,7 @@ fn install_steps(
         }
         progress.current = Some(name.into());
         progress.message = None;
-        storage::write(file, &progress)?;
+        save(&progress)?;
         emit(&progress)?;
         let output = command::run(
             brew,
@@ -162,14 +170,14 @@ fn install_steps(
             progress.message = Some(format!(
                 "Homebrew {name} failed. Restart installation to retry this step."
             ));
-            storage::write(file, &progress)?;
+            save(&progress)?;
             return Ok(progress);
         }
         progress.completed.push(name.into());
-        storage::write(file, &progress)?;
+        save(&progress)?;
     }
     progress.current = Some("verify".into());
-    storage::write(file, &progress)?;
+    save(&progress)?;
     emit(&progress)?;
     progress.message = Some(match version() {
         Ok(Some(found)) if found == host::SUPPORTED_BRIG_VERSION => {
@@ -180,7 +188,7 @@ fn install_steps(
         Ok(None) => "Homebrew finished, but Brig was not found at the configured CLI path. Check the path and run the Mac check again.".into(),
         Err(error) => format!("Homebrew finished, but the installed CLI could not be verified. {error}"),
     });
-    storage::write(file, &progress)?;
+    save(&progress)?;
     Ok(progress)
 }
 
@@ -231,7 +239,7 @@ mod tests {
         let destination = file.clone();
         let worker = std::thread::spawn(move || {
             let _finish = finish;
-            install_steps(&brew, &destination, &cancel, || Ok(None), |_| Ok(())).unwrap()
+            install_steps(&brew, &destination, &cancel, None, || Ok(None), |_| Ok(())).unwrap()
         });
         while !file.is_file() {
             std::thread::yield_now();
@@ -265,11 +273,12 @@ mod tests {
                 .is_file()
                 .then(|| host::SUPPORTED_BRIG_VERSION.into()))
         };
-        let first = install_steps(&executable, &file, &cancel, &version, |_| Ok(())).unwrap();
+        let first = install_steps(&executable, &file, &cancel, None, &version, |_| Ok(())).unwrap();
         assert_eq!(first.completed, ["update"]);
         assert_eq!(first.current.as_deref(), Some("tap"));
         assert!(first.message.unwrap().contains("retry this step"));
-        let resumed = install_steps(&executable, &file, &cancel, &version, |_| Ok(())).unwrap();
+        let resumed =
+            install_steps(&executable, &file, &cancel, None, &version, |_| Ok(())).unwrap();
         assert_eq!(resumed.completed, ["update", "tap", "trust", "install"]);
         assert!(resumed.current.is_none());
         assert!(resumed.message.unwrap().contains("verified"));
@@ -304,7 +313,7 @@ mod tests {
         };
         let cancel = AtomicBool::new(false);
         for _ in 0..2 {
-            let result = install_steps(&brew, &file, &cancel, &probe, |_| Ok(())).unwrap();
+            let result = install_steps(&brew, &file, &cancel, None, &probe, |_| Ok(())).unwrap();
             assert!(result.current.is_none());
             assert!(result.message.unwrap().contains("verified"));
             fs::remove_file(root.join("installed")).unwrap();
@@ -324,6 +333,7 @@ mod tests {
                 &brew,
                 &file,
                 &cancel,
+                None,
                 || {
                     calls += 1;
                     if calls == 1 {

@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { showDialog } from './dialogs';
 import { sameProject, sameProjectView, type Project, type ProjectContext } from './projects';
+import { setBusy } from './loading';
 
 interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean; hasEnvironment: boolean; logout?: boolean | null }
 
@@ -15,15 +16,16 @@ export function initializeOperations(current: () => ProjectContext | null, open:
   const status = document.getElementById('operation-status')!;
   const stop = document.getElementById('stop-project') as HTMLButtonElement;
   stop.addEventListener('click', async () => {
-    const context = current(); if (!context) return;
+    const context = current(); if (!context || stop.disabled) return;
     const pending = ++request;
     stop.disabled = true; status.textContent = 'Stopping Brig environment…';
+    setBusy(stop, true);
     try {
       const project = await invoke<Project>('stop_project', { identifier: context.id });
       if (sameProject(current(), context)) await stopped(project);
       if (sameProjectView(current(), context) && pending === request) status.textContent = 'Environment stopped. Guest home and conversations are preserved.';
     } catch (error) { if (sameProjectView(current(), context) && pending === request) status.textContent = String(error); }
-    finally { if (sameProjectView(current(), context)) stop.disabled = false; }
+    finally { if (sameProjectView(current(), context)) { setBusy(stop, false); stop.disabled = false; } }
   });
   const dialog = document.getElementById('removal-dialog') as HTMLDialogElement;
   const confirmation = document.getElementById('removal-confirmation') as HTMLInputElement;
@@ -31,9 +33,11 @@ export function initializeOperations(current: () => ProjectContext | null, open:
   let preview: Preview | null = null;
   let removingId: string | null = null;
   let previewContext: ProjectContext | null = null;
-  document.getElementById('preview-removal')!.addEventListener('click', async () => {
-    const context = current(); if (!context) return;
+  const previewButton = document.getElementById('preview-removal') as HTMLButtonElement;
+  previewButton.addEventListener('click', async () => {
+    const context = current(); if (!context || previewButton.disabled) return;
     const pending = ++request;
+    previewButton.disabled = true; setBusy(previewButton, true);
     preview = null; previewContext = null; removingId = null;
     status.textContent = 'Preparing removal preview…';
     try {
@@ -52,6 +56,7 @@ export function initializeOperations(current: () => ProjectContext | null, open:
       (document.getElementById('logout-on-removal') as HTMLInputElement).disabled = !preview.hasEnvironment || preview.logout != null;
       showDialog(dialog, 'preview-removal'); confirmation.focus();
     } catch (error) { if (sameProjectView(current(), context) && pending === request) status.textContent = String(error); }
+    finally { if (sameProjectView(current(), context)) { previewButton.disabled = false; setBusy(previewButton, false); } }
   });
   confirmation.addEventListener('input', () => { confirm.disabled = confirmation.value !== preview?.reference; });
   document.getElementById('cancel-removal')!.addEventListener('click', () => { dialog.close(); });
@@ -60,16 +65,19 @@ export function initializeOperations(current: () => ProjectContext | null, open:
     const context = previewContext;
     const pending = ++request;
     confirm.disabled = true;
+    setBusy(confirm, true);
     try {
       const message = await invoke<string>('remove_project', { identifier: removingId, fingerprint: preview.fingerprint, confirmation: confirmation.value, logout: (document.getElementById('logout-on-removal') as HTMLInputElement).checked });
       if (sameProjectView(current(), context)) dialog.close();
       if (sameProject(current(), context)) await removed(message);
     } catch (error) { if (sameProjectView(current(), context) && pending === request) document.getElementById('removal-error')!.textContent = String(error); }
-    finally { if (sameProjectView(current(), context) && pending === request) confirm.disabled = false; }
+    finally { if (sameProjectView(current(), context) && pending === request) { setBusy(confirm, false); confirm.disabled = false; } }
   });
   return () => {
     ++request; preview = null; removingId = null; previewContext = null;
     status.textContent = ''; stop.disabled = false; confirm.disabled = true; confirmation.value = '';
+    for (const button of [stop, previewButton, confirm]) setBusy(button, false);
+    previewButton.disabled = false;
     for (const id of ['removal-description', 'removal-reference', 'removal-workspace', 'removal-error']) document.getElementById(id)!.textContent = '';
     document.getElementById('removal-external')!.hidden = true;
     const logout = document.getElementById('logout-on-removal') as HTMLInputElement;

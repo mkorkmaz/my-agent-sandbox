@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -166,11 +166,34 @@ pub fn load(file: &Path) -> Result<Settings, String> {
 }
 
 pub fn file(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|error| error.to_string())?
-        .join("settings.json"))
+    Ok(crate::data_location::directory(app)?.join("settings.json"))
+}
+
+#[derive(Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InterfacePreferences {
+    sidebar_width: Option<u32>,
+}
+
+#[tauri::command]
+pub fn load_interface_preferences(app: AppHandle) -> Result<InterfacePreferences, String> {
+    let file = crate::data_location::directory(&app)?.join("interface.json");
+    Ok(storage::read(&file)?.unwrap_or_default())
+}
+
+#[tauri::command]
+pub fn save_interface_preferences(app: AppHandle, sidebar_width: u32) -> Result<(), String> {
+    if !(280..=16384).contains(&sidebar_width) {
+        return Err("The sidebar width must be between 280 and 16384 pixels.".into());
+    }
+    let file = crate::data_location::directory(&app)?.join("interface.json");
+    let _guard = storage::lock(&file)?;
+    storage::write(
+        &file,
+        &InterfacePreferences {
+            sidebar_width: Some(sidebar_width),
+        },
+    )
 }
 
 #[derive(Serialize)]

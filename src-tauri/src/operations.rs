@@ -352,6 +352,12 @@ pub async fn remove_project(
     .await
     .map_err(|error| error.to_string())??;
     terminal::close_project(app.clone(), &identifier).await?;
+    let mut account = app
+        .state::<crate::shared_chatgpt::SharedChatgpt>()
+        .0
+        .clone()
+        .lock_owned()
+        .await;
     let lock = projects.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock.lock().map_err(|error| error.to_string())?;
@@ -359,13 +365,22 @@ pub async fn remove_project(
         let project = Registry::load(&file)?.project(&identifier)?;
         let settings = project.settings(settings::load(&settings::file(&app)?)?)?;
         let brig = Brig::new(&settings)?;
-        let cleanup = continue_removal(
+        if !logout {
+            crate::shared_chatgpt::detach_project(&app, &mut account, &identifier, false)?;
+        }
+        let cleanup = continue_removal_with(
             &brig,
             &file,
             &identifier,
             &fingerprint,
             &confirmation,
             logout,
+            |brig, project| {
+                if crate::shared_chatgpt::detach_project(&app, &mut account, &project.id, true)? {
+                    return Ok(());
+                }
+                guest_logout(brig, project)
+            },
         )?;
         crate::conversations::unobserve(&app, &identifier)?;
         Ok(cleanup)
@@ -380,6 +395,20 @@ fn persist_removal(file: &Path, project: &Project) -> Result<(), String> {
     storage::write(file, &registry)
 }
 
+fn guest_logout(brig: &Brig, project: &Project) -> Result<(), String> {
+    brig.checked(
+        &[
+            "sh".into(),
+            project.reference(),
+            "codex".into(),
+            "logout".into(),
+        ],
+        None,
+    )
+    .map(|_| ())
+}
+
+#[cfg(test)]
 pub(crate) fn continue_removal(
     brig: &Brig,
     file: &Path,
@@ -387,6 +416,26 @@ pub(crate) fn continue_removal(
     fingerprint: &str,
     confirmation: &str,
     logout: bool,
+) -> Result<String, String> {
+    continue_removal_with(
+        brig,
+        file,
+        identifier,
+        fingerprint,
+        confirmation,
+        logout,
+        guest_logout,
+    )
+}
+
+fn continue_removal_with(
+    brig: &Brig,
+    file: &Path,
+    identifier: &str,
+    fingerprint: &str,
+    confirmation: &str,
+    logout: bool,
+    mut sign_out: impl FnMut(&Brig, &Project) -> Result<(), String>,
 ) -> Result<String, String> {
     let _file_guard = storage::lock(file)?;
     let mut project = Registry::load(file)?.project(identifier)?;
@@ -419,15 +468,7 @@ pub(crate) fn continue_removal(
         if !current.has_environment {
             return Err("The guest disappeared before sign-out could be verified. Guest credentials may remain; review the guest home before continuing.".into());
         }
-        brig.checked(
-            &[
-                "sh".into(),
-                project.reference(),
-                "codex".into(),
-                "logout".into(),
-            ],
-            None,
-        )?;
+        sign_out(brig, &project)?;
         project.removal.as_mut().unwrap().logged_out = true;
         persist_removal(file, &project)?;
     }

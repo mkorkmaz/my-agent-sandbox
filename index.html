@@ -11,13 +11,6 @@
     <div class="app-shell">
       <nav class="sidebar" id="sidebar" aria-label="Main navigation">
         <div id="sidebar-resizer" class="sidebar-resizer" role="separator" tabindex="0" aria-label="Resize sidebar" aria-controls="sidebar" aria-orientation="vertical" aria-valuemin="280" aria-valuenow="280"></div>
-        <p class="app-name">
-          <img class="app-icon" src="/src-tauri/icons/icon.png" alt="" width="36" height="36">
-          <span class="app-label">
-            <span>Tugboat</span>
-            <small class="app-subtitle">Agent Sandbox</small>
-          </span>
-        </p>
         <button class="navigation-item" id="project-navigation" aria-current="page"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span id="project-navigation-label">Projects</span></button>
         <div class="sidebar-projects" id="sidebar-projects">
           <ul id="sidebar-project-list" class="sidebar-list" aria-label="Projects"></ul>
@@ -32,7 +25,10 @@
             </div>
           </section>
         </div>
-        <button class="navigation-item settings-navigation" id="settings-navigation"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
+        <div class="sidebar-footer">
+          <button class="navigation-item settings-navigation" id="settings-navigation"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Settings</span></button>
+          <span id="sidebar-version" class="sidebar-version" title="Application version"></span>
+        </div>
       </nav>
       <main>
         <section id="project-view" class="project-view" aria-labelledby="project-heading">
@@ -51,14 +47,15 @@
             <div id="project-plan-feedback" hidden><p id="project-plan-status" class="support-text" role="status"></p><button id="retry-project-plan" class="secondary-button" hidden>Retry setup</button></div>
             <button id="resume-removal" class="secondary-button" hidden>Review incomplete removal…</button>
             <p id="project-description">Choose where Brig &amp; Codex will work.</p>
+            <p id="project-rescan-status" class="support-text" role="status" hidden></p>
             <section id="recent-projects" hidden aria-label="Projects, most recently opened first">
               <div class="table-scroll"><table class="data-table project-table"><colgroup><col class="project-name-column"><col class="project-branch-column"><col class="project-opened-column"></colgroup><thead><tr><th scope="col">Project</th><th scope="col">Branch</th><th scope="col">Last opened</th></tr></thead><tbody id="recent-project-list"></tbody></table></div>
             </section>
-            <section id="empty-projects"><h2>Your projects, in one place</h2><p>Add a project folder to start working with Brig and Codex.</p></section>
+            <section id="empty-projects" hidden><h2>Your projects, in one place</h2><p>Add a project folder to start working with Brig and Codex.</p></section>
             <section id="project-dashboard" hidden aria-label="Project overview">
               <div id="project-setup" class="project-setup" hidden>
-                <button class="setup-settings-button" id="setup-project"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Set up environment</span></button>
-                <p>Prepare this project's environment to start a chat.</p>
+                <button class="setup-settings-button" id="setup-project"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Review project settings</span></button>
+                <p>Open project settings to review the details that need your attention.</p>
               </div>
               <div id="project-overview" hidden>
                 <dl id="project-usage" class="usage-summary" aria-label="Total project usage"></dl>
@@ -67,6 +64,7 @@
                   <div class="session-tabs" role="group" aria-label="Session view"><button class="session-tab" data-session-state="active" aria-pressed="true">Sessions</button><button class="session-tab" data-session-state="archived" aria-pressed="false">Archived</button><button class="session-tab" data-session-state="deleted" aria-pressed="false">Trash</button></div>
                   <div class="action-row"><button class="secondary-button" id="return-to-terminal" hidden>Return to chat</button><button class="primary-button icon-label-button" id="start-codex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>New Chat</span></button></div>
                 </div>
+                <div id="project-account-feedback" hidden><p id="project-account-status" class="support-text" role="status"></p><button id="project-chatgpt-settings" class="secondary-button">Manage ChatGPT account…</button></div>
                 <p id="dashboard-session-status" class="support-text" role="status"></p>
                 <div class="table-scroll"><table id="session-table" class="data-table session-table"><thead><tr><th scope="col">Session</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">API cost</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="session-table-body"></tbody></table></div>
                 <section id="unlinked-subagents" class="unlinked-subagents" aria-labelledby="unlinked-subagents-heading" hidden>
@@ -88,12 +86,42 @@
           <dl class="settings-group">
             <div><dt>Appearance</dt><dd>Dark sidebar · Light workspace</dd></div>
             <div><dt>Application</dt><dd>Tugboat</dd></div>
-            <div><dt>Version</dt><dd id="application-version">Loading…</dd></div>
+            <div><dt>Version</dt><dd id="application-version" class="loading-value is-loading" aria-busy="true">Loading…</dd></div>
           </dl>
+          <hr class="settings-divider">
+          <section id="shared-chatgpt-section" aria-labelledby="shared-chatgpt-heading">
+          <h2 id="shared-chatgpt-heading" tabindex="-1">ChatGPT account</h2>
+          <dl class="settings-group"><div><dt>Shared account</dt><dd id="shared-chatgpt-email" class="loading-value is-loading" aria-busy="true">Loading…</dd></div></dl>
+          <p class="support-text field-help">Sign in once for all projects. Each project keeps its own environment, policy and chats.</p>
+          <div id="saved-chatgpt-accounts" hidden>
+            <label class="field-label" for="saved-chatgpt-project">Saved project sign-in</label>
+            <select id="saved-chatgpt-project" class="text-field"></select>
+            <div class="action-row"><button class="secondary-button" id="use-saved-chatgpt" disabled>Use saved sign-in</button></div>
+          </div>
+          <div class="action-row">
+            <button class="primary-button" id="shared-chatgpt-sign-in" disabled>Sign in with ChatGPT</button>
+            <button class="secondary-button" id="shared-chatgpt-retry" hidden>Retry connection</button>
+            <button class="secondary-button" id="shared-chatgpt-disconnect" hidden>Sign out of Tugboat</button>
+            <button class="secondary-button" id="shared-chatgpt-cancel" hidden>Cancel sign-in</button>
+          </div>
+          <p id="shared-chatgpt-status" class="support-text" role="status">Loading the shared account…</p>
+          <p id="shared-chatgpt-hint" class="support-text field-help"></p>
+          </section>
+          <hr class="settings-divider">
+          <h2>Records folder</h2>
+          <dl class="settings-group"><div><dt>Location</dt><dd id="records-folder" class="loading-value is-loading" aria-busy="true">Loading…</dd></div></dl>
+          <p id="records-folder-hint" class="support-text field-help">Settings, project records, saved usage and checks are stored here.</p>
+          <div class="action-row">
+            <button class="secondary-button" id="change-records-folder" disabled>Change folder…</button>
+            <button class="secondary-button" id="default-records-folder" hidden>Use default folder</button>
+            <button class="secondary-button" id="cancel-records-move" hidden>Cancel folder change</button>
+            <button class="primary-button" id="restart-for-records" hidden>Restart Tugboat</button>
+          </div>
+          <p id="records-folder-status" class="support-text" role="status"></p>
           <hr class="settings-divider">
           <h2>Brig and Mac checks</h2>
           <form id="brig-settings">
-          <fieldset id="settings-fields" disabled>
+          <fieldset id="settings-fields" class="loading-fields is-loading" aria-busy="true" disabled>
           <label class="field-label" for="cli-path">Brig CLI path <span>Leave blank to detect automatically.</span></label>
           <input type="text" id="cli-path" class="text-field" spellcheck="false" autocomplete="off" placeholder="/opt/homebrew/bin/brig">
           <label class="field-label" for="codex-profile">Codex profile</label>
@@ -121,7 +149,7 @@
           <dl id="host-tools" class="settings-group tool-paths"></dl>
           <details class="doctor-details"><summary>Brig doctor results</summary><ul id="host-doctor"></ul></details>
           <p id="homebrew-help" class="support-text" hidden>Homebrew was not found. Follow the official installation steps at brew.sh, then check this Mac again.</p>
-          <div class="installation-actions">
+          <div>
             <p class="support-text">Installation updates Homebrew, adds and trusts the brig-sh/brig tap, then installs Brig.</p>
             <div class="action-row"><button class="secondary-button" id="install-brig" hidden>Install Brig with Homebrew</button><button class="secondary-button" id="cancel-installation" hidden>Cancel installation</button></div>
             <p id="installation-status" class="support-text" role="status"></p>
@@ -132,11 +160,11 @@
     <dialog id="project-settings-dialog" class="project-settings-dialog" aria-labelledby="project-settings-heading">
       <header class="dialog-header"><h2 id="project-settings-heading">Project settings</h2><button id="close-project-settings" class="icon-button" title="Close settings" aria-label="Close project settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
       <div class="dialog-content">
-        <form id="project-preferences"><fieldset id="project-preference-fields" disabled>
+        <form id="project-preferences"><fieldset id="project-preference-fields" class="loading-fields" disabled>
           <label class="field-label" for="project-name">Project name</label><input id="project-name" class="text-field" maxlength="120" required>
           <div class="field-pair"><div><label class="field-label" for="project-cpus">CPU count</label><input id="project-cpus" type="number" class="text-field" min="1" max="32" step="1" required></div><div><label class="field-label" for="project-memory">Memory (MB)</label><input id="project-memory" type="number" class="text-field" min="1024" max="65536" step="256" required></div></div>
           <div class="field-pair"><div><label class="field-label" for="project-verification">Image signature</label><select id="project-verification" class="text-field"><option value="require">Require verification</option><option value="warn">Warn on failure</option><option value="off">Verification off</option></select></div><div><label class="field-label" for="project-network">Network</label><select id="project-network" class="text-field"><option value="isolated">Access allowed by policy</option><option value="offline">Offline</option></select></div></div>
-          <div class="action-row"><button type="submit" class="primary-button">Save project settings</button></div>
+          <div class="action-row"><button type="submit" class="primary-button" id="save-project-preferences">Save project settings</button></div>
           <p class="support-text">Stop the environment before changing these settings. Guest home and chats are preserved.</p>
         </fieldset><p id="project-preferences-status" class="support-text" role="status"></p></form>
         <section id="project-actions" hidden aria-label="Project setup">
@@ -146,8 +174,8 @@
               <div id="codex-actions" hidden>
                 <div class="action-row" id="codex-launch-actions"><button class="secondary-button" id="guest-shell">Guest terminal</button></div>
                 <p id="login-status" class="support-text" role="status">Check your ChatGPT sign-in status.</p>
-                <div class="action-row"><button class="secondary-button" id="codex-login">Sign in with ChatGPT</button><button class="secondary-button" id="check-login">Check sign-in status</button></div>
-                <p class="support-text" id="login-hint">Open the official address shown in the terminal in your Mac browser, then enter the device code.</p>
+                <div class="action-row"><button class="secondary-button" id="codex-login">Manage ChatGPT account…</button><button class="secondary-button" id="check-login">Check sign-in status</button></div>
+                <p class="support-text" id="login-hint">This project uses the shared ChatGPT account in Settings. Sign in once for all projects.</p>
                 <details class="advanced-actions"><summary>File and network boundaries</summary>
                   <p class="support-text">The check tests file sharing and selects guest network probes from the active mode and policy. Offline and deny-all plans expect blocked traffic. A policy without a verified comparison is reported as inconclusive.</p>
                   <button class="secondary-button" id="run-boundary-tests">Check Brig boundaries</button>

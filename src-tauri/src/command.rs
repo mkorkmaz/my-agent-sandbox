@@ -103,13 +103,37 @@ pub fn run(
     timeout: Duration,
     cancellation: &AtomicBool,
 ) -> Result<CommandOutput, String> {
+    run_with_input(
+        executable,
+        arguments,
+        directory,
+        environment,
+        timeout,
+        cancellation,
+        None,
+    )
+}
+
+pub fn run_with_input(
+    executable: &Path,
+    arguments: &[String],
+    directory: Option<&Path>,
+    environment: &BTreeMap<String, String>,
+    timeout: Duration,
+    cancellation: &AtomicBool,
+    input: Option<Vec<u8>>,
+) -> Result<CommandOutput, String> {
     let _running = Running::enter()?;
     let mut command = Command::new(executable);
     command
         .args(arguments)
         .env_clear()
         .envs(environment)
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
@@ -117,6 +141,10 @@ pub fn run(
         command.current_dir(directory);
     }
     let mut child = command.spawn().map_err(|error| error.to_string())?;
+    let input_writer = input.map(|bytes| {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        thread::spawn(move || std::io::Write::write_all(&mut stdin, &bytes))
+    });
     let exceeded = Arc::new(AtomicBool::new(false));
     let stdout = child.stdout.take().expect("piped stdout");
     let stderr = child.stderr.take().expect("piped stderr");
@@ -161,6 +189,12 @@ pub fn run(
         .join()
         .map_err(|_| "Could not read error output.")?
         .map_err(|error| error.to_string())?;
+    if let Some(writer) = input_writer {
+        writer
+            .join()
+            .map_err(|_| "Could not send the command input.")?
+            .map_err(|_| "The command did not accept its input.")?;
+    }
     Ok(CommandOutput {
         stdout: String::from_utf8_lossy(&output).into_owned(),
         stderr: String::from_utf8_lossy(&errors).into_owned(),
@@ -175,6 +209,34 @@ pub fn run(
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn private_input_uses_stdin_and_a_blocked_writer_stops_with_the_process() {
+        let output = run_with_input(
+            Path::new("/bin/cat"),
+            &[],
+            None,
+            &environment(),
+            Duration::from_secs(2),
+            &AtomicBool::new(false),
+            Some(b"synthetic-private-input".to_vec()),
+        )
+        .unwrap();
+        assert_eq!(output.stdout, "synthetic-private-input");
+        assert_eq!(output.exit_code, Some(0));
+        let started = Instant::now();
+        let blocked = run_with_input(
+            Path::new("/bin/sleep"),
+            &["60".into()],
+            None,
+            &environment(),
+            Duration::from_millis(100),
+            &AtomicBool::new(false),
+            Some(vec![b'x'; 2_000_000]),
+        );
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(blocked.err().unwrap().contains("did not accept its input"));
+    }
 
     #[test]
     fn confirmed_shutdown_cancels_and_reaps_background_commands() {

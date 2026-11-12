@@ -3,7 +3,7 @@ import type { Dashboard, SessionState } from './usage-types';
 export type { Dashboard, SessionState } from './usage-types';
 
 import { cachedCount, cachePercentage, cacheWrites, count, money, usageCount } from './usage-format';
-export { emptyUsage, money, count } from './usage-format';
+export { emptyUsage } from './usage-format';
 export { renderUsageDetails, usageDetailsStatus } from './usage-details';
 
 const icons: Record<string, string> = {

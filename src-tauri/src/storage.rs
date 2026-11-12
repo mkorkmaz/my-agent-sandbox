@@ -140,6 +140,11 @@ pub fn immutable_v1_backup(file: &Path) -> Result<(), String> {
 }
 
 pub fn write(file: &Path, value: &impl Serialize) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
+    write_bytes(file, &bytes)
+}
+
+pub fn write_bytes(file: &Path, bytes: &[u8]) -> Result<(), String> {
     let directory = file.parent().ok_or("Invalid storage location.")?;
     fs::create_dir_all(directory).map_err(|error| error.to_string())?;
     let temporary = file.with_extension(format!(
@@ -154,10 +159,7 @@ pub fn write(file: &Path, value: &impl Serialize) -> Result<(), String> {
             .mode(0o600)
             .open(&temporary)
             .map_err(|error| error.to_string())?;
-        let bytes = serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?;
-        output
-            .write_all(&bytes)
-            .map_err(|error| error.to_string())?;
+        output.write_all(bytes).map_err(|error| error.to_string())?;
         output.sync_all().map_err(|error| error.to_string())?;
         fs::rename(&temporary, file).map_err(|error| error.to_string())?;
         File::open(directory)

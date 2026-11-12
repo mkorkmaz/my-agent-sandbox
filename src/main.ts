@@ -12,6 +12,9 @@ import { renderDashboard, renderUsageDetails, usageButtonId, usageDetailsStatus,
 import { showDialog } from './dialogs';
 import type { ConversationUsageDetails } from './usage-types';
 import { initializeSidebar } from './sidebar';
+import { initializeDataLocation } from './data-location';
+import { initializeChatgptAccount, type ChatgptAccount, type ChatgptAccountStatus } from './chatgpt-account';
+import { renderSkeleton, setBusy, setLoading } from './loading';
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -34,6 +37,11 @@ let projectEpoch = 0;
 let projectSettingsEpoch = 0;
 let projectPreferencesRequest = 0;
 let loginRequest = 0;
+let sharedChatgpt: ChatgptAccount | null = null;
+let accountSyncKey: string | null = null;
+let accountConnectionError: string | null = null;
+let syncingAccount = false;
+let connectedAccountProject: string | null = null;
 let usageRequest = 0;
 let usageSessionId: string | null = null;
 let usageFingerprint: string | null = null;
@@ -47,19 +55,20 @@ let terminalIdentifier: number | null = null;
 let startingTerminal = false;
 let pendingEnvironmentProject: string | null = null;
 const environmentTerminals = new Map<string, number>();
+const closingTerminals = new Set<number>();
 let preparingProject: string | null = null;
 let selectedPlanFingerprint: string | null = null;
 let planLoading = false;
 let planRequest = 0;
-let planRetryAction: 'prepare' | 'preview' = 'prepare';
+let planRetryAction: 'prepare' | 'preview' | 'environment' = 'prepare';
 let projects: Project[] = [];
+let projectsLoaded = false;
 let conversations: Conversation[] = [];
 let dashboard: Dashboard = { conversations: [], usage: emptyUsage, coverage: 'unknown', pricingDate: '2026-11-10', warnings: [] };
 let sessionView: SessionState = 'active';
 let changingSession = false;
 let dashboardLoaded = false;
 let dashboardError: string | null = null;
-let terminalRunning = false;
 let selectedConversationId: string | null = null;
 let terminals: TerminalStatus[] = [];
 const lastTerminals = new Map<string, number>();
@@ -68,6 +77,10 @@ let terminalViewRequest = 0;
 let pendingLayout = false;
 let layoutWork: Promise<void> | null = null;
 let projectListRequest = 0;
+let rescanningProjects = false;
+let projectRescanStarted = false;
+let projectRescanError: string | null = null;
+let projectRescanTimer: number | null = null;
 let conversationListRequest = 0;
 let dashboardUpdates = 0;
 let dashboardSequence = 0;
@@ -75,12 +88,20 @@ let loadingConversations = false;
 const terminalPanel = element('terminal-panel');
 const terminalSurface = element('terminal-surface');
 const startTerminalButton = element<HTMLButtonElement>('start-terminal');
+renderSkeleton(element('recent-project-list'), 3);
+renderSkeleton(element('sidebar-project-list'));
+element('recent-projects').hidden = false;
+setLoading(element('recent-projects'), true);
+setLoading(element('sidebar-project-list'), true);
 
 function projectContext(): ProjectContext | null { return selectedProject ? { id: selectedProject.id, fingerprint: selectedPlanFingerprint, epoch: projectEpoch, view: projectSettingsEpoch } : null; }
 function resetProjectDetails(): void {
   ++projectSettingsEpoch; ++projectPreferencesRequest; ++loginRequest;
   element('login-status').textContent = 'Check your ChatGPT sign-in status.';
   element<HTMLButtonElement>('check-login').disabled = false;
+  setBusy(element('check-login'), false);
+  setBusy(element('save-project-preferences'), false);
+  setLoading(element('project-preference-fields'), false);
   element('project-preferences-status').textContent = '';
   element('local-terminal-status').textContent = '';
   element<HTMLFieldSetElement>('project-preference-fields').disabled = true;
@@ -90,12 +111,70 @@ function resetProjectDetails(): void {
 }
 
 function isChat(status: TerminalStatus): boolean { return ['codex', 'resume'].includes(status.purpose); }
-function canStartChat(): boolean { return selectedProject?.stage === 'environment-ready' && selectedPlanFingerprint !== null && !planLoading; }
+function environmentReady(): boolean { return selectedProject?.stage === 'environment-ready' && selectedPlanFingerprint !== null && !planLoading; }
+function canStartChat(): boolean {
+  const context = projectContext();
+  return environmentReady() && !syncingAccount && sharedChatgpt?.status()?.state === 'signed-in'
+    && connectedAccountProject === [context?.id, context?.epoch, context?.fingerprint].join('|');
+}
 
-function planFeedback(message: string | null, retry = false): void {
+async function syncProjectAccount(): Promise<void> {
+  const context = projectContext();
+  if (!context || !sharedChatgpt || !environmentReady() || syncingAccount) return;
+  const key = [context.id, context.epoch, context.fingerprint, sharedChatgpt.status()?.generation].join('|');
+  if (accountSyncKey === key) return;
+  accountSyncKey = key; syncingAccount = true; connectedAccountProject = null;
+  accountConnectionError = null;
+  element<HTMLButtonElement>('start-codex').disabled = true;
+  element('login-status').textContent = 'Connecting the shared ChatGPT account…';
+  updateCodexActions();
+  try {
+    const status = await invoke<ChatgptAccountStatus>('sync_project_chatgpt', { identifier: context.id });
+    if (!sameProject(projectContext(), context)) return;
+    accountSyncKey = [context.id, context.epoch, context.fingerprint, status.generation].join('|');
+    connectedAccountProject = status.state === 'signed-in' ? [context.id, context.epoch, context.fingerprint].join('|') : null;
+    sharedChatgpt.accept(status);
+    element('login-status').textContent = status.message;
+  } catch (error) {
+    if (sameProject(projectContext(), context)) {
+      element('login-status').textContent = String(error);
+      accountConnectionError = String(error);
+      sharedChatgpt.connectionFailed(String(error));
+    }
+  }
+  finally { syncingAccount = false; updateCodexActions(); }
+}
+
+function planFeedback(message: string | null, retry = false, busy = false): void {
   element('project-plan-feedback').hidden = message === null;
   element('project-plan-status').textContent = message ?? '';
+  setBusy(element('project-plan-status'), busy);
+  setBusy(element('preparation-status'), busy);
   element('retry-project-plan').hidden = !retry;
+  element('retry-project-plan').textContent = planRetryAction === 'environment' ? 'Retry environment' : 'Retry setup';
+}
+
+function environmentFeedback(message: string | null = null): void {
+  if (selectedProject?.stage === 'environment-ready') { planFeedback(null); return; }
+  if (message) { planRetryAction = 'environment'; planFeedback(message, true); return; }
+  if (selectedProject?.stage === 'environment-starting') {
+    planFeedback('Starting the project environment with your saved settings…', false, true); return;
+  }
+  const error = selectedProject?.environmentAttempt?.error;
+  if (error) { planRetryAction = 'environment'; planFeedback(error, true); return; }
+  if (selectedProject?.stage === 'ready' && selectedPlanFingerprint) {
+    planRetryAction = 'environment'; planFeedback('The project environment is stopped.', true);
+    element('retry-project-plan').textContent = 'Start environment';
+  }
+}
+
+async function ensureSelectedEnvironment(): Promise<void> {
+  if (!selectedProject || !selectedPlanFingerprint || !['ready', 'environment-starting'].includes(selectedProject.stage) || selectedProject.policyDetached) return;
+  if (terminals.some(status => status.running && ['codex', 'resume', 'login', 'shell'].includes(status.purpose))) {
+    planFeedback('End running sessions to apply the saved environment settings.'); return;
+  }
+  planFeedback('Starting the project environment with your saved settings…', false, true);
+  await openTerminal('prepare_environment', { identifier: selectedProject.id, fingerprint: selectedPlanFingerprint }, 'Starting project environment…', false);
 }
 
 function currentTerminal(): TerminalStatus | null {
@@ -153,8 +232,11 @@ function updateTerminalActions(status: TerminalStatus | null): void {
   button.hidden = status === null || (!status.running && status.purpose === 'environment');
   button.textContent = status && ['codex', 'resume'].includes(status.purpose) ? 'Return to chat' : 'Return to terminal';
   button.className = status?.running ? 'primary-button' : 'secondary-button';
-  terminalRunning = terminals.some(terminal => terminal.running);
+  const terminalRunning = terminals.some(terminal => terminal.running);
   element('close-terminal').textContent = terminals.find(terminal => terminal.identifier === terminalIdentifier)?.running ? 'End process' : 'Close output';
+  const closing = terminalIdentifier !== null && closingTerminals.has(terminalIdentifier);
+  element<HTMLButtonElement>('close-terminal').disabled = closing;
+  setBusy(element('close-terminal'), closing);
   projectView.classList.toggle('has-live-terminal', terminalRunning);
   element<HTMLButtonElement>('start-codex').disabled = !canStartChat() || startingTerminal || selectingProject || choosingFolder || preparingProject !== null;
   element<HTMLButtonElement>('start-codex').title = 'New Chat';
@@ -163,11 +245,16 @@ function updateTerminalActions(status: TerminalStatus | null): void {
 async function syncMenus(): Promise<void> {
   const busy = choosingFolder || selectingProject || preparingProject !== null || startingTerminal;
   chooseFolderButton.disabled = busy;
-  for (const id of ['start-codex', 'codex-login', 'guest-shell']) element<HTMLButtonElement>(id).disabled = busy || !canStartChat();
+  element<HTMLButtonElement>('start-codex').disabled = busy || !canStartChat();
+  for (const id of ['codex-login', 'guest-shell']) element<HTMLButtonElement>(id).disabled = busy || !environmentReady();
   projectNavigation.disabled = busy;
   element<HTMLButtonElement>('refresh-sessions').disabled = busy || loadingConversations;
+  setBusy(element('refresh-sessions'), loadingConversations);
+  setBusy(chooseFolderButton, choosingFolder);
+  setBusy(element('terminal-status'), startingTerminal);
   for (const button of document.querySelectorAll<HTMLButtonElement>('.sidebar-project, .sidebar-session, .recent-project, .project-record-forget')) button.disabled = busy || button.dataset.available === 'false';
   renderSessionDashboard();
+  scheduleProjectRescan();
   try { await invoke('update_menu_state', { projectId: selectedProject?.id ?? null, busy }); }
   catch { showFolderError('Could not update the native menu. Reopen the app.'); }
 }
@@ -198,6 +285,41 @@ function showTerminalStatus(message: string): void {
 
 function renderProjectLists(): void {
   renderProjects(projects, selectedProject, project => selectProject(project, true), showForgetProject);
+  setLoading(element('recent-projects'), !projectsLoaded);
+  setLoading(element('sidebar-project-list'), !projectsLoaded);
+  if (!projectsLoaded && !selectedProject) {
+    renderSkeleton(element('recent-project-list'), 3);
+    renderSkeleton(element('sidebar-project-list'));
+    element('recent-projects').hidden = false;
+    element('empty-projects').hidden = true;
+  }
+  renderProjectAvailability();
+  scheduleProjectRescan();
+}
+
+function renderProjectAvailability(): void {
+  const unavailable = projects.some(project => project.available === false);
+  projectRescanStatus(projectRescanError ?? (unavailable ? 'Some project folders are unavailable. Connect the drive; Tugboat checks again automatically.' : null));
+}
+
+function projectRescanStatus(message: string | null): void {
+  const status = element('project-rescan-status');
+  status.hidden = selectedProject !== null || message === null;
+  if (status.textContent !== (message ?? '')) status.textContent = message ?? '';
+}
+
+function scheduleProjectRescan(): void {
+  const window = document.defaultView!;
+  const needed = projectRescanStarted && !projectView.hidden && selectedProject === null
+    && (projectRescanError !== null || projects.some(project => project.available === false));
+  const busy = rescanningProjects || choosingFolder || selectingProject || preparingProject !== null || startingTerminal;
+  if (!needed || busy) {
+    if (projectRescanTimer !== null) window.clearTimeout(projectRescanTimer);
+    projectRescanTimer = null;
+    return;
+  }
+  if (projectRescanTimer !== null) return;
+  projectRescanTimer = window.setTimeout(() => { projectRescanTimer = null; void rescanProjects(); }, 8000);
 }
 
 const forgetProjectDialog = element<HTMLDialogElement>('forget-project-dialog');
@@ -221,12 +343,13 @@ element('confirm-forget-project').addEventListener('click', async () => {
   if (!forgettingProject || forgetting) return;
   const id = forgettingProject.id; forgetting = true;
   const confirm = element<HTMLButtonElement>('confirm-forget-project'); confirm.disabled = true;
+  setBusy(confirm, true);
   try {
     await invoke('forget_project', { identifier: id });
     projects = projects.filter(project => project.id !== id); renderProjectLists();
     forgetProjectDialog.close(); await refreshProjects();
   } catch (error) { element('forget-project-error').textContent = String(error); }
-  finally { forgetting = false; confirm.disabled = false; }
+  finally { forgetting = false; setBusy(confirm, false); confirm.disabled = false; }
 });
 
 async function refreshProjects(): Promise<void> {
@@ -234,9 +357,44 @@ async function refreshProjects(): Promise<void> {
   try {
     const result = await invoke<Project[]>('recent_projects');
     if (request !== projectListRequest) return;
+    projectsLoaded = true;
     projects = result;
     renderProjectLists();
-  } catch (error) { if (request === projectListRequest) showFolderError(String(error)); }
+  } catch (error) { if (request === projectListRequest) { projectsLoaded = true; renderProjectLists(); element('empty-projects').hidden = true; showFolderError(String(error)); } }
+}
+
+async function rescanProjects(): Promise<void> {
+  if (rescanningProjects || selectedProject || choosingFolder || selectingProject || preparingProject !== null || startingTerminal) return;
+  rescanningProjects = true;
+  const initial = !projectRescanStarted;
+  if (initial) {
+    element('empty-projects').hidden = true;
+    projectRescanStatus('Checking project folders…');
+  }
+  projectRescanStarted = true;
+  const request = ++projectListRequest;
+  void syncMenus();
+  try {
+    const result = await invoke<Project[]>('rescan_projects');
+    if (request !== projectListRequest) return;
+    const changed = initial || projectRescanError !== null || JSON.stringify(projects) !== JSON.stringify(result);
+    projectRescanError = null;
+    projectsLoaded = true;
+    projects = result;
+    if (changed) renderProjectLists();
+    if (!changed) renderProjectAvailability();
+  } catch (error) {
+    if (request === projectListRequest) {
+      projectsLoaded = true;
+      projectRescanError = 'Could not check project folders. Tugboat will try again automatically. ' + String(error);
+      renderProjectLists();
+      element('empty-projects').hidden = true;
+    }
+  } finally {
+    rescanningProjects = false;
+    if (request !== projectListRequest) void refreshProjects();
+    void syncMenus();
+  }
 }
 
 async function refreshConversations(): Promise<void> {
@@ -251,6 +409,7 @@ async function refreshConversations(): Promise<void> {
   status.hidden = false;
   status.textContent = 'Loading sessions…';
   element<HTMLButtonElement>('refresh-sessions').disabled = true;
+  setBusy(element('refresh-sessions'), true);
   try {
     const result = await invoke<Dashboard>('project_dashboard', { identifier: projectId });
     if (request !== conversationListRequest || selectedProject?.id !== projectId) return;
@@ -267,6 +426,7 @@ async function refreshConversations(): Promise<void> {
   } finally {
     if (request === conversationListRequest) {
       loadingConversations = false;
+      setBusy(element('refresh-sessions'), false);
       renderSessionDashboard();
       element<HTMLButtonElement>('refresh-sessions').disabled = startingTerminal || selectingProject || preparingProject !== null;
     }
@@ -298,16 +458,32 @@ function applyDashboard(result: Dashboard): boolean {
 }
 function renderSessionDashboard(): void {
   renderDashboard(dashboard, sessionView, resumeConversation, changeConversationState, showUsageDetails, changingSession || startingTerminal || selectingProject || choosingFolder || preparingProject !== null);
-  element('project-usage').hidden = !dashboardLoaded;
+  const loading = !dashboardLoaded && !dashboardError;
+  const liveChat = terminals.some(terminal => terminal.running && isChat(terminal));
+  setLoading(element('project-usage'), loading);
+  setLoading(element('session-table'), loading);
+  setLoading(element('sidebar-session-list'), loading && !liveChat);
+  if (!dashboardLoaded && dashboardError && !liveChat) element('sidebar-session-list').replaceChildren();
+  element('project-usage').hidden = !dashboardLoaded && !loading;
   element('usage-note').hidden = !dashboardLoaded;
+  if (loading) {
+    for (const value of element('project-usage').querySelectorAll('dd')) { value.replaceChildren(); value.setAttribute('aria-hidden', 'true'); }
+    renderSkeleton(element('session-table-body'), 7);
+    if (!liveChat) renderSkeleton(element('sidebar-session-list'));
+    element('session-table').hidden = false;
+  }
   element('project-overview').setAttribute('aria-busy', String(loadingConversations || (!dashboardLoaded && !dashboardError)));
   if (!dashboardLoaded || dashboardError) {
     const status = element('dashboard-session-status');
     status.textContent = dashboardError ? dashboardError + ' Select Refresh to try again.' : 'Loading sessions and usage…';
     status.hidden = false;
-    if (!dashboardLoaded) element('session-table').hidden = true;
+    if (!dashboardLoaded && !loading) element('session-table').hidden = true;
   }
-
+  setBusy(element('dashboard-session-status'), changingSession);
+  if (changingSession) {
+    element('dashboard-session-status').textContent = 'Updating session…';
+    element('dashboard-session-status').hidden = false;
+  }
 }
 async function changeConversationState(conversation: Conversation, state: SessionState): Promise<void> {
   if (!selectedProject || changingSession || !isStandaloneConversation(conversation)) return;
@@ -349,6 +525,8 @@ function activeUsage(context: ProjectContext, sessionId: string, request: number
 async function loadUsageDetails(context: ProjectContext, sessionId: string, request: number): Promise<void> {
   if (!activeUsage(context, sessionId, request) || usagePending) return;
   usagePending = true;
+  setLoading(element('session-usage-details'), usageDetails === null);
+  setBusy(element('session-usage-status'), usageDetails !== null);
   const fingerprint = usageFingerprint;
   if (usageDetails) element('session-usage-status').textContent = usageDetailsStatus(usageDetails) + ' Updating recorded usage…';
   try {
@@ -363,6 +541,11 @@ async function loadUsageDetails(context: ProjectContext, sessionId: string, requ
   } finally {
     if (activeUsage(context, sessionId, request)) {
       usagePending = false;
+      if (usageFingerprint === fingerprint) {
+        setLoading(element('session-usage-details'), false);
+        setBusy(element('session-usage-status'), false);
+        if (!usageDetails) element('session-usage-details').replaceChildren();
+      }
       if (usageFingerprint !== fingerprint) void loadUsageDetails(context, sessionId, request);
     }
   }
@@ -385,7 +568,8 @@ async function showUsageDetails(conversation: Conversation): Promise<void> {
   const request = ++usageRequest;
   usageSessionId = sessionId; usageFingerprint = selectedUsageFingerprint(sessionId); usagePending = false; usageDetails = null;
   element('session-usage-title').textContent = conversation.title;
-  element('session-usage-details').replaceChildren();
+  renderSkeleton(element('session-usage-details'));
+  setLoading(element('session-usage-details'), true);
   element('session-usage-details').removeAttribute('data-usage-session-id');
   element('session-usage-status').textContent = 'Loading session usage…';
   showDialog(usageDialog, usageButtonId(sessionId)); element('close-session-usage').focus(); await updateTerminalLayout();
@@ -417,10 +601,12 @@ async function resumeConversation(conversation: Conversation): Promise<void> {
 async function selectProject(project: Project, recordOpen = false): Promise<void> {
   if (startingTerminal || selectingProject || preparingProject !== null) { showFolderError('Wait for project setup to finish.'); return; }
   selectingProject = true;
+  const triggers = [...document.querySelectorAll<HTMLElement>('[data-project-id]')].filter(button => button.dataset.projectId === project.id);
+  for (const trigger of triggers) setBusy(trigger, true);
   void syncMenus();
   try { await applySelectedProject(recordOpen ? await invoke<Project>('open_project', { identifier: project.id }) : project); }
   catch (error) { showFolderError(String(error)); }
-  finally { selectingProject = false; void syncMenus(); }
+  finally { for (const trigger of triggers) setBusy(trigger, false); selectingProject = false; updateCodexActions(); void syncMenus(); }
 }
 
 async function applySelectedProject(project: Project): Promise<void> {
@@ -437,6 +623,7 @@ async function applySelectedProject(project: Project): Promise<void> {
   conversations = [];
   ++conversationListRequest;
   loadingConversations = false;
+  setBusy(element('refresh-sessions'), false);
   dashboardLoaded = false;
   dashboardSequence = 0;
   dashboardError = null;
@@ -476,6 +663,7 @@ async function applySelectedProject(project: Project): Promise<void> {
   if (status?.running) await refreshSelectedPlan();
   updateCodexActions();
   if (!status?.running) await prepareSelectedProject();
+  if (selectedProject?.id === project.id) await ensureSelectedEnvironment();
   await refreshProjects();
   void refreshConversations();
 }
@@ -515,7 +703,7 @@ async function refreshSelectedPlan(): Promise<void> {
   selectedPlanFingerprint = null;
   element('sharing-plan').hidden = true;
   element('prepare-environment').hidden = true;
-  planFeedback('Loading the current execution plan…');
+  planFeedback('Loading the current execution plan…', false, true);
   void syncMenus();
   try {
     const result = await invoke<{ project: Project; plan: Plan; fingerprint: string }>('preview_project', { identifier: id });
@@ -530,6 +718,7 @@ async function refreshSelectedPlan(): Promise<void> {
     element('refresh-plan').hidden = false;
     updateCodexActions();
     element('preparation-status').textContent = 'Execution plan refreshed.';
+    environmentFeedback();
   } catch (error) {
     if (selectedProject?.id !== id || request !== planRequest) return;
     selectedPlanFingerprint = null;
@@ -545,7 +734,7 @@ async function prepareSelectedProject(chosenReference: string | null = null): Pr
   const project = selectedProject;
   selectedPlanFingerprint = null;
   const request = ++planRequest; planLoading = true;
-  planFeedback('Preparing the execution plan…');
+  planFeedback('Preparing the execution plan…', false, true);
   resetBoundaryChoice();
   preparingProject = project.id;
   void syncMenus();
@@ -587,12 +776,20 @@ async function prepareSelectedProject(chosenReference: string | null = null): Pr
 
 function updateCodexActions(): void {
   const ready = selectedProject?.stage === 'environment-ready';
+  const configured = selectedPlanFingerprint !== null && ['ready', 'environment-starting', 'environment-ready'].includes(selectedProject?.stage ?? '');
   element('resume-removal').hidden = selectedProject?.stage !== 'removing';
   element('codex-actions').hidden = !ready;
-  element('project-overview').hidden = !ready;
-  element('project-setup').hidden = ready;
-  projectView.classList.toggle('environment-ready', ready);
-  for (const id of ['start-codex', 'codex-login', 'guest-shell']) element<HTMLButtonElement>(id).disabled = !canStartChat() || startingTerminal || selectingProject || choosingFolder || preparingProject !== null;
+  element('project-overview').hidden = !configured;
+  element('project-setup').hidden = ready || planLoading || selectingProject || preparingProject !== null
+    || selectedProject?.stage === 'environment-starting' || selectedPlanFingerprint !== null;
+  element<HTMLButtonElement>('start-codex').disabled = !canStartChat() || startingTerminal || selectingProject || choosingFolder || preparingProject !== null;
+  element('project-account-feedback').hidden = !environmentReady() || canStartChat();
+  element('project-account-status').textContent = accountConnectionError ?? (syncingAccount
+    ? 'Connecting the shared ChatGPT account…' : sharedChatgpt?.status()?.message ?? 'Checking the shared ChatGPT account…');
+  setBusy(element('project-account-status'), syncingAccount);
+  for (const id of ['codex-login', 'guest-shell']) element<HTMLButtonElement>(id).disabled = !environmentReady() || startingTerminal || selectingProject || choosingFolder || preparingProject !== null;
+  sharedChatgpt?.updateAvailability();
+  if (ready) void syncProjectAccount();
 }
 
 async function checkLogin(): Promise<void> {
@@ -600,20 +797,24 @@ async function checkLogin(): Promise<void> {
   const request = ++loginRequest;
   element('login-status').textContent = 'Checking ChatGPT sign-in status…';
   element<HTMLButtonElement>('check-login').disabled = true;
+  setBusy(element('check-login'), true);
   try {
     const result = await invoke<{ method: string; message: string }>('login_status', { identifier: context.id });
     if (!sameProjectView(projectContext(), context) || request !== loginRequest) return;
     element('login-status').textContent = result.message;
   } catch (error) { if (sameProjectView(projectContext(), context) && request === loginRequest) element('login-status').textContent = String(error); }
-  finally { if (sameProjectView(projectContext(), context) && request === loginRequest) element<HTMLButtonElement>('check-login').disabled = false; }
+  finally { if (sameProjectView(projectContext(), context) && request === loginRequest) { setBusy(element('check-login'), false); element<HTMLButtonElement>('check-login').disabled = false; } }
 }
 
-for (const [id, action, caption] of [['codex-login', 'login', 'Sign in with ChatGPT'], ['start-codex', 'codex', 'New Chat'], ['guest-shell', 'shell', 'Guest terminal']]) {
+for (const [id, action, caption] of [['start-codex', 'codex', 'New Chat'], ['guest-shell', 'shell', 'Guest terminal']]) {
   element(id).addEventListener('click', () => {
     if (selectedProject === null || selectedPlanFingerprint === null) return;
     void openTerminal('start_codex_session', { identifier: selectedProject.id, fingerprint: selectedPlanFingerprint, action, useBrigBoundary: useBrigBoundary(projectContext()) }, caption);
   });
 }
+for (const id of ['codex-login', 'project-chatgpt-settings']) element(id).addEventListener('click', () => {
+  showView('settings'); element('shared-chatgpt-heading').focus(); void sharedChatgpt?.refresh();
+});
 element('check-login').addEventListener('click', () => { void checkLogin(); });
 
 function showView(view: 'project' | 'settings'): void {
@@ -626,6 +827,9 @@ function showView(view: 'project' | 'settings'): void {
   element('sidebar-current-project').removeAttribute('aria-current');
   (settings ? settingsNavigation : selectedProject ? element('sidebar-current-project') : projectNavigation).setAttribute('aria-current', 'page');
   (settings ? element('settings-heading') : element('project-heading')).focus();
+  scheduleProjectRescan();
+  sharedChatgpt?.updateAvailability();
+  if (settings) void sharedChatgpt?.refresh();
   void updateTerminalLayout();
   if (!settings && !terminalPanel.hidden && terminalIdentifier !== null) void invoke('terminal_focus', { identifier: terminalIdentifier });
 }
@@ -647,6 +851,7 @@ async function showProjects(message = 'Choose where Brig & Codex will work.'): P
   conversations = [];
   ++conversationListRequest;
   loadingConversations = false;
+  setBusy(element('refresh-sessions'), false);
   renderConversations([], null, resumeConversation);
   resetBoundaryChoice();
   projectView.classList.remove('has-project');
@@ -689,8 +894,8 @@ async function chooseFolder(): Promise<void> {
     choosingFolder = false;
     chooseFolderButton.disabled = false;
     void syncMenus();
-    if (!projectView.hidden && terminalPanel.hidden) element('project-heading').focus();
-    if (!projectView.hidden && !terminalPanel.hidden && terminalIdentifier !== null) void invoke('terminal_focus', { identifier: terminalIdentifier });
+    if (!projectView.hidden && !document.querySelector('dialog[open]') && terminalPanel.hidden) element('project-heading').focus();
+    if (!projectView.hidden && !document.querySelector('dialog[open]') && !terminalPanel.hidden && terminalIdentifier !== null) void invoke('terminal_focus', { identifier: terminalIdentifier });
   }
 }
 
@@ -704,6 +909,7 @@ async function showProjectSettings(returnFocusId = 'project-settings-button'): P
   const projectId = context.id;
   const request = ++projectPreferencesRequest;
   element<HTMLFieldSetElement>('project-preference-fields').disabled = true;
+  setLoading(element('project-preference-fields'), true);
   element('project-preferences-status').textContent = 'Loading project settings…';
   showDialog(projectSettingsDialog, returnFocusId); await updateTerminalLayout();
   try {
@@ -717,26 +923,28 @@ async function showProjectSettings(returnFocusId = 'project-settings-button'): P
     element<HTMLFieldSetElement>('project-preference-fields').disabled = false;
     element('project-preferences-status').textContent = '';
   } catch (error) { if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest && projectSettingsDialog.open) element('project-preferences-status').textContent = String(error); }
+  finally { if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest) setLoading(element('project-preference-fields'), false); }
 }
 element('project-settings-button').addEventListener('click', () => { void showProjectSettings(); });
 element('setup-project').addEventListener('click', () => { void showProjectSettings('setup-project'); });
 element('close-project-settings').addEventListener('click', () => { projectSettingsDialog.close(); });
 element('close-session-usage').addEventListener('click', () => { usageDialog.close(); });
 for (const dialog of [projectSettingsDialog, usageDialog]) dialog.addEventListener('close', () => { void updateTerminalLayout(); });
-usageDialog.addEventListener('close', () => { if (!usageDialog.open) { ++usageRequest; usageSessionId = null; usageFingerprint = null; usagePending = false; usageDetails = null; element('session-usage-title').textContent = ''; element('session-usage-details').replaceChildren(); element('session-usage-status').textContent = ''; } });
+usageDialog.addEventListener('close', () => { if (!usageDialog.open) { ++usageRequest; usageSessionId = null; usageFingerprint = null; usagePending = false; usageDetails = null; element('session-usage-title').textContent = ''; element('session-usage-details').replaceChildren(); element('session-usage-status').textContent = ''; setLoading(element('session-usage-details'), false); setBusy(element('session-usage-status'), false); } });
 projectSettingsDialog.addEventListener('close', () => { if (!projectSettingsDialog.open) resetProjectDetails(); });
 element<HTMLFormElement>('project-preferences').addEventListener('submit', async event => {
   event.preventDefault(); if (!selectedProject) return;
   const context = projectContext()!; const id = context.id; const request = ++projectPreferencesRequest; const fields = element<HTMLFieldSetElement>('project-preference-fields'); fields.disabled = true;
   element('project-preferences-status').textContent = 'Saving project settings…';
+  setBusy(element('save-project-preferences'), true);
   try {
     const project = await invoke<Project>('save_project_preferences', { identifier: id, name: element<HTMLInputElement>('project-name').value, options: { cpus: Number(element<HTMLInputElement>('project-cpus').value), memoryMb: Number(element<HTMLInputElement>('project-memory').value), verification: element<HTMLSelectElement>('project-verification').value, network: element<HTMLSelectElement>('project-network').value } });
     if (!sameProject(projectContext(), context)) return;
     selectedProject = project; element('project-heading').textContent = project.name; element('project-heading').title = project.name;
-    await prepareSelectedProject(); updateCodexActions(); await refreshProjects();
-    if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest) element('project-preferences-status').textContent = 'Project settings saved. Prepare the environment to apply them.';
+    await prepareSelectedProject(); await ensureSelectedEnvironment(); updateCodexActions(); await refreshProjects();
+    if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest) element('project-preferences-status').textContent = 'Project settings saved.';
   } catch (error) { if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest) element('project-preferences-status').textContent = String(error); }
-  finally { if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest) fields.disabled = false; }
+  finally { if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest) { setBusy(element('save-project-preferences'), false); fields.disabled = false; } }
 });
 for (const tab of document.querySelectorAll<HTMLButtonElement>('[data-session-state]')) tab.addEventListener('click', () => { sessionView = tab.dataset.sessionState as SessionState; renderSessionDashboard(); });
 await listen<[string, Dashboard]>('project-usage-updated', event => {
@@ -758,10 +966,18 @@ element('sidebar-current-project').addEventListener('click', async () => { await
 element('refresh-sessions').addEventListener('click', () => { void refreshConversations(); });
 settingsNavigation.addEventListener('click', () => showView('settings'));
 chooseFolderButton.addEventListener('click', () => { void chooseFolder(); });
-element('retry-preparation').addEventListener('click', () => { void prepareSelectedProject(); });
-element('retry-project-plan').addEventListener('click', () => { if (planRetryAction === 'preview') void refreshSelectedPlan(); else void prepareSelectedProject(); });
+document.defaultView!.addEventListener('focus', () => {
+  if (projectRescanStarted && !projectView.hidden && selectedProject === null
+    && (projectRescanError !== null || projects.some(project => project.available === false))) void rescanProjects();
+});
+element('retry-preparation').addEventListener('click', async () => { await prepareSelectedProject(); await ensureSelectedEnvironment(); });
+element('retry-project-plan').addEventListener('click', async () => {
+  if (planRetryAction === 'environment') { await ensureSelectedEnvironment(); return; }
+  if (planRetryAction === 'preview') { await refreshSelectedPlan(); await ensureSelectedEnvironment(); return; }
+  await prepareSelectedProject(); await ensureSelectedEnvironment();
+});
 element('resume-removal').addEventListener('click', async () => { await showProjectSettings('resume-removal'); element('preview-removal').click(); });
-element('adopt-session').addEventListener('click', () => { void prepareSelectedProject(element<HTMLSelectElement>('session-choice').value); });
+element('adopt-session').addEventListener('click', async () => { await prepareSelectedProject(element<HTMLSelectElement>('session-choice').value); await ensureSelectedEnvironment(); });
 element('refresh-plan').addEventListener('click', () => { void refreshSelectedPlan(); });
 element('return-to-terminal').addEventListener('click', () => { void returnToTerminal(); });
 element('hide-terminal').addEventListener('click', async () => { await hideTerminal(); element('return-to-terminal').hidden = false; element('project-heading').focus(); void refreshProjects(); void refreshConversations(); });
@@ -773,24 +989,38 @@ startTerminalButton.addEventListener('click', () => {
   if (selectedProject) void openTerminal('terminal_start', { projectId: selectedProject.id }, 'Local terminal');
 });
 
-async function openTerminal(command: string, arguments_: Record<string, unknown>, caption: string): Promise<void> {
+async function openTerminal(command: string, arguments_: Record<string, unknown>, caption: string, foreground = true): Promise<void> {
   if (selectedProject === null || startingTerminal) return;
   const projectId = selectedProject.id;
   startingTerminal = true;
   void syncMenus();
   let previous: TerminalStatus | null;
   try { await refreshTerminals(); previous = currentTerminal(); }
-  catch (error) { startingTerminal = false; void syncMenus(); showFolderError(String(error)); return; }
+  catch (error) {
+    startingTerminal = false; void syncMenus();
+    if (foreground) showFolderError(String(error));
+    if (!foreground) environmentFeedback('Could not start the project environment. ' + String(error));
+    return;
+  }
   const existingChat = typeof arguments_.sessionId === 'string' ? terminals.find(status => status.running && status.conversationId === arguments_.sessionId) : undefined;
   const purpose = command === 'terminal_start' ? 'local' : command === 'prepare_environment' ? 'environment' : String(arguments_.action);
   const launchingChat = command === 'start_codex_session' && ['codex', 'resume'].includes(String(arguments_.action));
   const blocking = command === 'start_project_operation' ? undefined : terminals.find(status => status.running
     && ['local', 'environment', 'login', 'codex', 'resume', 'shell'].includes(status.purpose)
+    && (foreground || status.purpose !== 'local')
     && !(launchingChat && isChat(status)));
   if (existingChat || blocking) {
     startingTerminal = false;
     void syncMenus();
     if (existingChat || blocking?.purpose === purpose) {
+      if (!foreground) {
+        if (purpose === 'environment') {
+          environmentTerminals.set(projectId, blocking!.identifier);
+          selectedProject = { ...selectedProject, stage: 'environment-starting' };
+          updateCodexActions(); environmentFeedback();
+        }
+        return;
+      }
       folderError.hidden = true;
       closeProjectDialogs();
       await returnToTerminal((existingChat ?? blocking)!.identifier);
@@ -803,40 +1033,48 @@ async function openTerminal(command: string, arguments_: Record<string, unknown>
     return;
   }
   element('local-terminal-status').textContent = '';
-  closeProjectDialogs();
-  await hideTerminal();
-  terminalIdentifier = null;
+  if (foreground) {
+    closeProjectDialogs();
+    await hideTerminal();
+    terminalIdentifier = null;
+  }
   startTerminalButton.disabled = true;
-  terminalPanel.hidden = false;
+  if (foreground) terminalPanel.hidden = false;
   chooseFolderButton.disabled = true;
   folderError.hidden = true;
   const preparingEnvironment = command === 'prepare_environment';
+  if (foreground) showTerminalStatus('Opening ' + caption + '…');
   if (preparingEnvironment) {
     pendingEnvironmentProject = projectId;
     selectedProject = { ...selectedProject, stage: 'environment-starting' };
-    updateCodexActions();
+    updateCodexActions(); environmentFeedback();
   }
   try {
-    terminalIdentifier = await invoke<number>(command, { ...arguments_, layout: terminalLayout() });
+    const layout = terminalLayout();
+    const identifier = await invoke<number>(command, { ...arguments_, layout: { ...layout, visible: foreground && layout.visible } });
+    if (foreground) terminalIdentifier = identifier;
     if (preparingEnvironment) {
-      environmentTerminals.set(projectId, terminalIdentifier);
+      environmentTerminals.set(projectId, identifier);
       pendingEnvironmentProject = null;
       await refreshSelectedPlan();
     }
-    lastTerminals.set(projectId, terminalIdentifier);
+    if (foreground) lastTerminals.set(projectId, identifier);
     await refreshTerminals();
-    showTerminalStatus(caption);
-    await updateTerminalLayout();
-    const snapshot = await invoke<TerminalStatus | null>('terminal_snapshot', { identifier: terminalIdentifier });
-    updateTerminalActions(snapshot);
-    if (snapshot && !snapshot.running) showTerminalStatus(terminalCaption(snapshot));
-    if (!projectView.hidden) await invoke('terminal_focus', { identifier: terminalIdentifier });
+    if (foreground) { showTerminalStatus(caption); await updateTerminalLayout(); }
+    const snapshot = await invoke<TerminalStatus | null>('terminal_snapshot', { identifier });
+    if (preparingEnvironment && snapshot && !snapshot.running) {
+      selectedProject = await invoke<Project>('finish_environment', { identifier: projectId, terminalIdentifier: identifier });
+      await refreshSelectedPlan();
+      environmentFeedback(selectedProject.stage === 'environment-ready' ? null : (selectedProject.environmentAttempt?.error ?? 'Could not start the project environment. Check its terminal output and try again.'));
+    }
+    updateTerminalActions(foreground ? snapshot : currentTerminal());
+    if (foreground && snapshot && !snapshot.running) showTerminalStatus(terminalCaption(snapshot));
+    if (foreground && !projectView.hidden) await invoke('terminal_focus', { identifier });
   } catch (error) {
     if (preparingEnvironment) { pendingEnvironmentProject = null; await refreshSelectedPlan(); }
-    terminalPanel.hidden = true;
-    terminalIdentifier = previous?.identifier ?? null;
-    folderError.textContent = 'Could not open the terminal. ' + String(error);
-    folderError.hidden = false;
+    if (foreground) { terminalPanel.hidden = true; terminalIdentifier = previous?.identifier ?? null; }
+    if (!foreground && preparingEnvironment) environmentFeedback('Could not start the project environment. ' + String(error));
+    if (foreground) showFolderError('Could not open the terminal. ' + String(error));
     chooseFolderButton.disabled = false;
   } finally {
     startingTerminal = false;
@@ -846,12 +1084,12 @@ async function openTerminal(command: string, arguments_: Record<string, unknown>
     void syncMenus();
   }
 }
-const closingTerminals = new Set<number>();
 element('close-terminal').addEventListener('click', async () => {
   if (terminalIdentifier === null) return;
   const identifier = terminalIdentifier;
   if (closingTerminals.has(identifier)) return;
   closingTerminals.add(identifier);
+  updateTerminalActions(currentTerminal());
   const projectId = selectedProject?.id;
   try {
     await invoke('terminal_close', { identifier });
@@ -867,7 +1105,7 @@ element('close-terminal').addEventListener('click', async () => {
     void refreshConversations();
   } catch (error) {
     if (terminalIdentifier === identifier) showTerminalStatus('Could not end the process. ' + String(error));
-  } finally { closingTerminals.delete(identifier); }
+  } finally { closingTerminals.delete(identifier); updateTerminalActions(currentTerminal()); }
 });
 new ResizeObserver(() => { void updateTerminalLayout(); }).observe(terminalSurface);
 initializeSidebar(() => { void updateTerminalLayout(); });
@@ -899,11 +1137,13 @@ await listen<{ project: Project; terminalIdentifier: number; message: string | n
   if (!sameProject(projectContext(), context)) return;
   updateCodexActions();
   element('preparation-status').textContent = result.message ?? 'Brig environment and guest Codex version verified.';
+  environmentFeedback(result.message ?? (selectedProject?.stage === 'environment-ready' ? null : 'The project environment is not running. Try starting it again.'));
   if (result.terminalIdentifier === terminalIdentifier) showTerminalStatus(result.message ? 'Environment setup failed. Prepare the environment again.' : 'Brig environment ready');
 });
 await listen<{ projectId: string; terminalIdentifier: number; message: string }>('environment-preparation-error', event => {
   if (selectedProject?.id !== event.payload.projectId || (environmentTerminals.get(event.payload.projectId) ?? 0) > event.payload.terminalIdentifier) return;
   element('preparation-status').textContent = event.payload.message;
+  environmentFeedback(event.payload.message);
   showFolderError(event.payload.message);
 });
 await listen<{ identifier: number; message: string }>('terminal-input-error', event => { if (event.payload.identifier === terminalIdentifier) showTerminalStatus(event.payload.message); });
@@ -937,7 +1177,32 @@ resetOperationDetails = initializeOperations(projectContext, openTerminal, async
   if (selectedProject?.id === project.id) await refreshSelectedPlan();
 }, async message => { terminalIdentifier = null; await showProjects(message); });
 resetProjectDetails();
+await initializeDataLocation();
 await initializeSettings();
+sharedChatgpt = await initializeChatgptAccount(
+  () => environmentReady() && !startingTerminal && !selectingProject && preparingProject === null,
+  async pendingProjectId => {
+    if (pendingProjectId && selectedProject?.id !== pendingProjectId) {
+      const project = projects.find(project => project.id === pendingProjectId);
+      if (project) await selectProject(project, true);
+    }
+    if (!selectedProject) { await showProjects('Open or add a project, then sign in once from Settings.'); return; }
+    showView('project');
+    if (pendingProjectId) {
+      await refreshTerminals();
+      const login = terminals.find(terminal => terminal.running && terminal.purpose === 'login');
+      if (login) { await returnToTerminal(login.identifier); return; }
+    }
+    if (!environmentReady()) { showFolderError('Wait for the project environment to be ready, then sign in from Settings.'); return; }
+    await openTerminal('start_codex_session', { identifier: selectedProject.id, fingerprint: selectedPlanFingerprint, action: 'login', useBrigBoundary: false }, 'Sign in once with ChatGPT');
+  },
+  status => {
+    if (status.state !== 'signed-in') connectedAccountProject = null;
+    if (selectedProject && environmentReady()) element('login-status').textContent = status.message;
+    updateCodexActions();
+  },
+);
+updateCodexActions();
 void initializeHost();
 void syncMenus();
-await refreshProjects();
+await rescanProjects();

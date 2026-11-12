@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { setBusy, setLoading } from './loading';
 
 export interface Settings {
   schemaVersion: number;
@@ -23,8 +24,13 @@ function renderTelemetry(status: TelemetryStatus): void {
 }
 
 export async function initializeSettings(): Promise<void> {
-  try { document.getElementById('application-version')!.textContent = await invoke<string>('application_version'); }
+  try {
+    const version = await invoke<string>('application_version');
+    document.getElementById('application-version')!.textContent = version;
+    document.getElementById('sidebar-version')!.textContent = 'v.' + version;
+  }
   catch { document.getElementById('application-version')!.textContent = 'Unavailable'; }
+  finally { setLoading(document.getElementById('application-version')!, false); }
   const status = document.getElementById('settings-status')!;
   const save = document.getElementById('save-settings') as HTMLButtonElement;
   const fields = document.getElementById('settings-fields') as HTMLFieldSetElement;
@@ -42,6 +48,7 @@ export async function initializeSettings(): Promise<void> {
     loaded = true;
     renderTelemetry(await invoke<TelemetryStatus>('telemetry_status'));
   } catch (error) { status.textContent = String(error); }
+  finally { setLoading(fields, false); }
   const network = select('network-preference');
   const networkHint = document.getElementById('network-hint')!;
   function updateNetworkHint(): void {
@@ -53,6 +60,7 @@ export async function initializeSettings(): Promise<void> {
   document.getElementById('brig-settings')!.addEventListener('submit', async event => {
     event.preventDefault();
     save.disabled = true;
+    setBusy(save, true);
     status.textContent = 'Saving settings…';
     const settings: Settings = {
       schemaVersion: 1,
@@ -70,7 +78,7 @@ export async function initializeSettings(): Promise<void> {
       renderTelemetry(telemetry);
       status.textContent = telemetry.message ? 'Settings saved. The Brig telemetry preference is waiting to be applied.' : 'Settings saved.';
     } catch (error) { status.textContent = String(error); }
-    finally { save.disabled = false; save.focus(); }
+    finally { setBusy(save, false); save.disabled = false; save.focus(); }
   });
   fields.disabled = !loaded;
 }

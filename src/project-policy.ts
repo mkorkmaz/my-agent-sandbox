@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { sameProject, sameProjectView, type Project, type ProjectContext } from './projects';
+import { renderSkeleton, setBusy, setLoading } from './loading';
 
 interface Policy { document: unknown; fingerprint: string; editable: boolean; attached: boolean; allowedHosts: string[] }
 
@@ -11,6 +12,7 @@ export function initializeProjectPolicy(current: () => (ProjectContext & { proje
   const attach = document.getElementById('attach-project-policy') as HTMLButtonElement;
   const detach = document.getElementById('detach-project-policy') as HTMLButtonElement;
   const read = document.getElementById('read-project-policy') as HTMLButtonElement;
+  const documentView = document.getElementById('project-policy-document')!;
   let snapshot: { context: ProjectContext; policy: Policy } | null = null;
   let busy = false;
   let request = 0;
@@ -18,14 +20,15 @@ export function initializeProjectPolicy(current: () => (ProjectContext & { proje
     const context = current(); if (!context || busy) return;
     const pending = ++request;
     busy = true; read.disabled = true; fields.disabled = true; snapshot = null;
+    setBusy(read, true); setLoading(documentView, true);
     status.textContent = 'Reading this project’s policy…';
-    document.getElementById('project-policy-document')!.textContent = '';
+    renderSkeleton(documentView);
     hosts.value = '';
     try {
       const policy = await invoke<Policy>('read_project_policy', { identifier: context.id });
       if (!sameProjectView(current(), context) || pending !== request) return;
       snapshot = { context, policy };
-      document.getElementById('project-policy-document')!.textContent = JSON.stringify(policy.document, null, 2);
+      documentView.textContent = JSON.stringify(policy.document, null, 2);
       hosts.value = policy.allowedHosts.join('\n'); hosts.readOnly = !policy.editable;
       save.disabled = !policy.editable;
       attach.disabled = policy.attached;
@@ -34,7 +37,7 @@ export function initializeProjectPolicy(current: () => (ProjectContext & { proje
       fields.disabled = false;
       status.textContent = policy.editable ? 'Stop the environment before editing allowed guest hosts. Other guest command destinations are denied. Hosted Codex tools have a separate scope.' : 'This policy is externally managed, shared with other sessions or contains advanced rules. Editing is disabled.';
     } catch (error) { if (sameProjectView(current(), context) && pending === request) status.textContent = String(error); }
-    finally { if (sameProjectView(current(), context) && pending === request) { busy = false; read.disabled = false; } }
+    finally { if (sameProjectView(current(), context) && pending === request) { busy = false; read.disabled = false; setBusy(read, false); setLoading(documentView, false); if (!snapshot) documentView.replaceChildren(); } }
   });
   for (const [id, action] of [['save-project-policy', 'save'], ['attach-project-policy', 'attach'], ['detach-project-policy', 'detach'], ['accept-project-policy', 'accept']]) {
     document.getElementById(id)!.addEventListener('click', async () => {
@@ -42,6 +45,8 @@ export function initializeProjectPolicy(current: () => (ProjectContext & { proje
       const captured = snapshot;
       const pending = ++request;
       busy = true; read.disabled = true; fields.disabled = true;
+      const button = document.getElementById(id)!; setBusy(button, true);
+      status.textContent = 'Updating this project’s policy…';
       try {
         const project = await invoke<Project>('change_project_policy', { identifier: captured.context.id, fingerprint: captured.policy.fingerprint, action, hosts: [...new Set(hosts.value.split('\n').map(host => host.trim()).filter(Boolean))] });
         if (!sameProject(current(), captured.context)) return;
@@ -51,13 +56,14 @@ export function initializeProjectPolicy(current: () => (ProjectContext & { proje
         if (!sameProjectView(current(), captured.context) || pending !== request) return;
         status.textContent = detached ? 'Policy detached. Attach it again before starting the environment.' : 'Policy updated. Review the plan and prepare the environment again.';
       } catch (error) { if (sameProjectView(current(), captured.context) && pending === request) { status.textContent = String(error); fields.disabled = false; } }
-      finally { if (sameProjectView(current(), captured.context) && pending === request) { busy = false; read.disabled = false; } }
+      finally { if (sameProjectView(current(), captured.context) && pending === request) { busy = false; read.disabled = false; setBusy(button, false); } }
     });
   }
   return () => {
     ++request; busy = false; snapshot = null; read.disabled = false;
+    setBusy(read, false); setLoading(documentView, false);
     fields.disabled = true; hosts.value = ''; hosts.readOnly = true; status.textContent = '';
-    for (const button of fields.querySelectorAll<HTMLButtonElement>('button')) button.disabled = true;
-    document.getElementById('project-policy-document')!.textContent = '';
+    for (const button of fields.querySelectorAll<HTMLButtonElement>('button')) { button.disabled = true; setBusy(button, false); }
+    documentView.replaceChildren();
   };
 }

@@ -8,6 +8,7 @@ const TURN: &str = "aaaaaaaa-0000-4000-8000-000000000001";
 fn watch(name: &str, guest: &str) -> Watch {
     let root = std::env::temp_dir().join(format!("tugboat-history-{name}-{}", std::process::id()));
     Watch {
+        records_directory: None,
         home: root.join(guest),
         project: "/work/example".into(),
         ledger: root.join("ledger.json"),

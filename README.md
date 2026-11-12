@@ -13,7 +13,7 @@ Choose a local project folder, prepare a Brig environment, and work with Codex i
 - Add project folders, see their Git branches, and return to projects in last-opened order.
 - Browse saved Codex sessions for the selected project in the sidebar.
 - Prepare project policies and session bindings automatically, or use a matching Brig session.
-- Sign in with ChatGPT inside the guest environment.
+- Sign in with ChatGPT once and use the shared account in every project.
 - Run multiple Codex conversations per project and switch between their live terminals in the sidebar.
 - Set CPU and memory limits, image verification, and allowed network hosts.
 - Check Git status, review changes, and run project tests inside the guest environment.
@@ -71,9 +71,9 @@ Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. 
 4. Review the Codex profile, resource limits, image verification, and network settings.
 5. Open **Projects** and select **Add new project** or **⌘O**.
 6. Open the project's settings icon and review its resource limits, network, and **Sharing and execution plan**.
-7. Select **Prepare environment** to start the guest and check its Codex version.
-8. Select **Sign in with ChatGPT** in project settings. Complete device sign-in in your Mac browser.
-9. Select **Check sign-in status**.
+7. Tugboat starts the project's environment automatically with its saved settings and checks the guest Codex version. Already verified running environments are reused.
+8. Open **Settings → ChatGPT account**. Select **Sign in with ChatGPT** and complete device sign-in in your Mac browser.
+9. Return to the project. Tugboat connects the shared account automatically.
 10. Close project settings and select **New Chat**, or select a saved session from the project table or sidebar.
 
 If Brig is missing, Settings offers **Install Brig with Homebrew**. This action updates Homebrew, adds and trusts the `brig-sh/brig` tap, and installs Brig. Install Homebrew first if it is unavailable.
@@ -82,15 +82,29 @@ When several Brig sessions match a folder, select the session to use. Project ac
 
 **Projects** shows registered folders in a table, ordered by last opening, with current Git branches when available. Folder paths appear in hover tooltips. Add projects only from this page. Selecting a project replaces the sidebar project list with its active Codex sessions. Select **Projects** to return to the library. Session names stay on one line; hover to see the full name. Drag the sidebar's right edge to resize it from its 280px minimum. The divider also supports arrow keys, Home, and End. The app saves the preferred width and keeps at least 480px for the workspace.
 
-Each project has a fixed header with its name, branch, and `folder path · Brig session` line. Its settings icon opens a wide modal for project name, CPU, memory, image verification, network, sign-in, policy, and environment actions. Project resource options override the app defaults and persist with the project. Stop the environment before changing them. The dot grid appears only in the Projects library.
+Each project has a fixed header with its name, branch, and `folder path · Brig session` line. Its settings icon opens a wide modal for project name, CPU, memory, image verification, network, the shared account link, policy, and environment actions. Project resource options override the app defaults and persist with the project. Stop the environment before changing them. The dot grid appears only in the Projects library.
 
-Ready projects show saved sessions, token totals, and API cost equivalents. **New Chat** starts another Codex process in the project's Brig environment. Selecting an open chat in the sidebar restores its existing terminal and scrollback. Other chats continue running. A spinning activity icon precedes a session while its agent is working or thinking. End process closes the selected terminal. Prepare a stopped environment before resuming a saved session.
+### Shared ChatGPT account
+
+Manage the account in **Settings → ChatGPT account**. Sign in once from a ready project environment. New projects use that account automatically. Each project keeps its own Brig environment, network policy, Codex configuration, and chat history. A separate Mac Codex installation is not required.
+
+Tugboat can use a saved project sign-in. If saved sign-ins belong to different users or workspaces, select the source project explicitly. End its existing Codex processes first. An older Codex daemon can retain credentials after its terminal closes; stop and reopen that Brig environment if Tugboat reports this condition. New chats run without this shared daemon.
+
+The private account record is `<records folder>/chatgpt/session.json`. Its folder uses permission `0700`; the file uses `0600`. Only Tugboat renews the shared session. Guests receive access copies without the refresh token. The shared record is never mounted in a guest. Records must stay outside project folders and Brig guest homes. Custom `CODEX_HOME` locations and profile file or volume mappings are not supported for shared sign-in.
+
+**Check connection** renews the shared session and updates its managed guest copies. **Retry connection** retries a failed transfer or renewal. Temporary failures preserve the account. If a renewal request was sent but its result is unknown, Tugboat requires another shared sign-in instead of reusing a possibly rotated refresh token. A sign-in cancelled before commitment preserves the previous account. A crash before a completed login is confirmed cancels that unfinished login on restart.
+
+**Sign out of Tugboat** requires running chats, sign-in processes, and guest terminals to end first. It removes managed sign-in copies and reports whether remote revocation was confirmed. Removing or forgetting one project preserves the shared account for other projects. Project histories remain separate and are not deleted by account actions. Guest network policies still control model connections; an offline project does not start sign-in or renewal.
+
+Configured projects show saved sessions, token totals, and API cost equivalents while their environment starts in the background. **New Chat** and saved-session resume become available after the running environment and guest Codex are verified. Reopening a stopped project starts its existing environment automatically; saved resource limits, policies, guest home, and sign-in data are preserved. Startup failures offer **Retry environment** without repeating project configuration. An environment that is already starting is reused. Open chats are preserved, and an explicit **Stop Brig environment** stays stopped until the user starts it or reopens the project.
+
+**New Chat** starts another Codex process in the project's Brig environment. Selecting an open chat in the sidebar restores its existing terminal and scrollback. Other chats continue running. A spinning activity icon precedes a session while its agent is working or thinking. End process closes the selected terminal.
 
 Each root chat appears once in the session table and sidebar. Its table totals include its own usage and all linked subagents, including nested subagents. The row shows the subagent count; normal conversation forks remain separate chats. **Archived** keeps a root chat out of the active list. **Delete** moves it to **Trash**, where **Restore** returns it to the active list. These actions change the root chat's saved state without changing its subagents' recorded states or the project total. Source Codex rollout files remain intact. End the root chat's and subagents' terminal processes before archiving or deleting the root chat. Subagents cannot be resumed, archived, deleted, or restored independently. Agents with unresolved relationships appear under **Unlinked subagents**, with read-only usage details.
 
 ### Usage and API cost
 
-Tugboat reads token events from the selected guest home's Codex rollout files. A background reader checks observed projects every two seconds and writes an atomic project ledger under `conversation-ledgers/` in the app configuration directory. The ledger retains agent turns, request counts, completion or interruption state, model, price snapshots, and cost. Prompts and answers are not copied into this ledger.
+Tugboat reads token events from the selected guest home's Codex rollout files. A background reader checks observed projects every two seconds and writes an atomic project ledger under `conversation-ledgers/` in the selected records folder. The ledger retains agent turns, request counts, completion or interruption state, model, price snapshots, and cost. Prompts and answers are not copied into this ledger.
 
 The usage icon opens **Session usage**. For a root chat with subagents, **Main agent**, **Subagents**, and **Combined** separate the root's own usage from delegated work. Expand a subagent to inspect its own agent turns and requests. User prompt counts and agent turn counts are separate. Proven prompt attribution links to the source request or unmeasured turn. Work without proven attribution stays under **Unassigned to a user prompt** and remains in the selected total. A selected child's details cover that child and its descendants only; ancestors and siblings are excluded. While the dialog is open, changes in the selected subtree refresh its details and preserve open disclosures, focus, and scroll position.
 
@@ -147,11 +161,19 @@ The optional **Use the Brig boundary with the Codex sandbox disabled** mode requ
 
 Boundary checks select comparison hosts from the effective guest network mode and resolved policy. Offline and deny-all modes expect blocked connections. CIDR, wildcard or advanced policies remain inconclusive when a suitable comparison cannot be verified. Brig/hull host rules authorize resolved addresses, so services on shared IP addresses can have a wider scope than their host names. A reachable comparison with possible address overlap also remains inconclusive. Inconclusive results do not enable the optional mode. See the [pinned hull network policy behavior](https://github.com/brig-sh/hull/blob/7e50ac340d69be387312755c1f07ef6b0e9fec52/docs/network-egress.md).
 
-Settings and recent project records are stored in the app's macOS configuration directory. Brig manages guest homes and conversation history. Closing the app while a process runs asks for confirmation. Cancel keeps the app and process open. Confirming ends open terminal processes and preserves Brig environments, guest homes, and conversation history.
+Tugboat stores its records in `~/Library/Application Support/Tugboat` by default. The first launch migrates the earlier `sh.brig.desktop` records automatically. In **Settings → Records folder**, choose an empty folder, then select **Restart Tugboat**. Settings, project records, sidebar preferences, installation progress, boundary checks, the shared ChatGPT record, usage ledgers, and immutable ledger backups move together. The old files are removed only after copying, verification, and committing the new location.
+
+`Application Support/Tugboat/storage-location.json` remembers the selected folder and any pending move; a separate lock file prevents concurrent instances from changing the same records. When a custom folder is active, other Tugboat records reside there. **Use default folder** schedules a move back. Missing drives never create an empty replacement dataset. Connect the drive and restart, or use **Locate records folder…** to find the same records at a new path. Failed and interrupted moves retain the original records and retry on a later launch. Partial copies cannot be selected as active records.
+
+Earlier directory markers are upgraded using the saved location transaction. The committed active folder remains available without changing project or settings files. Unselected older copies still require proof of completion before they can be used as active records.
+
+Brig manages guest homes and conversation history in its existing locations. Closing or restarting the app while a process runs asks for confirmation. Cancel keeps the app and process open. Confirming ends open terminal processes and saves final usage before a restart applies a pending records move.
 
 Use **Stop Brig environment** to stop a guest. Use **Preview removal…** to review session removal and confirm its name. If removal is interrupted, **Review incomplete removal…** reopens a current preview and continues recorded steps. Normal setup stays paused until removal finishes.
 
-An unavailable folder stays in the library. **Forget…** removes only its Tugboat record and stops background monitoring; it preserves project files, Brig environments, guest homes and saved usage. Use **Add new project** to reconnect a moved folder instead.
+Tugboat checks project folders automatically on startup. An unavailable folder stays in the library. Connect its drive; Tugboat checks again every eight seconds while Projects is visible, and when the app regains focus. Checks pause in Settings and selected project views and stop when all folders are available. The scan preserves project records, Brig environments, saved usage, opening order, and keyboard focus. Tugboat uses the volume UUID when available to recognize a disk after a restart. Older records can recover a changed device number when the folder's inode and known creation time still match. A replaced folder or a different known volume remains unavailable.
+
+**Forget…** removes only the Tugboat record and stops background monitoring; it preserves project files, Brig environments, guest homes and saved usage. Use **Add new project** to reconnect a moved folder instead.
 
 ## Development
 

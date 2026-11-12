@@ -590,15 +590,23 @@ fn write_ledger(file: &Path, ledger: &mut Ledger) -> Result<(), String> {
 }
 #[derive(Clone)]
 struct Watch {
+    records_directory: Option<crate::data_location::RecordsDirectory>,
     home: PathBuf,
     project: PathBuf,
     ledger: PathBuf,
 }
 impl Watch {
+    fn check_storage(&self) -> Result<(), String> {
+        match &self.records_directory {
+            Some(directory) => directory.verify(),
+            None => Ok(()),
+        }
+    }
     fn namespace(&self) -> String {
         guest_namespace(&fs::canonicalize(&self.home).unwrap_or_else(|_| self.home.clone()))
     }
     fn selected_ledger(&self) -> Result<Ledger, String> {
+        self.check_storage()?;
         let mut ledger = load_ledger(&self.ledger)?;
         ledger.select_guest(&self.namespace());
         Ok(ledger)
@@ -696,7 +704,7 @@ impl DashboardUpdate {
     }
 }
 
-fn paths(checked: &CheckedProject, file: PathBuf) -> Result<Watch, String> {
+fn paths(app: &AppHandle, checked: &CheckedProject, file: PathBuf) -> Result<Watch, String> {
     let data = &checked.plan["data"];
     let home = data["home"]["host"]
         .as_str()
@@ -705,6 +713,7 @@ fn paths(checked: &CheckedProject, file: PathBuf) -> Result<Watch, String> {
         .as_str()
         .ok_or("The guest project path is missing from the plan.")?;
     Ok(Watch {
+        records_directory: Some(crate::data_location::records_directory(app)?),
         home: home.into(),
         project: project.into(),
         ledger: file,
@@ -714,14 +723,12 @@ fn ledger_file(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
     if id.len() != 32 || !id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("Invalid project identity.".into());
     }
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|error| error.to_string())?
+    Ok(crate::data_location::directory(app)?
         .join("conversation-ledgers")
         .join(format!("{id}.json")))
 }
 fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
+    watch.check_storage()?;
     let _file_guard = storage::lock(&watch.ledger)?;
     let mut ledger = load_ledger(&watch.ledger)?;
     let namespace = watch.namespace();
@@ -861,6 +868,7 @@ fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
         record.warning = warning;
     }
     if changed {
+        watch.check_storage()?;
         write_ledger(&watch.ledger, &mut ledger)?;
     }
     let graph = ledger_graph(&ledger);
@@ -1127,7 +1135,7 @@ pub fn require_resume(
 ) -> Result<(), String> {
     let history = app.state::<History>();
     let _guard = history.lock.lock().map_err(|error| error.to_string())?;
-    let watch = paths(checked, ledger_file(app, &checked.project.id)?)?;
+    let watch = paths(app, checked, ledger_file(app, &checked.project.id)?)?;
     let dashboard = resume_dashboard(&watch, session_id)?;
     if terminal::bind_conversations(&checked.project.id, &dashboard.conversations) {
         app.emit("terminal-sessions-changed", &checked.project.id)
@@ -1138,7 +1146,7 @@ pub fn require_resume(
 
 pub fn observe(app: &AppHandle, checked: &CheckedProject) -> Result<(), String> {
     let history = app.state::<History>();
-    let watch = paths(checked, ledger_file(app, &checked.project.id)?)?;
+    let watch = paths(app, checked, ledger_file(app, &checked.project.id)?)?;
     let _guard = history.lock.lock().map_err(|error| error.to_string())?;
     let project = projects::Registry::load(&projects::file(app)?)?.project(&checked.project.id)?;
     if project.stage == "removing" {
@@ -1211,7 +1219,7 @@ pub async fn project_dashboard(
         if project.stage == "removing" {
             return Err("This project is being removed.".into());
         }
-        let watch = paths(&checked, ledger_file(&app, &identifier)?)?;
+        let watch = paths(&app, &checked, ledger_file(&app, &identifier)?)?;
         let (dashboard, _) = synchronize(&watch)?;
         history.record_published(&identifier, &dashboard)?;
         if terminal::bind_conversations(&identifier, &dashboard.conversations) {
@@ -1239,7 +1247,7 @@ pub async fn change_conversation_state(
         let history = app.state::<History>();
         let _guard = history.lock.lock().map_err(|error| error.to_string())?;
         let file = ledger_file(&app, &identifier)?;
-        let watch = paths(&checked, file.clone())?;
+        let watch = paths(&app, &checked, file.clone())?;
         synchronize(&watch)?;
         change_state(&watch, &session_id, state, |ids| {
             terminal::conversations_running(&identifier, ids)
@@ -1255,6 +1263,7 @@ fn change_state(
     state: SessionState,
     running: impl Fn(&[String]) -> bool,
 ) -> Result<(), String> {
+    watch.check_storage()?;
     let file = &watch.ledger;
     let _file_guard = storage::lock(file)?;
     let mut ledger = watch.selected_ledger()?;
@@ -1270,6 +1279,7 @@ fn change_state(
         .get_mut(session_id)
         .ok_or("This saved session does not belong to the selected project.")?;
     record.state = state;
+    watch.check_storage()?;
     write_ledger(file, &mut ledger)
 }
 
@@ -1298,7 +1308,7 @@ pub async fn conversation_usage(
             ledger.select_guest(&watch.namespace());
         } else if !ledger.variants.is_empty() {
             let checked = environment::checked_project(&app, &identifier, None)?;
-            ledger.select_guest(&paths(&checked, file)?.namespace());
+            ledger.select_guest(&paths(&app, &checked, file)?.namespace());
         }
         usage_details::from_ledger(&ledger, &session_id)
     })
@@ -1410,6 +1420,7 @@ mod tests {
     fn unobserve_waits_for_the_current_pass_and_prevents_later_reads() {
         let history = History::default();
         let watch = Watch {
+            records_directory: None,
             home: "/fixture/home".into(),
             project: "/work/project".into(),
             ledger: "/fixture/ledger.json".into(),
@@ -1478,6 +1489,7 @@ mod tests {
         use std::io::{Read, Write};
         let root = std::env::temp_dir().join(format!("tugboat-exit-usage-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -1532,11 +1544,13 @@ mod tests {
     fn final_flush_records_other_projects_after_a_source_error() {
         let root = std::env::temp_dir().join(format!("tugboat-final-flush-{}", std::process::id()));
         let bad = Watch {
+            records_directory: None,
             home: root.join("bad"),
             project: "/work/project".into(),
             ledger: root.join("bad-ledger.json"),
         };
         let good = Watch {
+            records_directory: None,
             home: root.join("good"),
             project: "/work/project".into(),
             ledger: root.join("good-ledger.json"),
@@ -1601,6 +1615,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-root-actions-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/fixture-project".into(),
             ledger: root.join("ledger.json"),
@@ -1702,6 +1717,7 @@ mod tests {
                 std::process::id()
             ));
             let watch = Watch {
+                records_directory: None,
                 home: root.join("home"),
                 project: "/work/project".into(),
                 ledger: root.join("ledger.json"),
@@ -1747,6 +1763,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-legacy-action-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -1783,6 +1800,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-real-project-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/fixture-project".into(),
             ledger: root.join("ledger.json"),
@@ -2039,6 +2057,7 @@ mod tests {
                 std::process::id()
             ));
             let watch = Watch {
+                records_directory: None,
                 home: root.join("home"),
                 project: "/work/project-b".into(),
                 ledger: root.join("ledger-b.json"),
@@ -2076,6 +2095,7 @@ mod tests {
             assert!(project_record(&ledger, SECOND).is_none());
             if !missing_before_parent {
                 let foreign = Watch {
+                    records_directory: None,
                     home: watch.home.clone(),
                     project: "/work/project-a".into(),
                     ledger: root.join("ledger-a.json"),
@@ -2100,6 +2120,7 @@ mod tests {
     fn measured_zero_empty_turn_and_unknown_price_have_separate_coverage() {
         let root = std::env::temp_dir().join(format!("tugboat-measurement-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/synthetic-project".into(),
             ledger: root.join("ledger.json"),
@@ -2308,6 +2329,7 @@ mod tests {
     fn different_cwd_closure_excludes_other_project_and_preserves_omitted_child_source() {
         let root = std::env::temp_dir().join(format!("tugboat-cwd-closure-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2366,6 +2388,7 @@ mod tests {
     fn late_parent_changes_metadata_and_publishes_without_token_changes() {
         let root = std::env::temp_dir().join(format!("tugboat-late-parent-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2398,6 +2421,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-cached-parent-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2433,6 +2457,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-conflicting-root-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2496,11 +2521,13 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-guest-boundary-{}", std::process::id()));
         let first = Watch {
+            records_directory: None,
             home: root.join("first-home"),
             project: "/work/fixture-project".into(),
             ledger: root.join("ledger.json"),
         };
         let second = Watch {
+            records_directory: None,
             home: root.join("second-home"),
             project: first.project.clone(),
             ledger: first.ledger.clone(),
@@ -2583,6 +2610,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-archived-lineage-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/fixture-project".into(),
             ledger: root.join("ledger.json"),
@@ -2616,6 +2644,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-malformed-lineage-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2649,6 +2678,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-lineage-retain-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2767,6 +2797,7 @@ mod tests {
     fn ledger_preserves_totals_and_archive_state_across_restarts_and_missing_rollouts() {
         let root = std::env::temp_dir().join(format!("tugboat-ledger-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2840,6 +2871,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-ledger-concurrent-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -2876,6 +2908,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-history-repair-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -3013,6 +3046,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-cache-migration-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),
@@ -3070,6 +3104,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-tier-migration-{}", std::process::id()));
         let watch = Watch {
+            records_directory: None,
             home: root.join("home"),
             project: "/work/project".into(),
             ledger: root.join("ledger.json"),

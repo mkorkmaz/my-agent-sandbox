@@ -4,8 +4,9 @@ mod boundaries;
 mod brig;
 mod codex;
 mod command;
-mod conversations;
 mod conversation_graph;
+mod conversations;
+mod data_location;
 mod environment;
 mod host;
 mod hull;
@@ -20,6 +21,7 @@ mod project_policy;
 mod projects;
 mod pty;
 mod settings;
+mod shared_chatgpt;
 mod storage;
 mod terminal;
 mod terminal_title;
@@ -80,13 +82,20 @@ fn main() {
         .manage(preparation::PreparationLocks::default())
         .manage(boundaries::BoundaryTests::default())
         .manage(installation::Installation::default())
+        .manage(shared_chatgpt::SharedChatgpt::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
             application_version,
             choose_project_folder,
+            data_location::storage_location,
+            data_location::choose_storage_folder,
+            data_location::change_storage_location,
+            data_location::cancel_storage_move,
+            data_location::restart_for_storage_change,
             projects::register_project,
             projects::recent_projects,
+            projects::rescan_projects,
             projects::open_project,
             projects::forget_project,
             projects::read_project_preferences,
@@ -102,6 +111,12 @@ fn main() {
             environment::finish_environment,
             codex::login_status,
             codex::start_codex_session,
+            shared_chatgpt::shared_chatgpt_status,
+            shared_chatgpt::sync_project_chatgpt,
+            shared_chatgpt::use_project_chatgpt,
+            shared_chatgpt::retry_shared_chatgpt,
+            shared_chatgpt::disconnect_shared_chatgpt,
+            shared_chatgpt::cancel_shared_chatgpt_login,
             boundaries::run_boundary_tests,
             boundaries::copy_inner_boundary_prompt,
             operations::start_project_operation,
@@ -116,15 +131,17 @@ fn main() {
             settings::load_settings,
             settings::save_settings,
             settings::telemetry_status,
+            settings::load_interface_preferences,
+            settings::save_interface_preferences,
             terminal::terminal_start,
             terminal::terminal_layout,
             terminal::terminal_focus,
             terminal::terminal_close,
-            terminal::terminal_status,
             terminal::terminal_sessions,
             terminal::terminal_snapshot
         ])
         .setup(|app| {
+            app.manage(data_location::initialize(app.handle()).map_err(std::io::Error::other)?);
             let window = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
                 .on_navigation(|url| {
                     (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
@@ -138,6 +155,7 @@ fn main() {
             unsafe { brig_window_set_dark_appearance(window.ns_window()?) };
             app.set_menu(menu::create(app.handle())?)?;
             conversations::monitor(app.handle().clone());
+            shared_chatgpt::monitor(app.handle().clone());
             Ok(())
         })
         .on_menu_event(menu::handle)

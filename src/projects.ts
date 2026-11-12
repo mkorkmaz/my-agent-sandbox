@@ -1,5 +1,4 @@
 import type { Conversation as RecordedConversation, SessionState } from './usage-types';
-export type { UsageSummary } from './usage-types';
 
 export interface Project {
   id: string;
@@ -16,6 +15,7 @@ export interface Project {
   lastOpenedAt?: number | null;
   gitBranch?: string | null;
   available?: boolean;
+  environmentAttempt?: { completed: boolean; error: string | null; terminalIdentifier: number } | null;
 }
 
 export interface Conversation extends RecordedConversation { terminalId?: number; busy?: boolean }
@@ -30,14 +30,14 @@ export function standaloneConversations(conversations: Conversation[], state: Se
 
 export interface TerminalStatus { identifier: number; projectId: string; purpose: string; running: boolean; exitCode: number | null; conversationId: string | null; busy: boolean }
 
-export const terminalNames: Record<string, string> = { codex: 'Codex', resume: 'Codex', login: 'ChatGPT sign-in', shell: 'Guest terminal', local: 'Local terminal', environment: 'Environment setup', 'git-status': 'Git status', 'git-diff': 'Working tree diff', 'git-staged-diff': 'Staged diff', tests: 'Project tests', doctor: 'Brig doctor', info: 'Session info', 'policy-check': 'Policy bindings', logs: 'Recent logs' };
+export const terminalNames: Record<string, string> = { codex: 'Codex', resume: 'Codex', login: 'ChatGPT sign-in', shell: 'Guest terminal', local: 'Local terminal', environment: 'Environment startup', 'git-status': 'Git status', 'git-diff': 'Working tree diff', 'git-staged-diff': 'Staged diff', tests: 'Project tests', doctor: 'Brig doctor', info: 'Session info', 'policy-check': 'Policy bindings', logs: 'Recent logs' };
 
 export function terminalCaption(status: TerminalStatus): string {
   const name = terminalNames[status.purpose] ?? 'Operation terminal';
   return status.running ? name + ' · running' : name + (status.exitCode === null ? ' · ended' : ' · exit ' + status.exitCode);
 }
 
-function preserveListFocus(list: HTMLElement, key: 'sessionId' | 'terminalId'): () => void {
+function preserveListFocus(list: HTMLElement, key: 'sessionId' | 'terminalId' | 'projectId'): () => void {
   if (!document.hasFocus()) return () => {};
   const buttons = [...list.querySelectorAll<HTMLButtonElement>('button')];
   const active = document.activeElement;
@@ -49,7 +49,7 @@ function preserveListFocus(list: HTMLElement, key: 'sessionId' | 'terminalId'): 
     const replacement = candidates.find(button => button.dataset[key] === identity && !button.disabled)
       ?? candidates.slice(index).find(button => !button.disabled)
       ?? candidates.slice(0, index).reverse().find(button => !button.disabled)
-      ?? document.getElementById('refresh-sessions');
+      ?? document.getElementById(key === 'projectId' ? 'choose-folder' : 'refresh-sessions');
     replacement?.focus({ preventScroll: true });
   };
 }
@@ -96,7 +96,7 @@ function projectIdentity(project: Project): HTMLElement[] {
   return [monogram, identity];
 }
 
-export function branchLabel(branch: string): HTMLElement {
+function branchLabel(branch: string): HTMLElement {
   const label = document.createElement('span');
   label.className = 'project-branch';
   label.title = branch;
@@ -132,6 +132,8 @@ export function renderProjects(projects: Project[], selected: Project | null, se
   const ordered = [...projects].sort((first, second) => (second.lastOpenedAt ?? (second.updatedAt ?? 0) * 1000) - (first.lastOpenedAt ?? (first.updatedAt ?? 0) * 1000));
   const sidebar = document.getElementById('sidebar-project-list')!;
   const list = document.getElementById('recent-project-list')!;
+  const restoreSidebarFocus = preserveListFocus(sidebar, 'projectId');
+  const restoreLibraryFocus = preserveListFocus(list, 'projectId');
   sidebar.replaceChildren(); list.replaceChildren();
   for (const project of ordered) {
     const sidebarRow = document.createElement('li'); sidebarRow.append(projectButton(project, 'sidebar-project', select)); sidebar.append(sidebarRow);
@@ -156,7 +158,6 @@ export function renderProjects(projects: Project[], selected: Project | null, se
   sidebar.hidden = selected !== null;
   document.getElementById('sidebar-project-context')!.hidden = selected === null;
   document.getElementById('recent-projects')!.hidden = selected !== null || projects.length === 0;
-  document.getElementById('project-view')!.classList.toggle('has-project-list', selected === null && projects.length > 0);
   document.getElementById('project-navigation-label')!.textContent = 'Projects';
   document.getElementById('empty-projects')!.hidden = selected !== null || projects.length > 0;
   const current = document.getElementById('sidebar-current-project')!;
@@ -171,6 +172,8 @@ export function renderProjects(projects: Project[], selected: Project | null, se
   selectedBranch.hidden = !selected || !branch;
   selectedBranch.replaceChildren();
   if (selected && branch) selectedBranch.append(branchLabel(branch));
+  restoreSidebarFocus();
+  restoreLibraryFocus();
 }
 
 export function renderConversations(conversations: Conversation[], selectedId: string | null, resume: (conversation: Conversation) => Promise<void>): void {
