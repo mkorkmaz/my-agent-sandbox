@@ -50,7 +50,7 @@ async function interfaceHarness(overrides = {}) {
   let nextTerminal = 1;
   const handlers = {
     frontend_ready: () => null, update_menu_state: () => null,
-    application_version: () => '0.1.0',
+    application_version: () => '0.2.0',
     load_settings: () => settings,
     telemetry_status: () => ({ recorded: 'off', effective: 'off', message: null }),
     recent_projects: () => [], choose_project_folder: () => project.path,

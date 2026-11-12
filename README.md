@@ -61,7 +61,7 @@ You can also copy `Tugboat.app` to `/Applications`.
 
 ### Releases from trunk
 
-Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. After they pass, GitHub Actions builds the ARM64 DMG using the `version` in `src-tauri/tauri.conf.json` and attaches it to a release for the tested commit. Each push gets its own tag, such as `v0.1.0-build.42`. Rerunning the same workflow run keeps its original tag.
+Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. After they pass, GitHub Actions builds the ARM64 DMG using the `version` in `src-tauri/tauri.conf.json` and attaches it to a release for the tested commit. Each push gets its own tag, such as `v0.2.0-build.42`. Rerunning the same workflow run keeps its original tag.
 
 ## Get started
 
