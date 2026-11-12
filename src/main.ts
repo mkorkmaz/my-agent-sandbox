@@ -36,7 +36,6 @@ let selectedProject: Project | null = null;
 let projectEpoch = 0;
 let projectSettingsEpoch = 0;
 let projectPreferencesRequest = 0;
-let loginRequest = 0;
 let sharedChatgpt: ChatgptAccount | null = null;
 let accountSyncKey: string | null = null;
 let accountConnectionError: string | null = null;
@@ -96,10 +95,8 @@ setLoading(element('sidebar-project-list'), true);
 
 function projectContext(): ProjectContext | null { return selectedProject ? { id: selectedProject.id, fingerprint: selectedPlanFingerprint, epoch: projectEpoch, view: projectSettingsEpoch } : null; }
 function resetProjectDetails(): void {
-  ++projectSettingsEpoch; ++projectPreferencesRequest; ++loginRequest;
-  element('login-status').textContent = 'Check your ChatGPT sign-in status.';
-  element<HTMLButtonElement>('check-login').disabled = false;
-  setBusy(element('check-login'), false);
+  ++projectSettingsEpoch; ++projectPreferencesRequest;
+  element('guest-terminal-status').textContent = '';
   setBusy(element('save-project-preferences'), false);
   setLoading(element('project-preference-fields'), false);
   element('project-preferences-status').textContent = '';
@@ -126,7 +123,6 @@ async function syncProjectAccount(): Promise<void> {
   accountSyncKey = key; syncingAccount = true; connectedAccountProject = null;
   accountConnectionError = null;
   element<HTMLButtonElement>('start-codex').disabled = true;
-  element('login-status').textContent = 'Connecting the shared ChatGPT account…';
   updateCodexActions();
   try {
     const status = await invoke<ChatgptAccountStatus>('sync_project_chatgpt', { identifier: context.id });
@@ -134,10 +130,8 @@ async function syncProjectAccount(): Promise<void> {
     accountSyncKey = [context.id, context.epoch, context.fingerprint, status.generation].join('|');
     connectedAccountProject = status.state === 'signed-in' ? [context.id, context.epoch, context.fingerprint].join('|') : null;
     sharedChatgpt.accept(status);
-    element('login-status').textContent = status.message;
   } catch (error) {
     if (sameProject(projectContext(), context)) {
-      element('login-status').textContent = String(error);
       accountConnectionError = String(error);
       sharedChatgpt.connectionFailed(String(error));
     }
@@ -246,7 +240,7 @@ async function syncMenus(): Promise<void> {
   const busy = choosingFolder || selectingProject || preparingProject !== null || startingTerminal;
   chooseFolderButton.disabled = busy;
   element<HTMLButtonElement>('start-codex').disabled = busy || !canStartChat();
-  for (const id of ['codex-login', 'guest-shell']) element<HTMLButtonElement>(id).disabled = busy || !environmentReady();
+  element<HTMLButtonElement>('guest-shell').disabled = busy || !environmentReady();
   projectNavigation.disabled = busy;
   element<HTMLButtonElement>('refresh-sessions').disabled = busy || loadingConversations;
   setBusy(element('refresh-sessions'), loadingConversations);
@@ -787,23 +781,9 @@ function updateCodexActions(): void {
   element('project-account-status').textContent = accountConnectionError ?? (syncingAccount
     ? 'Connecting the shared ChatGPT account…' : sharedChatgpt?.status()?.message ?? 'Checking the shared ChatGPT account…');
   setBusy(element('project-account-status'), syncingAccount);
-  for (const id of ['codex-login', 'guest-shell']) element<HTMLButtonElement>(id).disabled = !environmentReady() || startingTerminal || selectingProject || choosingFolder || preparingProject !== null;
+  element<HTMLButtonElement>('guest-shell').disabled = !environmentReady() || startingTerminal || selectingProject || choosingFolder || preparingProject !== null;
   sharedChatgpt?.updateAvailability();
   if (ready) void syncProjectAccount();
-}
-
-async function checkLogin(): Promise<void> {
-  const context = projectContext(); if (!context) return;
-  const request = ++loginRequest;
-  element('login-status').textContent = 'Checking ChatGPT sign-in status…';
-  element<HTMLButtonElement>('check-login').disabled = true;
-  setBusy(element('check-login'), true);
-  try {
-    const result = await invoke<{ method: string; message: string }>('login_status', { identifier: context.id });
-    if (!sameProjectView(projectContext(), context) || request !== loginRequest) return;
-    element('login-status').textContent = result.message;
-  } catch (error) { if (sameProjectView(projectContext(), context) && request === loginRequest) element('login-status').textContent = String(error); }
-  finally { if (sameProjectView(projectContext(), context) && request === loginRequest) { setBusy(element('check-login'), false); element<HTMLButtonElement>('check-login').disabled = false; } }
 }
 
 for (const [id, action, caption] of [['start-codex', 'codex', 'New Chat'], ['guest-shell', 'shell', 'Guest terminal']]) {
@@ -812,10 +792,9 @@ for (const [id, action, caption] of [['start-codex', 'codex', 'New Chat'], ['gue
     void openTerminal('start_codex_session', { identifier: selectedProject.id, fingerprint: selectedPlanFingerprint, action, useBrigBoundary: useBrigBoundary(projectContext()) }, caption);
   });
 }
-for (const id of ['codex-login', 'project-chatgpt-settings']) element(id).addEventListener('click', () => {
+element('project-provider-settings').addEventListener('click', () => {
   showView('settings'); element('shared-chatgpt-heading').focus(); void sharedChatgpt?.refresh();
 });
-element('check-login').addEventListener('click', () => { void checkLogin(); });
 
 function showView(view: 'project' | 'settings'): void {
   closeProjectDialogs();
@@ -1025,9 +1004,9 @@ async function openTerminal(command: string, arguments_: Record<string, unknown>
       closeProjectDialogs();
       await returnToTerminal((existingChat ?? blocking)!.identifier);
     } else if (blocking) {
-      const names: Record<string, string> = { codex: 'Codex chat', resume: 'Codex chat', login: 'ChatGPT sign-in', shell: 'guest terminal', local: 'local terminal', environment: 'environment setup' };
+      const names: Record<string, string> = { codex: 'chat', resume: 'chat', login: 'account sign-in', shell: 'guest terminal', local: 'local terminal', environment: 'environment setup' };
       const message = 'End the running ' + (names[blocking.purpose] ?? 'terminal') + ' before opening ' + caption + '.';
-      if (projectSettingsDialog.open) element(purpose === 'local' ? 'local-terminal-status' : purpose === 'environment' ? 'preparation-status' : 'login-status').textContent = message;
+      if (projectSettingsDialog.open) element(purpose === 'local' ? 'local-terminal-status' : purpose === 'environment' ? 'preparation-status' : 'guest-terminal-status').textContent = message;
       else showFolderError(message);
     }
     return;
@@ -1123,7 +1102,7 @@ await listen<{ identifier: number; projectId: string; purpose: string; code: num
     const status = terminals.find(status => status.identifier === terminalIdentifier);
     showTerminalStatus(status ? terminalCaption(status) : 'Terminal process ended');
   }
-  if (event.payload.purpose === 'login' && selectedProject?.id === event.payload.projectId) await checkLogin();
+  if (event.payload.purpose === 'login') await sharedChatgpt?.refresh();
   if (['codex', 'resume'].includes(event.payload.purpose) && selectedProject?.id === event.payload.projectId) { void refreshProjects(); void refreshConversations(); }
 });
 await listen<{ project: Project; terminalIdentifier: number; message: string | null }>('environment-preparation-finished', async event => {
@@ -1136,7 +1115,7 @@ await listen<{ project: Project; terminalIdentifier: number; message: string | n
   await refreshSelectedPlan();
   if (!sameProject(projectContext(), context)) return;
   updateCodexActions();
-  element('preparation-status').textContent = result.message ?? 'Brig environment and guest Codex version verified.';
+  element('preparation-status').textContent = result.message ?? 'Brig environment and guest agent version verified.';
   environmentFeedback(result.message ?? (selectedProject?.stage === 'environment-ready' ? null : 'The project environment is not running. Try starting it again.'));
   if (result.terminalIdentifier === terminalIdentifier) showTerminalStatus(result.message ? 'Environment setup failed. Prepare the environment again.' : 'Brig environment ready');
 });
@@ -1198,7 +1177,6 @@ sharedChatgpt = await initializeChatgptAccount(
   },
   status => {
     if (status.state !== 'signed-in') connectedAccountProject = null;
-    if (selectedProject && environmentReady()) element('login-status').textContent = status.message;
     updateCodexActions();
   },
 );

@@ -3,7 +3,7 @@ import { showDialog } from './dialogs';
 import { sameProject, sameProjectView, type Project, type ProjectContext } from './projects';
 import { setBusy } from './loading';
 
-interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean; hasEnvironment: boolean; logout?: boolean | null }
+interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean; logout?: boolean | null }
 
 export function initializeOperations(current: () => ProjectContext | null, open: (command: string, arguments_: Record<string, unknown>, caption: string) => Promise<void>, stopped: (project: Project) => Promise<void>, removed: (message: string) => Promise<void>): () => void {
   let request = 0;
@@ -52,8 +52,6 @@ export function initializeOperations(current: () => ProjectContext | null, open:
       document.getElementById('removal-external')!.hidden = !preview.external;
       confirmation.value = ''; confirm.disabled = true;
       document.getElementById('removal-error')!.textContent = '';
-      (document.getElementById('logout-on-removal') as HTMLInputElement).checked = preview.logout ?? false;
-      (document.getElementById('logout-on-removal') as HTMLInputElement).disabled = !preview.hasEnvironment || preview.logout != null;
       showDialog(dialog, 'preview-removal'); confirmation.focus();
     } catch (error) { if (sameProjectView(current(), context) && pending === request) status.textContent = String(error); }
     finally { if (sameProjectView(current(), context)) { previewButton.disabled = false; setBusy(previewButton, false); } }
@@ -67,7 +65,7 @@ export function initializeOperations(current: () => ProjectContext | null, open:
     confirm.disabled = true;
     setBusy(confirm, true);
     try {
-      const message = await invoke<string>('remove_project', { identifier: removingId, fingerprint: preview.fingerprint, confirmation: confirmation.value, logout: (document.getElementById('logout-on-removal') as HTMLInputElement).checked });
+      const message = await invoke<string>('remove_project', { identifier: removingId, fingerprint: preview.fingerprint, confirmation: confirmation.value, logout: preview.logout ?? false });
       if (sameProjectView(current(), context)) dialog.close();
       if (sameProject(current(), context)) await removed(message);
     } catch (error) { if (sameProjectView(current(), context) && pending === request) document.getElementById('removal-error')!.textContent = String(error); }
@@ -80,8 +78,6 @@ export function initializeOperations(current: () => ProjectContext | null, open:
     previewButton.disabled = false;
     for (const id of ['removal-description', 'removal-reference', 'removal-workspace', 'removal-error']) document.getElementById(id)!.textContent = '';
     document.getElementById('removal-external')!.hidden = true;
-    const logout = document.getElementById('logout-on-removal') as HTMLInputElement;
-    logout.checked = false; logout.disabled = true;
     if (dialog.open) dialog.close();
   };
 }

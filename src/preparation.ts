@@ -29,7 +29,7 @@ export function renderPlan(plan: Plan): void {
   const list = document.getElementById('sharing-plan-values')!;
   const data = plan.data;
   const values: [string, string][] = [
-    ['Profile and session', data.profile + '@' + data.session],
+    ['Brig profile and session', data.profile + '@' + data.session],
     ['Runtime', data.runtime.kind + ' / ' + data.runtime.backend], ['Isolation', data.isolation],
     ['Writable folder', data.project.host], ['Guest project path', data.project.guest],
     ['Guest home', data.home.host], ['Resources', data.limits.cpus + ' CPU · ' + data.limits.mem + ' MB'],
@@ -37,8 +37,8 @@ export function renderPlan(plan: Plan): void {
     ['Image', data.image.ref], ['Signature verification', data.verify.mode],
     ['Policies', data.policies.join(', ')],
     ['Allowed guest destinations', data.egress.allow?.map(rule => rule.host ?? rule.cidr ?? '').join(', ') || 'None'],
-    ['Hosted Codex tools', 'Separate from the guest network policy'],
-    ['Codex web search', 'Mode not read or managed by Tugboat'],
+    ['Hosted agent tools', 'Separate from the guest network policy'],
+    ['Agent web search', 'Mode not read or managed by Tugboat'],
     ['Host credentials', data.credentials.map(credential => credential.name + ' (' + (credential.state === 'unresolved' ? 'unresolved' : 'withheld') + ')').join(', ') || 'None'],
   ];
   list.replaceChildren();

@@ -82,16 +82,6 @@ fn login(checked: &CheckedProject) -> Result<LoginStatus, String> {
     ))
 }
 
-#[tauri::command]
-pub async fn login_status(app: AppHandle, identifier: String) -> Result<LoginStatus, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let checked = environment::checked_project(&app, &identifier, None)?;
-        login(&checked)
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
 fn arguments(
     checked: &CheckedProject,
     action: Action,

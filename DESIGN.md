@@ -530,7 +530,7 @@ Keep native menu commands for Add new project (⌘O), Settings (⌘,), Return to
 
 ### Settings groups and fields
 
-Place ChatGPT account after General and before Records folder. Use the existing information surface, support text, full-width select, and wrapping action rows. Show the account, shared sign-in, Retry connection, sign-out, and pending sign-in controls. Saved account choices retain selection and focus during background updates. Project account errors use inline support text and a Manage ChatGPT account action. This action opens Settings and focuses its account heading. Token values never enter the interface.
+Place Provider after General and before Records folder in application Settings. Show provider details and account controls only in this section. Project settings contain no provider details or sign-in and sign-out controls. Use the existing information surface, support text, full-width select, and wrapping action rows. Show the account, shared sign-in, Retry connection, sign-out, and pending sign-in controls. Saved account choices retain selection and focus during background updates. Project account errors use inline support text and an Open application settings action. This action opens Settings and focuses its Provider heading. Token values never enter the interface.
 
 
 General and host-tool information use divided, rounded definition lists with Settings Information Surface fills and a line height of (1.5). Labels use Settings Term weight and do not shrink. Secondary values align right, allow a zero minimum width, and wrap long paths anywhere. Rows align on their text baselines. Appearance reads “Dark sidebar · Light workspace”. Settings retains its Title heading and uses Section Label for the section hierarchy.

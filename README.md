@@ -72,7 +72,7 @@ Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. 
 5. Open **Projects** and select **Add new project** or **⌘O**.
 6. Open the project's settings icon and review its resource limits, network, and **Sharing and execution plan**.
 7. Tugboat starts the project's environment automatically with its saved settings and checks the guest Codex version. Already verified running environments are reused.
-8. Open **Settings → ChatGPT account**. Select **Sign in with ChatGPT** and complete device sign-in in your Mac browser.
+8. Open **Settings → Provider**. Select **Sign in with ChatGPT** and complete device sign-in in your Mac browser.
 9. Return to the project. Tugboat connects the shared account automatically.
 10. Close project settings and select **New Chat**, or select a saved session from the project table or sidebar.
 
@@ -82,11 +82,11 @@ When several Brig sessions match a folder, select the session to use. Project ac
 
 **Projects** shows registered folders in a table, ordered by last opening, with current Git branches when available. Folder paths appear in hover tooltips. Add projects only from this page. Selecting a project replaces the sidebar project list with its active Codex sessions. Select **Projects** to return to the library. Session names stay on one line; hover to see the full name. Drag the sidebar's right edge to resize it from its 280px minimum. The divider also supports arrow keys, Home, and End. The app saves the preferred width and keeps at least 480px for the workspace.
 
-Each project has a fixed header with its name, branch, and `folder path · Brig session` line. Its settings icon opens a wide modal for project name, CPU, memory, image verification, network, the shared account link, policy, and environment actions. Project resource options override the app defaults and persist with the project. Stop the environment before changing them. The dot grid appears only in the Projects library.
+Each project has a fixed header with its name, branch, and `folder path · Brig session` line. Its settings icon opens a wide modal for project name, CPU, memory, image verification, network, policy, and environment actions. Project resource options override the app defaults and persist with the project. Stop the environment before changing them. The dot grid appears only in the Projects library.
 
 ### Shared ChatGPT account
 
-Manage the account in **Settings → ChatGPT account**. Sign in once from a ready project environment. New projects use that account automatically. Each project keeps its own Brig environment, network policy, Codex configuration, and chat history. A separate Mac Codex installation is not required.
+Manage the provider and account only in **Settings → Provider**. Project settings do not show provider details or sign-in and sign-out controls. Sign in once from a ready project environment. New projects use that account automatically. Each project keeps its own Brig environment, network policy, Codex configuration, and chat history. A separate Mac Codex installation is not required.
 
 Tugboat can use a saved project sign-in. If saved sign-ins belong to different users or workspaces, select the source project explicitly. End its existing Codex processes first. An older Codex daemon can retain credentials after its terminal closes; stop and reopen that Brig environment if Tugboat reports this condition. New chats run without this shared daemon.
 

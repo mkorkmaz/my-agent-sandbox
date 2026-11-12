@@ -61,7 +61,7 @@ export function initializeBoundaryTests(current: () => ProjectContext | null): (
         row.append(heading, target, expected, observed); results.append(row);
       }
       const passed = report.passed && report.cleanup && report.results.length > 0 && report.results.every(probe => probe.outcome === 'pass');
-      status.textContent = passed ? 'Brig file and network boundary checks passed. Check the inner Codex sandbox in the same conversation.' : 'Some Brig boundaries could not be verified. Review the failed and inconclusive results.';
+      status.textContent = passed ? 'Brig file and network boundary checks passed. Check the inner agent sandbox in the same conversation.' : 'Some Brig boundaries could not be verified. Review the failed and inconclusive results.';
       if (!report.cleanup) status.textContent += ' Temporary files with an unverified identity were preserved.';
       if (passed && report.planFingerprint === project.fingerprint && report.planFingerprint === current()?.fingerprint) {
         verified = { project, checkedAt: report.checkedAt, selected: false };
@@ -76,7 +76,7 @@ export function initializeBoundaryTests(current: () => ProjectContext | null): (
     copy.disabled = true; setBusy(copy, true);
     try {
       await invoke('copy_inner_boundary_prompt');
-      if (sameProjectView(current(), context)) status.textContent = 'Check prompt copied. Paste it into the open Codex conversation and review the results in the terminal.';
+      if (sameProjectView(current(), context)) status.textContent = 'Check prompt copied. Paste it into the open conversation and review the results in the terminal.';
     } catch (error) { if (sameProjectView(current(), context)) status.textContent = String(error); }
     finally { if (sameProjectView(current(), context)) { copy.disabled = false; setBusy(copy, false); } }
   });

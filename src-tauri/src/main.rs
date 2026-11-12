@@ -109,7 +109,6 @@ fn main() {
             environment::preview_project,
             environment::prepare_environment,
             environment::finish_environment,
-            codex::login_status,
             codex::start_codex_session,
             shared_chatgpt::shared_chatgpt_status,
             shared_chatgpt::sync_project_chatgpt,

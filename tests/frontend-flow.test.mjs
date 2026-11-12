@@ -371,7 +371,7 @@ test('ready removal preview clears its loading message before opening the dialog
   harness.element('preview-removal').click(); await flush();
   assert.equal(dialog.open, true);
   assert.equal(harness.element('operation-status').textContent, '');
-  assert.equal(harness.element('logout-on-removal').disabled, true);
+  assert.equal(harness.element('logout-on-removal'), null);
   harness.dom.window.close();
 });
 
@@ -1136,7 +1136,6 @@ test('selecting another project clears sign-in, policy, boundary, operation and 
     open_project: ({ identifier }) => projects.find(current => current.id === identifier),
     prepare_project: ({ identifier }) => ({ project: projects.find(current => current.id === identifier), plan, fingerprint: 'plan-a', message: null, candidates: [] }),
     read_project_preferences: ({ identifier }) => identifier === second.id ? new Promise(resolve => { releasePreferences = resolve; }) : preferences(project),
-    login_status: () => ({ method: 'chatgpt', message: 'Account for project A' }),
     read_project_policy: () => ({ document: { project: 'A' }, fingerprint: 'policy-a', editable: true, attached: true, allowedHosts: ['a.example.com'] }),
     run_boundary_tests: () => ({ projectId: project.id, planFingerprint: 'plan-a', checkedAt: Math.floor(Date.now() / 1000), passed: true, cleanup: true, results: [{ name: 'A network', target: 'a.example.com', expected: 'Allowed', observed: 'Allowed', outcome: 'pass' }] }),
     preview_removal: () => { throw new Error('Project A removal preview failed'); },
@@ -1144,9 +1143,8 @@ test('selecting another project clears sign-in, policy, boundary, operation and 
   await harness.ready;
   harness.element('recent-project-list').querySelector('[data-project-id="project-a"]').click(); await flush();
   harness.element('project-settings-button').click(); await flush();
-  for (const id of ['check-login', 'read-project-policy', 'run-boundary-tests', 'preview-removal']) harness.element(id).click();
+  for (const id of ['read-project-policy', 'run-boundary-tests', 'preview-removal']) harness.element(id).click();
   await flush();
-  assert.match(harness.element('login-status').textContent, /project A/);
   assert.match(harness.element('project-policy-document').textContent, /"A"/);
   assert.equal(harness.element('use-brig-boundary').disabled, false);
   assert.match(harness.element('operation-status').textContent, /Project A/);
@@ -1155,7 +1153,7 @@ test('selecting another project clears sign-in, policy, boundary, operation and 
   harness.element('project-settings-button').click(); await flush();
   assert.equal(harness.element('project-preference-fields').disabled, true);
   assert.equal(harness.element('project-name').value, '');
-  assert.doesNotMatch(harness.element('login-status').textContent, /project A/);
+  assert.equal(harness.element('guest-terminal-status').textContent, '');
   assert.equal(harness.element('project-policy-document').textContent, '');
   assert.equal(harness.element('project-policy-hosts').value, '');
   assert.equal(harness.element('project-policy-fields').disabled, true);
@@ -1182,19 +1180,18 @@ test('late settings successes and errors cannot overwrite a reopened view or an 
       recent_projects: () => projects,
       open_project: ({ identifier }) => projects.find(current => current.id === identifier),
       prepare_project: ({ identifier }) => ({ project: projects.find(current => current.id === identifier), plan, fingerprint: 'plan-a', message: null, candidates: [] }),
-      read_project_preferences: () => defer('preferences'), login_status: () => defer('login'),
+      read_project_preferences: () => defer('preferences'),
       read_project_policy: () => defer('policy'), run_boundary_tests: () => defer('boundary'),
       preview_removal: () => defer('preview'), stop_project: () => defer('stop'),
     });
     await harness.ready;
     harness.element('recent-project-list').querySelector('[data-project-id="project-a"]').click(); await flush();
     harness.element('project-settings-button').click(); await flush();
-    for (const id of ['check-login', 'read-project-policy', 'run-boundary-tests', 'stop-project', 'preview-removal']) harness.element(id).click();
+    for (const id of ['read-project-policy', 'run-boundary-tests', 'stop-project', 'preview-removal']) harness.element(id).click();
     await flush();
-    assert.equal(pending.size, 6);
+    assert.equal(pending.size, 5);
     harness.element('close-project-settings').click();
     harness.handlers.read_project_preferences = ({ identifier }) => preferences(projects.find(current => current.id === identifier));
-    harness.handlers.login_status = () => ({ method: 'chatgpt', message: 'Fresh account' });
     harness.handlers.read_project_policy = () => policy('Fresh');
     harness.handlers.run_boundary_tests = () => boundary('Fresh');
     if (transition === 'project-switch') {
@@ -1204,11 +1201,11 @@ test('late settings successes and errors cannot overwrite a reopened view or an 
       harness.element('recent-project-list').querySelector('[data-project-id="project-a"]').click(); await flush();
     }
     harness.element('project-settings-button').click(); await flush();
-    for (const id of ['check-login', 'read-project-policy', 'run-boundary-tests']) harness.element(id).click();
+    for (const id of ['read-project-policy', 'run-boundary-tests']) harness.element(id).click();
     await flush();
     const oldResults = {
       preferences: preferences({ ...project, name: 'OLD project' }),
-      login: { method: 'chatgpt', message: 'OLD account' }, policy: policy('OLD'), boundary: boundary('OLD'),
+      policy: policy('OLD'), boundary: boundary('OLD'),
       preview: { reference: 'OLD', workspace: 'OLD', description: 'OLD', fingerprint: 'OLD', external: false, hasEnvironment: true },
       stop: { ...project, stage: 'ready', name: 'OLD project' },
     };
@@ -1219,7 +1216,7 @@ test('late settings successes and errors cannot overwrite a reopened view or an 
     await flush();
     assert.equal(harness.element('project-name').value, project.name);
     assert.equal(harness.element('project-preference-fields').disabled, false);
-    assert.equal(harness.element('login-status').textContent, 'Fresh account');
+    assert.equal(harness.element('guest-terminal-status').textContent, '');
     assert.match(harness.element('project-policy-document').textContent, /Fresh/);
     assert.doesNotMatch(harness.element('project-policy-document').textContent, /OLD/);
     assert.match(harness.element('boundary-results').textContent, /Fresh/);
@@ -1351,7 +1348,7 @@ test('a failed process close keeps the terminal visible and permits a retry', as
 });
 
 test('local and guest actions explain a conflicting process without entering the chat', async () => {
-  for (const [button, status] of [['start-terminal', 'local-terminal-status'], ['guest-shell', 'login-status']]) {
+  for (const [button, status] of [['start-terminal', 'local-terminal-status'], ['guest-shell', 'guest-terminal-status']]) {
     const harness = await interfaceHarness();
     await harness.ready; harness.element('choose-folder').click(); await flush();
     harness.element('start-codex').click(); await flush();
@@ -1359,7 +1356,7 @@ test('local and guest actions explain a conflicting process without entering the
     const focusCalls = harness.calls.filter(call => call.command === 'terminal_focus').length;
     harness.element(button).focus(); harness.element(button).click(); await flush();
     assert.equal(harness.element('project-settings-dialog').open, true);
-    assert.match(harness.element(status).textContent, /End the running Codex chat before opening/);
+    assert.match(harness.element(status).textContent, /End the running chat before opening/);
     assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, focusCalls);
     assert.equal(harness.calls.filter(call => call.command === 'terminal_start').length, 0);
     assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 1);
@@ -1390,12 +1387,67 @@ test('a new project connects the shared account without another login', async ()
   assert.equal(harness.calls.filter(call => call.command === 'sync_project_chatgpt').length, 1);
   assert.equal(harness.element('project-account-feedback').hidden, true);
   assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0);
-  harness.element('project-settings-button').click(); await flush(); harness.element('codex-login').click(); await flush();
+  harness.element('settings-navigation').click(); await flush();
   assert.equal(harness.element('project-settings-dialog').open, false);
   assert.equal(harness.element('settings-view').hidden, false);
   assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
-  assert.equal(harness.dom.window.document.activeElement, harness.element('shared-chatgpt-heading'));
+  assert.equal(harness.element('shared-chatgpt-heading').textContent, 'Provider');
   harness.dom.window.close();
+});
+
+test('provider details and account controls belong only to application settings', async () => {
+  let account = sharedAccount;
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account, sync_project_chatgpt: () => account }); await harness.ready;
+  harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  const projectSettings = harness.element('project-settings-dialog');
+  for (const id of ['codex-login', 'check-login', 'login-status', 'login-hint', 'logout-on-removal']) assert.equal(harness.element(id), null);
+  assert.doesNotMatch(projectSettings.textContent, /ChatGPT|provider|sign[- ]in|sign[- ]out/i);
+  assert.equal(projectSettings.contains(harness.element('shared-chatgpt-section')), false);
+  account = { ...sharedAccount, generation: 2, state: 'needs-sign-in', message: 'ChatGPT sign-in required.' };
+  await harness.listeners.get('shared-chatgpt-changed')({ payload: account }); await flush();
+  assert.doesNotMatch(projectSettings.textContent, /ChatGPT|provider|sign[- ]in|sign[- ]out/i);
+  assert.equal(harness.element('guest-terminal-status').textContent, '');
+  harness.element('settings-navigation').click(); await flush();
+  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('settings-view').contains(harness.element('shared-chatgpt-section')), true);
+  assert.equal(harness.element('shared-chatgpt-heading').textContent, 'Provider');
+  assert.equal(harness.element('shared-chatgpt-sign-in').hidden, false);
+  assert.equal(harness.calls.filter(call => call.command === 'login_status').length, 0);
+  harness.dom.window.close();
+});
+
+test('the project account warning opens the provider section in application settings', async () => {
+  const account = { ...sharedAccount, state: 'signed-out', email: null };
+  const harness = await interfaceHarness({ shared_chatgpt_status: () => account, sync_project_chatgpt: () => account });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.equal(harness.element('project-account-feedback').hidden, false);
+  harness.element('project-provider-settings').click(); await flush();
+  assert.equal(harness.element('settings-view').hidden, false);
+  assert.equal(harness.dom.window.document.activeElement, harness.element('shared-chatgpt-heading'));
+  assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 0);
+  harness.dom.window.close();
+});
+
+test('removal offers no account action and keeps a previous removal choice unchanged', async () => {
+  for (const logout of [undefined, false, true]) {
+    const harness = await interfaceHarness({
+      preview_removal: () => ({ reference: 'codex@sample-a', workspace: '/fixture/guest-home', description: 'Remove this environment.', fingerprint: 'remove-a', external: false, logout }),
+      remove_project: () => 'Project removed.',
+    });
+    await harness.ready; harness.element('choose-folder').click(); await flush();
+    harness.element('project-settings-button').click(); await flush();
+    harness.element('preview-removal').click(); await flush();
+    assert.equal(harness.element('logout-on-removal'), null);
+    assert.doesNotMatch(harness.element('removal-dialog').textContent, /ChatGPT|sign[- ]in|sign[- ]out/i);
+    const confirmation = harness.element('removal-confirmation');
+    confirmation.value = 'codex@sample-a'; confirmation.dispatchEvent(new harness.dom.window.Event('input'));
+    harness.element('confirm-removal').click(); await flush();
+    assert.equal(harness.calls.find(call => call.command === 'remove_project').args.logout, logout ?? false);
+    assert.equal(harness.calls.filter(call => call.command === 'disconnect_shared_chatgpt').length, 0);
+    assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
+    harness.dom.window.close();
+  }
 });
 
 test('checking a connected account renews once and preserves its running chat', async () => {
@@ -1425,7 +1477,7 @@ test('one global sign-in starts once and can be restored from Settings', async (
   await harness.ready; harness.element('choose-folder').click(); await flush();
   assert.equal(harness.element('start-codex').disabled, true);
   assert.equal(harness.element('project-account-feedback').hidden, false);
-  harness.element('project-chatgpt-settings').click(); await flush();
+  harness.element('project-provider-settings').click(); await flush();
   harness.element('shared-chatgpt-sign-in').click(); harness.element('shared-chatgpt-sign-in').click(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'start_codex_session').length, 1);
   completeStart(); await flush(); harness.element('settings-navigation').click(); await flush();
@@ -1711,7 +1763,7 @@ test('automatic checks pause in Settings and resume when the project library is 
   harness.dom.window.close();
 });
 
-test('incomplete removal opens recovery with its saved sign-out choice and keeps chat disabled', async () => {
+test('incomplete removal preserves its saved operation without showing account controls', async () => {
   const pending = { ...project, stage: 'removing' };
   const harness = await interfaceHarness({
     register_project: () => pending,
@@ -1725,8 +1777,7 @@ test('incomplete removal opens recovery with its saved sign-out choice and keeps
   harness.element('resume-removal').click(); await flush();
   assert.equal(harness.element('removal-dialog').open, true);
   assert.match(harness.element('removal-description').textContent, /policy cleanup pending/);
-  assert.equal(harness.element('logout-on-removal').checked, true);
-  assert.equal(harness.element('logout-on-removal').disabled, true);
+  assert.equal(harness.element('logout-on-removal'), null);
   assert.equal(harness.calls.filter(call => ['remove_project', 'start_codex_session', 'prepare_environment'].includes(call.command)).length, 0);
   harness.dom.window.close();
 });
