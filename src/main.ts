@@ -5,10 +5,11 @@ import { initializeHost } from './host';
 import { initializeSettings } from './settings';
 import { renderProjects, renderConversations, renderTerminals, isStandaloneConversation, standaloneConversations, terminalCaption, terminalNames, sameProject, sameProjectView, type Conversation, type Project, type ProjectContext, type TerminalStatus } from './projects';
 import { prepareProject, renderPlan, type Plan } from './preparation';
-import { initializeBoundaryTests, resetBoundaryChoice } from './boundaries';
+import { initializeBoundaryTests, resetBoundaryChoice, useBrigBoundary } from './boundaries';
 import { initializeOperations } from './operations';
 import { initializeProjectPolicy } from './project-policy';
-import { renderDashboard, renderUsageDetails, usageDetailsStatus, emptyUsage, type Dashboard, type SessionState } from './dashboard';
+import { renderDashboard, renderUsageDetails, usageButtonId, usageDetailsStatus, emptyUsage, type Dashboard, type SessionState } from './dashboard';
+import { showDialog } from './dialogs';
 import type { ConversationUsageDetails } from './usage-types';
 import { initializeSidebar } from './sidebar';
 
@@ -57,6 +58,7 @@ let dashboard: Dashboard = { conversations: [], usage: emptyUsage, coverage: 'un
 let sessionView: SessionState = 'active';
 let changingSession = false;
 let dashboardLoaded = false;
+let dashboardError: string | null = null;
 let terminalRunning = false;
 let selectedConversationId: string | null = null;
 let terminals: TerminalStatus[] = [];
@@ -67,6 +69,8 @@ let pendingLayout = false;
 let layoutWork: Promise<void> | null = null;
 let projectListRequest = 0;
 let conversationListRequest = 0;
+let dashboardUpdates = 0;
+let dashboardSequence = 0;
 let loadingConversations = false;
 const terminalPanel = element('terminal-panel');
 const terminalSurface = element('terminal-surface');
@@ -203,7 +207,7 @@ function showForgetProject(project: Project): void {
   forgettingProject = project;
   element('forget-project-name').textContent = project.name + ' · ' + project.path;
   element('forget-project-error').textContent = '';
-  forgetProjectDialog.showModal(); element('cancel-forget-project').focus();
+  showDialog(forgetProjectDialog); element('cancel-forget-project').focus();
   void updateTerminalLayout();
 }
 element('cancel-forget-project').addEventListener('click', () => { if (!forgetting) forgetProjectDialog.close(); });
@@ -239,7 +243,10 @@ async function refreshConversations(): Promise<void> {
   if (!selectedProject) return;
   const projectId = selectedProject.id;
   const request = ++conversationListRequest;
+  const initialUpdates = dashboardUpdates;
   loadingConversations = true;
+  dashboardError = null;
+  renderSessionDashboard();
   const status = element('session-list-status');
   status.hidden = false;
   status.textContent = 'Loading sessions…';
@@ -247,23 +254,38 @@ async function refreshConversations(): Promise<void> {
   try {
     const result = await invoke<Dashboard>('project_dashboard', { identifier: projectId });
     if (request !== conversationListRequest || selectedProject?.id !== projectId) return;
-    applyDashboard(result);
+    if (result.sequence === undefined && initialUpdates !== dashboardUpdates) return;
+    if (!applyDashboard(result)) return;
     const hasActive = standaloneConversations(conversations, 'active').length > 0 || terminals.some(terminal => terminal.running && isChat(terminal));
     status.textContent = hasActive ? '' : 'No active sessions. Start a New Chat or restore an archived session.';
     status.hidden = hasActive;
   } catch (error) {
-    if (request === conversationListRequest && selectedProject?.id === projectId) { status.textContent = String(error); element('dashboard-session-status').textContent = String(error); element('dashboard-session-status').hidden = false; }
+    if (request === conversationListRequest && selectedProject?.id === projectId && initialUpdates === dashboardUpdates) {
+      dashboardError = String(error);
+      status.textContent = dashboardError;
+    }
   } finally {
     if (request === conversationListRequest) {
       loadingConversations = false;
+      renderSessionDashboard();
       element<HTMLButtonElement>('refresh-sessions').disabled = startingTerminal || selectingProject || preparingProject !== null;
     }
   }
 }
 
-function applyDashboard(result: Dashboard): void {
+function acceptDashboardUpdate(sequence?: number): boolean {
+  if (sequence !== undefined) {
+    if (sequence <= dashboardSequence) return false;
+    dashboardSequence = sequence;
+  }
+  dashboardUpdates++;
+  return true;
+}
+function applyDashboard(result: Dashboard): boolean {
+  if (!acceptDashboardUpdate(result.sequence)) return false;
   dashboard = result;
   dashboardLoaded = true;
+  dashboardError = null;
   conversations = result.conversations;
   renderSessionSidebar();
   if (selectedConversationId && !terminalPanel.hidden) {
@@ -272,13 +294,19 @@ function applyDashboard(result: Dashboard): void {
   }
   renderSessionDashboard();
   refreshOpenUsageDetails();
+  return true;
 }
 function renderSessionDashboard(): void {
   renderDashboard(dashboard, sessionView, resumeConversation, changeConversationState, showUsageDetails, changingSession || startingTerminal || selectingProject || choosingFolder || preparingProject !== null);
   element('project-usage').hidden = !dashboardLoaded;
   element('usage-note').hidden = !dashboardLoaded;
-  element('project-overview').setAttribute('aria-busy', String(!dashboardLoaded));
-  if (!dashboardLoaded) { element('dashboard-session-status').textContent = 'Loading sessions and usage…'; element('dashboard-session-status').hidden = false; element('session-table').hidden = true; }
+  element('project-overview').setAttribute('aria-busy', String(loadingConversations || (!dashboardLoaded && !dashboardError)));
+  if (!dashboardLoaded || dashboardError) {
+    const status = element('dashboard-session-status');
+    status.textContent = dashboardError ? dashboardError + ' Select Refresh to try again.' : 'Loading sessions and usage…';
+    status.hidden = false;
+    if (!dashboardLoaded) element('session-table').hidden = true;
+  }
 
 }
 async function changeConversationState(conversation: Conversation, state: SessionState): Promise<void> {
@@ -360,7 +388,7 @@ async function showUsageDetails(conversation: Conversation): Promise<void> {
   element('session-usage-details').replaceChildren();
   element('session-usage-details').removeAttribute('data-usage-session-id');
   element('session-usage-status').textContent = 'Loading session usage…';
-  usageDialog.showModal(); element('close-session-usage').focus(); await updateTerminalLayout();
+  showDialog(usageDialog, usageButtonId(sessionId)); element('close-session-usage').focus(); await updateTerminalLayout();
   await loadUsageDetails(context, sessionId, request);
 }
 
@@ -383,7 +411,7 @@ async function resumeConversation(conversation: Conversation): Promise<void> {
   }
   if (!selectedPlanFingerprint) await refreshSelectedPlan();
   if (selectedProject?.id !== projectId || !selectedPlanFingerprint) return;
-  await openTerminal('start_codex_session', { identifier: projectId, fingerprint: selectedPlanFingerprint, action: 'resume', sessionId: conversation.id, useBrigBoundary: element<HTMLInputElement>('use-brig-boundary').checked }, conversation.title);
+  await openTerminal('start_codex_session', { identifier: projectId, fingerprint: selectedPlanFingerprint, action: 'resume', sessionId: conversation.id, useBrigBoundary: useBrigBoundary(projectContext()) }, conversation.title);
 }
 
 async function selectProject(project: Project, recordOpen = false): Promise<void> {
@@ -410,6 +438,8 @@ async function applySelectedProject(project: Project): Promise<void> {
   ++conversationListRequest;
   loadingConversations = false;
   dashboardLoaded = false;
+  dashboardSequence = 0;
+  dashboardError = null;
   dashboard = { conversations: [], usage: emptyUsage, coverage: 'unknown', pricingDate: '2026-11-10', warnings: [] }; sessionView = 'active'; renderSessionDashboard();
   renderConversations([], null, resumeConversation);
   element('session-list-status').textContent = 'Loading sessions…';
@@ -481,8 +511,8 @@ async function refreshSelectedPlan(): Promise<void> {
   const id = selectedProject.id;
   const request = ++planRequest;
   planLoading = true;
+  const previousFingerprint = selectedPlanFingerprint;
   selectedPlanFingerprint = null;
-  resetBoundaryChoice();
   element('sharing-plan').hidden = true;
   element('prepare-environment').hidden = true;
   planFeedback('Loading the current execution plan…');
@@ -490,7 +520,7 @@ async function refreshSelectedPlan(): Promise<void> {
   try {
     const result = await invoke<{ project: Project; plan: Plan; fingerprint: string }>('preview_project', { identifier: id });
     if (selectedProject?.id !== id || request !== planRequest) return;
-    if (selectedPlanFingerprint !== result.fingerprint) resetBoundaryChoice();
+    if (previousFingerprint !== result.fingerprint) resetBoundaryChoice();
     selectedProject = result.project;
     selectedPlanFingerprint = result.fingerprint;
     planLoading = false;
@@ -581,7 +611,7 @@ async function checkLogin(): Promise<void> {
 for (const [id, action, caption] of [['codex-login', 'login', 'Sign in with ChatGPT'], ['start-codex', 'codex', 'New Chat'], ['guest-shell', 'shell', 'Guest terminal']]) {
   element(id).addEventListener('click', () => {
     if (selectedProject === null || selectedPlanFingerprint === null) return;
-    void openTerminal('start_codex_session', { identifier: selectedProject.id, fingerprint: selectedPlanFingerprint, action, useBrigBoundary: element<HTMLInputElement>('use-brig-boundary').checked }, caption);
+    void openTerminal('start_codex_session', { identifier: selectedProject.id, fingerprint: selectedPlanFingerprint, action, useBrigBoundary: useBrigBoundary(projectContext()) }, caption);
   });
 }
 element('check-login').addEventListener('click', () => { void checkLogin(); });
@@ -667,7 +697,7 @@ async function chooseFolder(): Promise<void> {
 function closeProjectDialogs(): void {
   for (const dialog of [projectSettingsDialog, usageDialog, element<HTMLDialogElement>('removal-dialog')]) if (dialog.open) dialog.close();
 }
-async function showProjectSettings(): Promise<void> {
+async function showProjectSettings(returnFocusId = 'project-settings-button'): Promise<void> {
   if (!selectedProject) return;
   resetProjectDetails();
   const context = projectContext()!;
@@ -675,7 +705,7 @@ async function showProjectSettings(): Promise<void> {
   const request = ++projectPreferencesRequest;
   element<HTMLFieldSetElement>('project-preference-fields').disabled = true;
   element('project-preferences-status').textContent = 'Loading project settings…';
-  projectSettingsDialog.showModal(); await updateTerminalLayout();
+  showDialog(projectSettingsDialog, returnFocusId); await updateTerminalLayout();
   try {
     const result = await invoke<{ project: Project; options: { cpus: number; memoryMb: number; verification: string; network: string } }>('read_project_preferences', { identifier: projectId });
     if (!sameProjectView(projectContext(), context) || request !== projectPreferencesRequest || !projectSettingsDialog.open) return;
@@ -689,7 +719,7 @@ async function showProjectSettings(): Promise<void> {
   } catch (error) { if (sameProjectView(projectContext(), context) && request === projectPreferencesRequest && projectSettingsDialog.open) element('project-preferences-status').textContent = String(error); }
 }
 element('project-settings-button').addEventListener('click', () => { void showProjectSettings(); });
-element('setup-project').addEventListener('click', () => { void showProjectSettings(); });
+element('setup-project').addEventListener('click', () => { void showProjectSettings('setup-project'); });
 element('close-project-settings').addEventListener('click', () => { projectSettingsDialog.close(); });
 element('close-session-usage').addEventListener('click', () => { usageDialog.close(); });
 for (const dialog of [projectSettingsDialog, usageDialog]) dialog.addEventListener('close', () => { void updateTerminalLayout(); });
@@ -711,13 +741,16 @@ element<HTMLFormElement>('project-preferences').addEventListener('submit', async
 for (const tab of document.querySelectorAll<HTMLButtonElement>('[data-session-state]')) tab.addEventListener('click', () => { sessionView = tab.dataset.sessionState as SessionState; renderSessionDashboard(); });
 await listen<[string, Dashboard]>('project-usage-updated', event => {
   if (selectedProject?.id !== event.payload[0]) return;
-  applyDashboard(event.payload[1]);
+  if (!applyDashboard(event.payload[1])) return;
   const hasActive = standaloneConversations(conversations, 'active').length > 0 || terminals.some(terminal => terminal.running && isChat(terminal));
   element('session-list-status').hidden = hasActive;
   element('session-list-status').textContent = hasActive ? '' : 'No active sessions. Start a New Chat or restore an archived session.';
 });
-await listen<[string, string]>('project-usage-error', event => {
-  if (selectedProject?.id === event.payload[0]) { element('dashboard-session-status').textContent = event.payload[1]; element('dashboard-session-status').hidden = false; }
+await listen<[string, string, number]>('project-usage-error', event => {
+  if (selectedProject?.id === event.payload[0] && acceptDashboardUpdate(event.payload[2])) {
+    dashboardError = event.payload[1];
+    renderSessionDashboard();
+  }
 });
 
 projectNavigation.addEventListener('click', () => { void showProjects(); });
@@ -727,7 +760,7 @@ settingsNavigation.addEventListener('click', () => showView('settings'));
 chooseFolderButton.addEventListener('click', () => { void chooseFolder(); });
 element('retry-preparation').addEventListener('click', () => { void prepareSelectedProject(); });
 element('retry-project-plan').addEventListener('click', () => { if (planRetryAction === 'preview') void refreshSelectedPlan(); else void prepareSelectedProject(); });
-element('resume-removal').addEventListener('click', async () => { await showProjectSettings(); element('preview-removal').click(); });
+element('resume-removal').addEventListener('click', async () => { await showProjectSettings('resume-removal'); element('preview-removal').click(); });
 element('adopt-session').addEventListener('click', () => { void prepareSelectedProject(element<HTMLSelectElement>('session-choice').value); });
 element('refresh-plan').addEventListener('click', () => { void refreshSelectedPlan(); });
 element('return-to-terminal').addEventListener('click', () => { void returnToTerminal(); });
@@ -895,8 +928,13 @@ resetPolicyDetails = initializeProjectPolicy(() => selectedProject ? { ...projec
   element('sharing-plan').hidden = true;
   if (!detached) await refreshSelectedPlan();
 });
-resetOperationDetails = initializeOperations(projectContext, openTerminal, project => {
-  selectedProject = project; selectedPlanFingerprint = null; terminalIdentifier = null; terminalPanel.hidden = true; updateTerminalActions(null); resetBoundaryChoice(); updateCodexActions(); void refreshSelectedPlan(); void syncMenus();
+resetOperationDetails = initializeOperations(projectContext, openTerminal, async project => {
+  selectedProject = project;
+  selectedPlanFingerprint = null;
+  resetBoundaryChoice();
+  updateCodexActions();
+  await refreshTerminals();
+  if (selectedProject?.id === project.id) await refreshSelectedPlan();
 }, async message => { terminalIdentifier = null; await showProjects(message); });
 resetProjectDetails();
 await initializeSettings();

@@ -304,14 +304,10 @@ fn prepare(
             });
         }
     };
-    project.stage = if running && project.environment_verified == Some(true) {
-        "environment-ready"
-    } else {
-        "ready"
-    }
-    .into();
+    let fingerprint = crate::environment::plan_fingerprint(&plan)?;
+    project.stage = project.environment_stage(running, &fingerprint).into();
     save(registry_file, &project)?;
-    let fingerprint = Some(crate::environment::plan_fingerprint(&plan)?);
+    let fingerprint = Some(fingerprint);
     Ok(Preparation {
         project,
         plan: Some(plan),

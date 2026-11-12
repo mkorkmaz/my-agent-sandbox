@@ -71,13 +71,15 @@ pub struct Removal {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct EnvironmentAttempt {
+    #[serde(default)]
+    pub plan_fingerprint: Option<String>,
     pub token: String,
     pub terminal_identifier: u64,
     pub completed: bool,
     pub error: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectOptions {
     pub cpus: u16,
@@ -110,6 +112,44 @@ impl Project {
         }
         defaults.validate()?;
         Ok(defaults)
+    }
+    pub fn environment_stage(&self, running: bool, fingerprint: &str) -> &'static str {
+        if running
+            && self.environment_verified == Some(true)
+            && self.environment_attempt.as_ref().is_some_and(|attempt| {
+                attempt.completed
+                    && attempt.error.is_none()
+                    && attempt.plan_fingerprint.as_deref() == Some(fingerprint)
+            })
+        {
+            "environment-ready"
+        } else {
+            "ready"
+        }
+    }
+    fn set_preferences(
+        &mut self,
+        name: &str,
+        options: ProjectOptions,
+        previous: &settings::Settings,
+    ) {
+        if options.cpus != previous.cpus
+            || options.memory_mb != previous.memory_mb
+            || options.verification != previous.verification
+            || options.network != previous.network
+        {
+            self.environment_verified = Some(false);
+            self.environment_attempt = None;
+            if matches!(
+                self.stage.as_str(),
+                "environment-ready" | "environment-starting"
+            ) {
+                self.stage = "ready".into();
+            }
+        }
+        self.name = name.into();
+        self.options = Some(options);
+        self.updated_at = now();
     }
     pub fn reference(&self) -> String {
         format!("{}@{}", self.profile, self.label)
@@ -542,9 +582,10 @@ pub async fn save_project_preferences(
         if name.is_empty() || name.chars().count() > 120 || name.chars().any(char::is_control) {
             return Err("Use a project name with 1 to 120 characters.".into());
         }
-        let mut defaults = settings::load(&settings::file(&app)?)?;
-        options.apply(&mut defaults);
-        defaults.validate()?;
+        let defaults = settings::load(&settings::file(&app)?)?;
+        let mut proposed = defaults.clone();
+        options.apply(&mut proposed);
+        proposed.validate()?;
         let file = file(&app)?;
         let _file_guard = storage::lock(&file)?;
         let mut registry = Registry::load(&file)?;
@@ -553,7 +594,7 @@ pub async fn save_project_preferences(
         if crate::terminal::status(&identifier).is_some_and(|status| status.running) {
             return Err("End this project's terminal process before changing its settings.".into());
         }
-        let brig = crate::brig::Brig::new(&defaults)?;
+        let brig = crate::brig::Brig::new(&proposed)?;
         let sessions = brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
         if sessions["data"]["sandboxes"]
             .as_array()
@@ -565,12 +606,8 @@ pub async fn save_project_preferences(
                 "Stop this project's Brig environment before changing its settings.".into(),
             );
         }
-        project.name = name.into();
-        project.options = Some(options);
-        project.updated_at = now();
-        if project.stage == "environment-ready" {
-            project.stage = "ready".into();
-        }
+        let previous = project.settings(defaults)?;
+        project.set_preferences(name, options, &previous);
         registry.update(project.clone())?;
         storage::write(&file, &registry)?;
         Ok(project)
@@ -734,6 +771,35 @@ mod tests {
         assert!(project.validate().is_err());
         assert!(project.settings(defaults).is_err());
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn environment_proof_survives_rename_and_expires_when_resources_or_plan_change() {
+        let mut registry = Registry::default();
+        let mut project = registry.register(&std::env::temp_dir(), "codex").unwrap();
+        project.stage = "environment-ready".into();
+        project.environment_verified = Some(true);
+        project.environment_attempt = Some(EnvironmentAttempt {
+            plan_fingerprint: Some("p1".into()),
+            token: "attempt".into(),
+            terminal_identifier: 1,
+            completed: true,
+            error: None,
+        });
+        let defaults = settings::Settings::default();
+        let mut options = ProjectOptions {
+            cpus: defaults.cpus,
+            memory_mb: defaults.memory_mb,
+            network: defaults.network.clone(),
+            verification: defaults.verification.clone(),
+        };
+        project.set_preferences("Renamed", options.clone(), &defaults);
+        assert_eq!(project.environment_stage(true, "p1"), "environment-ready");
+        assert_eq!(project.environment_stage(true, "p2"), "ready");
+        options.cpus += 1;
+        project.set_preferences("Renamed", options, &defaults);
+        assert_eq!(project.environment_stage(true, "p1"), "ready");
+        assert!(project.environment_attempt.is_none());
     }
 
     #[test]

@@ -649,7 +649,7 @@ test('selecting another project clears sign-in, policy, boundary, operation and 
     read_project_preferences: ({ identifier }) => identifier === second.id ? new Promise(resolve => { releasePreferences = resolve; }) : preferences(project),
     login_status: () => ({ method: 'chatgpt', message: 'Account for project A' }),
     read_project_policy: () => ({ document: { project: 'A' }, fingerprint: 'policy-a', editable: true, attached: true, allowedHosts: ['a.example.com'] }),
-    run_boundary_tests: () => ({ projectId: project.id, planFingerprint: 'plan-a', passed: true, cleanup: true, results: [{ name: 'A network', target: 'a.example.com', expected: 'Allowed', observed: 'Allowed', outcome: 'pass' }] }),
+    run_boundary_tests: () => ({ projectId: project.id, planFingerprint: 'plan-a', checkedAt: Math.floor(Date.now() / 1000), passed: true, cleanup: true, results: [{ name: 'A network', target: 'a.example.com', expected: 'Allowed', observed: 'Allowed', outcome: 'pass' }] }),
     preview_removal: () => { throw new Error('Project A removal preview failed'); },
   });
   await harness.ready;
@@ -688,7 +688,7 @@ test('late settings successes and errors cannot overwrite a reopened view or an 
     const defer = name => new Promise((resolve, reject) => pending.set(name, { resolve, reject }));
     const preferences = current => ({ project: current, options: { cpus: 4, memoryMb: 4096, verification: 'require', network: 'isolated' } });
     const policy = label => ({ document: { label }, fingerprint: label, editable: true, attached: true, allowedHosts: [label.toLowerCase() + '.example.com'] });
-    const boundary = label => ({ projectId: project.id, planFingerprint: 'plan-a', passed: true, cleanup: true, results: [{ name: label, target: label, expected: 'Allowed', observed: 'Allowed', outcome: 'pass' }] });
+    const boundary = label => ({ projectId: project.id, planFingerprint: 'plan-a', checkedAt: Math.floor(Date.now() / 1000), passed: true, cleanup: true, results: [{ name: label, target: label, expected: 'Allowed', observed: 'Allowed', outcome: 'pass' }] });
     const harness = await interfaceHarness({
       recent_projects: () => projects,
       open_project: ({ identifier }) => projects.find(current => current.id === identifier),
@@ -831,7 +831,7 @@ test('network settings and execution plans distinguish guest traffic from hosted
 });
 
 test('inconclusive or incomplete boundary reports cannot enable broader guest access', async () => {
-  const report = { projectId: project.id, planFingerprint: 'plan-a', passed: true, cleanup: true, results: [{ name: 'Network', target: 'example.com', expected: 'Denied', observed: 'Unknown', outcome: 'inconclusive' }] };
+  const report = { projectId: project.id, planFingerprint: 'plan-a', checkedAt: Math.floor(Date.now() / 1000), passed: true, cleanup: true, results: [{ name: 'Network', target: 'example.com', expected: 'Denied', observed: 'Unknown', outcome: 'inconclusive' }] };
   const harness = await interfaceHarness({ run_boundary_tests: () => report });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   for (const [results, cleanup] of [[report.results, true], [[], true], [[{ ...report.results[0], outcome: 'pass' }], false]]) {
@@ -1593,4 +1593,150 @@ test('a supported unknown-relation child refreshes its legacy parent detail whil
   assert.equal(harness.element('session-usage-details').querySelectorAll('.request-usage tbody tr').length, 3);
   assert.match(harness.element('session-usage-status').textContent, /User prompt count unknown.*3 agent turn\(s\)/);
   harness.dom.window.close();
+});
+
+test('stopping Brig refreshes the surviving local shell and completed output', async () => {
+  const h = await interfaceHarness({ stop_project: () => ({ ...project, stage: 'ready' }) });
+  h.element('choose-folder').click();
+  await flush();
+  h.setTerminal({ identifier: 81, projectId: project.id, purpose: 'local', running: true, exitCode: null });
+  h.setTerminal({ identifier: 82, projectId: project.id, purpose: 'tests', running: false, exitCode: 0 });
+  h.element('project-settings-button').click();
+  await flush();
+  const before = h.calls.length;
+  h.element('stop-project').click();
+  await flush();
+  assert.ok(h.calls.slice(before).some(call => call.command === 'terminal_sessions'));
+  assert.equal(h.element('sidebar-terminal-list').children.length, 2);
+  h.dom.window.close();
+});
+
+test('a verified boundary choice survives closing Settings and expires with the report', async () => {
+  for (const age of [0, 3601]) {
+    const h = await interfaceHarness({ run_boundary_tests: () => ({
+      projectId: project.id, planFingerprint: 'plan-a', checkedAt: Math.floor(Date.now()/1000)-age,
+      cleanup: true, passed: true, results: [{ name: 'Fixture', target: 'fixture', expected: 'ok', observed: 'ok', outcome: 'pass' }],
+    }) });
+    h.element('choose-folder').click(); await flush();
+    h.element('project-settings-button').click(); await flush();
+    h.element('run-boundary-tests').click(); await flush();
+    const choice = h.element('use-brig-boundary');
+    assert.equal(choice.disabled, age > 3600);
+    choice.click();
+    h.element('close-project-settings').click(); await flush();
+    h.element('start-codex').click(); await flush();
+    assert.equal(h.calls.find(call => call.command === 'start_codex_session').args.useBrigBoundary, age === 0);
+    h.dom.window.close();
+  }
+});
+
+test('manual snapshots and usage events respect the backend read order', async () => {
+  const snapshot = (title, sequence) => sessionDashboard([{ id: 'one', title, updatedAt: 1 }], { sequence });
+  const h = await interfaceHarness({ project_dashboard: () => snapshot('Initial', 1) });
+  h.element('choose-folder').click(); await flush();
+  let finish;
+  h.handlers.project_dashboard = () => new Promise(resolve => { finish = resolve; });
+  h.element('refresh-sessions').click(); await flush();
+  const event = h.listeners.get('project-usage-updated');
+  await event({ payload: [project.id, snapshot('New event', 3)] });
+  finish(snapshot('Old read', 2)); await flush();
+  const title = () => h.element('session-table-body').querySelector('.session-title').textContent;
+  assert.equal(title(), 'New event');
+  assert.equal(h.element('refresh-sessions').disabled, false);
+  h.handlers.project_dashboard = () => snapshot('New read', 5);
+  h.element('refresh-sessions').click(); await flush();
+  await event({ payload: [project.id, snapshot('Old event', 4)] });
+  assert.equal(title(), 'New read');
+  const error = h.listeners.get('project-usage-error');
+  await error({ payload: [project.id, 'Current failure', 7] });
+  await event({ payload: [project.id, snapshot('Delayed success', 6)] });
+  assert.equal(title(), 'New read');
+  assert.match(h.element('dashboard-session-status').textContent, /Current failure/);
+  await event({ payload: [project.id, snapshot('Recovered', 8)] });
+  await error({ payload: [project.id, 'Stale failure', 7] });
+  assert.equal(title(), 'Recovered');
+  assert.doesNotMatch(h.element('dashboard-session-status').textContent, /failure/);
+  h.dom.window.close();
+});
+
+test('a usage read failure survives terminal refreshes and recovers on retry', async () => {
+  const h = await interfaceHarness({ project_dashboard: () => { throw Error('Unreadable history'); } });
+  h.element('choose-folder').click(); await flush();
+  await h.listeners.get('terminal-sessions-changed')({ payload: project.id }); await flush();
+  const status = h.element('dashboard-session-status');
+  assert.match(status.textContent, /Unreadable history.*Refresh/);
+  assert.equal(h.element('project-overview').getAttribute('aria-busy'), 'false');
+  h.handlers.project_dashboard = () => sessionDashboard([{ id: 'one', title: 'Recovered chat', updatedAt: 1 }]);
+  h.element('refresh-sessions').click(); await flush();
+  assert.match(h.element('session-table-body').textContent, /Recovered chat/);
+  assert.doesNotMatch(status.textContent, /Unreadable/);
+  h.handlers.project_dashboard = () => { throw Error('Transient error'); };
+  h.element('refresh-sessions').click(); await flush();
+  assert.match(h.element('session-table-body').textContent, /Recovered chat/);
+  assert.equal(h.element('session-table').hidden, false);
+  assert.match(status.textContent, /Transient error/);
+  h.dom.window.close();
+});
+
+test('interrupted Mac checks use one completed snapshot for the selected CLI path', async () => {
+  const result = brigStatus => ({ architecture:'arm64', osVersion:'27.2', tools:{brig:brigStatus === 'installed' ? '/tool/brig' : null, homebrew:'/tool/brew'}, brigStatus,
+    version:brigStatus === 'installed' ? {data:{version:'v0.5.2'}} : null, doctor:null, message:null });
+  let next = 'installed';
+  const h = await interfaceHarness({inspect_host: () => result(next)});
+  await h.ready;
+  for (next of ['missing','cancelled','timed-out']) {
+    h.element('check-host').click(); await flush();
+    assert.match(h.element('host-status').textContent, /Brig not found/);
+    assert.doesNotMatch(h.element('host-status').textContent,/v0.5.2/);
+    assert.match(h.element('host-tools').textContent,/Not found/);
+    assert.equal(h.element('install-brig').hidden,false);
+  }
+  h.element('cli-path').value = '/other/brig';
+  h.element('check-host').click(); await flush();
+  assert.doesNotMatch(h.element('host-status').textContent,/previous completed/);
+  assert.equal(h.element('install-brig').hidden,true);
+  h.dom.window.close();
+});
+
+test('only the top dialog is accessible and closing it returns focus to the current trigger', async t => {
+  const conversation = { id: 'chat-a', title: 'QA chat', updatedAt: 1000 };
+  const h = await interfaceHarness({
+    preview_removal: () => ({ reference: 'codex@sample-a', workspace: '/fixture/guest-home', description: 'Test session', fingerprint: 'remove-a', external: false, hasEnvironment: true }),
+    project_dashboard: () => sessionDashboard([conversation]),
+    conversation_usage: () => sessionDetails(conversation.id, []),
+  });
+  t.after(() => h.dom.window.close());
+  const doc = h.dom.window.document;
+  function checkModal(id) {
+    for (const dialog of doc.querySelectorAll('dialog')) {
+      const active = dialog.id === id;
+      assert.equal(dialog.getAttribute('aria-modal'), active ? 'true' : null, dialog.id);
+      assert.equal(dialog.getAttribute('aria-hidden'), active ? null : 'true', dialog.id);
+      assert.equal(dialog.inert, !active, dialog.id);
+    }
+  }
+  await h.ready;
+  h.element('choose-folder').click(); await flush();
+  checkModal(null);
+  h.element('project-settings-button').click(); await flush();
+  checkModal('project-settings-dialog');
+  const preview = h.element('preview-removal');
+  preview.closest('details').open = true;
+  preview.click(); await flush();
+  checkModal('removal-dialog');
+  assert.equal(doc.activeElement, h.element('removal-confirmation'));
+  h.element('removal-dialog').close();
+  checkModal('project-settings-dialog');
+  assert.equal(doc.activeElement, preview);
+  h.element('close-project-settings').click();
+  const usageButton = () => h.element('session-table-body').querySelector('[aria-label="Usage for QA chat"]');
+  const original = usageButton();
+  original.click(); await flush();
+  checkModal('session-usage-dialog');
+  assert.equal(doc.activeElement, h.element('close-session-usage'));
+  await publishUsage(h, [conversation]);
+  assert.notEqual(usageButton(), original);
+  h.element('close-session-usage').click();
+  checkModal(null);
+  assert.equal(doc.activeElement, usageButton());
 });

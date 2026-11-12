@@ -181,6 +181,15 @@ pub struct TelemetryStatus {
     pub message: Option<String>,
 }
 
+fn recorded_telemetry(stdout: &str) -> Result<String, String> {
+    match stdout.lines().next() {
+        Some("telemetry: on") => Ok("on".into()),
+        Some("telemetry: off") => Ok("off".into()),
+        Some("telemetry: not answered yet") => Ok("unanswered".into()),
+        _ => Err("The Brig telemetry response was not recognized.".into()),
+    }
+}
+
 fn telemetry(settings: &Settings, apply: bool) -> TelemetryStatus {
     let effective = if settings.telemetry { "on" } else { "off" }.to_owned();
     let operation = || -> Result<String, String> {
@@ -211,14 +220,7 @@ fn telemetry(settings: &Settings, apply: bool) -> TelemetryStatus {
         if output.exit_code != Some(0) {
             return Err("Could not read the Brig telemetry preference.".into());
         }
-        let first = output.stdout.lines().next().unwrap_or_default();
-        if first == "telemetry: off" {
-            return Ok("off".into());
-        }
-        if first == "telemetry: on" {
-            return Ok("on".into());
-        }
-        Err("The Brig telemetry response was not recognized.".into())
+        recorded_telemetry(&output.stdout)
     };
     match operation() {
         Ok(recorded) => TelemetryStatus {
@@ -259,6 +261,18 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> Result<Telemet
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn telemetry_recognizes_fresh_profiles_and_explicit_choices() {
+        for (message, expected) in [
+            ("telemetry: not answered yet", "unanswered"),
+            ("telemetry: on", "on"),
+            ("telemetry: off", "off"),
+        ] {
+            assert_eq!(recorded_telemetry(message).unwrap(), expected);
+        }
+        assert!(recorded_telemetry("unexpected response").is_err());
+    }
+
     #[test]
     fn resources_and_hosts_are_validated() {
         let mut settings = Settings::default();

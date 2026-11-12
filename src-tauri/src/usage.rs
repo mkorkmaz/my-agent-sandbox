@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashSet};
 
 pub const PRICING_DATE: &str = "2026-11-10";
 pub const PRICING_SOURCE: &str = "https://developers.openai.com/api/docs/pricing";
-pub const PARSER_VERSION: u32 = 3;
+pub const PARSER_VERSION: u32 = 4;
 
 mod cursor;
 #[cfg(test)]
@@ -198,6 +198,8 @@ pub struct RequestUsage {
     pub tier_source: Option<String>,
     #[serde(default)]
     pub rate_correction: Option<RateCorrection>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_correction: Option<RateCorrection>,
     #[serde(default)]
     pub source: Option<RequestSource>,
     #[serde(default)]
@@ -243,6 +245,25 @@ pub struct RateCorrection {
     previous_rates: RateSnapshot,
     previous_cost_usd: Option<f64>,
     reason: String,
+}
+
+pub fn correct_provider_price(record: &mut RequestUsage) -> bool {
+    let Some(source) = &record.source else {
+        return false;
+    };
+    if source.model_provider == "openai" || (record.rates.is_none() && record.cost_usd.is_none()) {
+        return false;
+    }
+    if let Some(previous_rates) = record.rates.take() {
+        record.provider_correction.get_or_insert(RateCorrection {
+            previous_rates,
+            previous_cost_usd: record.cost_usd,
+            reason: "The verified provider has no recorded tariff.".into(),
+        });
+    }
+    record.cost_usd = None;
+    record.unpriced_reason = Some("Provider price is unavailable".into());
+    true
 }
 
 fn price(tokens: &Tokens, rate: &RateSnapshot) -> Option<f64> {
@@ -308,6 +329,7 @@ fn request(
             .into(),
         ),
         rate_correction: None,
+        provider_correction: None,
         source: None,
         amount_correction: None,
     }

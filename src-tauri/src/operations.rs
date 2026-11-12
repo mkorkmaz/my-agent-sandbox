@@ -195,11 +195,11 @@ pub async fn stop_project(
         let project = Registry::load(&projects::file(&preflight_app)?)?.project(&preflight_id)?;
         project.require_active()?;
         let settings = project.settings(settings::load(&settings::file(&preflight_app)?)?)?;
-        verify_target(&Brig::new(&settings)?, &project)
+        verify_target(&Brig::new(&settings)?, &project)?;
+        terminal::stop_guest_processes(&preflight_id)
     })
     .await
     .map_err(|error| error.to_string())??;
-    terminal::close_project(app.clone(), &identifier).await?;
     let lock = projects.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock.lock().map_err(|error| error.to_string())?;
@@ -213,6 +213,8 @@ pub async fn stop_project(
         verify_target(&brig, &project)?;
         brig.checked(&["stop".into(), project.reference()], None)?;
         project.stage = "ready".into();
+        project.environment_verified = Some(false);
+        project.environment_attempt = None;
         registry.update(project.clone())?;
         storage::write(&file, &registry)?;
         Ok(project)

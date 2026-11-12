@@ -19,6 +19,8 @@ function actionButton(icon: string, label: string, action: () => void): HTMLButt
   button.addEventListener('click', action); return button;
 }
 
+export function usageButtonId(sessionId: string): string { return 'usage-for-' + sessionId; }
+
 function renderSessionRows(body: HTMLElement, sessions: Conversation[], state: SessionState, resume: (conversation: Conversation) => Promise<void>, change: (conversation: Conversation, state: SessionState) => Promise<void>, details: (conversation: Conversation) => Promise<void>, busy: boolean, readOnly = false): void {
   body.replaceChildren();
   for (const conversation of sessions) {
@@ -40,7 +42,11 @@ function renderSessionRows(body: HTMLElement, sessions: Conversation[], state: S
       const cell = document.createElement('td'); cell.className = 'number-column'; cell.textContent = value; cell.title = [usageCount(totals, 'input') + ' input', cachedCount(totals) + ' cached input', cacheWrites(totals) + ' cache writes', usageCount(totals, 'output') + ' output', usageCount(totals, 'total') + ' total tokens', money(totals) + ' API equivalent'].join(' · '); row.append(cell);
     }
     const actions = document.createElement('td'); actions.className = 'session-row-actions';
-    actions.append(actionButton('usage', 'Usage for ' + conversation.title, () => { void details(conversation); }));
+    const usage = actionButton('usage', 'Usage for ' + conversation.title, () => { void details(conversation); });
+    usage.id = usageButtonId(conversation.id);
+    usage.setAttribute('aria-haspopup', 'dialog');
+    usage.setAttribute('aria-controls', 'session-usage-dialog');
+    actions.append(usage);
     if (!readOnly && state !== 'active') actions.append(actionButton('restore', 'Restore ' + conversation.title, () => { void change(conversation, 'active'); }));
     if (!readOnly && state === 'active') actions.append(actionButton('archive', 'Archive ' + conversation.title, () => { void change(conversation, 'archived'); }));
     if (!readOnly && state !== 'deleted') actions.append(actionButton('trash', 'Delete ' + conversation.title, () => { void change(conversation, 'deleted'); }));

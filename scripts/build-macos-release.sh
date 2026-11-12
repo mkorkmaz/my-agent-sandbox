@@ -11,12 +11,27 @@ set -euo pipefail
 
 work=$(mktemp -d)
 keychain="$work/release.keychain-db"
+original_keychains=()
+restore_search_list=false
 cleanup() {
-  security delete-keychain "$keychain" >/dev/null 2>&1 || true
+  local result=$?
+  if "$restore_search_list"; then
+    security list-keychains -d user -s ${original_keychains[@]+"${original_keychains[@]}"} || result=1
+    security delete-keychain "$keychain" >/dev/null 2>&1 || true
+  fi
   rm -rf "$work"
+  exit "$result"
 }
 trap cleanup EXIT
 umask 077
+security list-keychains -d user > "$work/search-list"
+while read -r quoted; do
+  [[ -z "$quoted" ]] && continue
+  [[ "$quoted" == \"*\" ]] || { echo 'Could not read the keychain search list.' >&2; exit 1; }
+  entry=${quoted#\"}
+  original_keychains+=("${entry%\"}")
+done < "$work/search-list"
+restore_search_list=true
 printf '%s' "$APPLE_CERTIFICATE" | /usr/bin/base64 -D > "$work/certificate.p12"
 printf '%s' "$APPLE_API_KEY_CONTENT" > "$work/AuthKey.p8"
 export APPLE_API_KEY_PATH="$work/AuthKey.p8"
@@ -26,12 +41,19 @@ security set-keychain-settings -lut 21600 "$keychain"
 security unlock-keychain -p "$keychain_password" "$keychain"
 security import "$work/certificate.p12" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
-security list-keychains -d user -s "$keychain" "$HOME/Library/Keychains/login.keychain-db"
+security list-keychains -d user -s "$keychain" ${original_keychains[@]+"${original_keychains[@]}"}
 
+# Tauri uses the imported identity from the search list and the notary key file.
+unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_API_KEY_CONTENT
 npm run native:prepare
 codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" .build/hull-compat/bin/hull
 node --input-type=module - "$work/config.json" <<'JS'
 import fs from 'node:fs';
+import { createHash } from 'node:crypto';
+const manifestPath = '.build/hull-compat/bin/build.json';
+const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+manifest.binarySha256 = createHash('sha256').update(fs.readFileSync('.build/hull-compat/bin/hull')).digest('hex');
+fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 fs.writeFileSync(process.argv[2], JSON.stringify({ bundle: { macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY, hardenedRuntime: true } } }));
 JS
 npm run tauri -- build --ci --target aarch64-apple-darwin --bundles app,dmg --config "$work/config.json" -- --locked

@@ -1,9 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
+import { showDialog } from './dialogs';
 import { sameProject, sameProjectView, type Project, type ProjectContext } from './projects';
 
 interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean; hasEnvironment: boolean; logout?: boolean | null }
 
-export function initializeOperations(current: () => ProjectContext | null, open: (command: string, arguments_: Record<string, unknown>, caption: string) => Promise<void>, stopped: (project: Project) => void, removed: (message: string) => Promise<void>): () => void {
+export function initializeOperations(current: () => ProjectContext | null, open: (command: string, arguments_: Record<string, unknown>, caption: string) => Promise<void>, stopped: (project: Project) => Promise<void>, removed: (message: string) => Promise<void>): () => void {
   let request = 0;
   for (const [id, operation, caption] of [['git-status', 'git-status', 'Git status'], ['git-diff', 'git-diff', 'Working tree diff'], ['git-staged-diff', 'git-staged-diff', 'Staged diff'], ['project-tests', 'tests', 'Project tests'], ['project-doctor', 'doctor', 'Brig doctor'], ['project-info', 'info', 'Brig session info'], ['project-policy', 'policy-check', 'Policy bindings'], ['project-logs', 'logs', 'Last 100 log lines']]) {
     document.getElementById(id)!.addEventListener('click', () => {
@@ -19,7 +20,7 @@ export function initializeOperations(current: () => ProjectContext | null, open:
     stop.disabled = true; status.textContent = 'Stopping Brig environment…';
     try {
       const project = await invoke<Project>('stop_project', { identifier: context.id });
-      if (sameProject(current(), context)) stopped(project);
+      if (sameProject(current(), context)) await stopped(project);
       if (sameProjectView(current(), context) && pending === request) status.textContent = 'Environment stopped. Guest home and conversations are preserved.';
     } catch (error) { if (sameProjectView(current(), context) && pending === request) status.textContent = String(error); }
     finally { if (sameProjectView(current(), context)) stop.disabled = false; }
@@ -49,11 +50,11 @@ export function initializeOperations(current: () => ProjectContext | null, open:
       document.getElementById('removal-error')!.textContent = '';
       (document.getElementById('logout-on-removal') as HTMLInputElement).checked = preview.logout ?? false;
       (document.getElementById('logout-on-removal') as HTMLInputElement).disabled = !preview.hasEnvironment || preview.logout != null;
-      dialog.showModal(); confirmation.focus();
+      showDialog(dialog, 'preview-removal'); confirmation.focus();
     } catch (error) { if (sameProjectView(current(), context) && pending === request) status.textContent = String(error); }
   });
   confirmation.addEventListener('input', () => { confirm.disabled = confirmation.value !== preview?.reference; });
-  document.getElementById('cancel-removal')!.addEventListener('click', () => { dialog.close(); document.getElementById('preview-removal')!.focus(); });
+  document.getElementById('cancel-removal')!.addEventListener('click', () => { dialog.close(); });
   confirm.addEventListener('click', async () => {
     if (!preview || !removingId || !previewContext || !sameProjectView(current(), previewContext) || confirmation.value !== preview.reference) return;
     const context = previewContext;

@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use std::time::UNIX_EPOCH;
 use tauri::{AppHandle, Emitter, Manager};
 
+mod guest_records;
 mod usage_details;
 pub use usage_details::ConversationUsageDetails;
 
@@ -244,10 +245,16 @@ fn scan_history_known(
     let mut pending = Vec::new();
     for name in ["sessions", "archived_sessions"] {
         let root = directory.join(name);
-        if !root.exists() {
-            continue;
-        }
-        let root = fs::canonicalize(root).map_err(|_| "The saved sessions are unavailable.")?;
+        let root = match fs::canonicalize(&root) {
+            Ok(root) => root,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => {
+                result
+                    .problems
+                    .insert(root, "This saved session directory is unreadable.".into());
+                continue;
+            }
+        };
         if !root.starts_with(&directory) {
             return Err("The saved sessions point outside the Codex history directory.".into());
         }
@@ -256,12 +263,31 @@ fn scan_history_known(
     let mut sessions: HashMap<String, Conversation> = HashMap::new();
     let mut visited = HashSet::new();
     while let Some((directory, depth, root)) = pending.pop() {
-        let entries = fs::read_dir(directory).map_err(|_| "Could not list saved sessions.")?;
+        let entries = match fs::read_dir(&directory) {
+            Ok(entries) => entries,
+            Err(_) => {
+                result.problems.insert(
+                    directory,
+                    "This saved session directory is unreadable.".into(),
+                );
+                continue;
+            }
+        };
         for entry in entries {
-            let entry = entry.map_err(|_| "Could not read a saved session entry.")?;
-            let kind = entry
-                .file_type()
-                .map_err(|_| "Could not read a saved session entry.")?;
+            let Ok(entry) = entry else {
+                result.problems.insert(
+                    directory.clone(),
+                    "Some directory entries could not be read.".into(),
+                );
+                continue;
+            };
+            let Ok(kind) = entry.file_type() else {
+                result.problems.insert(
+                    entry.path(),
+                    "This saved session entry is unreadable.".into(),
+                );
+                continue;
+            };
             if kind.is_dir() && depth < 3 {
                 pending.push((entry.path(), depth + 1, root.clone()));
                 continue;
@@ -365,7 +391,12 @@ fn scan_history_known(
         }
     }
     for (id, session) in &mut sessions {
-        if let Some(record) = known.get(id) {
+        if let Some(record) = known.get(id).filter(|record| {
+            record
+                .guest_namespace
+                .as_ref()
+                .is_none_or(|owner| owner == &namespace)
+        }) {
             let (lineage, problem) = lineage::merge(
                 &record.lineage,
                 &record.lineage_problem,
@@ -411,10 +442,10 @@ fn scan_history_known(
                 );
             }
         }
-        if known
-            .get(id)
-            .is_some_and(|record| record.project_exclusion.is_some())
-            && !result.positive_members.contains(id)
+        if known.get(id).is_some_and(|record| {
+            record.guest_namespace.as_deref() == Some(&namespace)
+                && record.project_exclusion.is_some()
+        }) && !result.positive_members.contains(id)
         {
             members.remove(id);
         }
@@ -487,6 +518,8 @@ pub enum SessionState {
 #[derive(Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionRecord {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    guest_namespace: Option<String>,
     title: String,
     updated_at: u64,
     state: SessionState,
@@ -517,6 +550,8 @@ struct ProjectExclusion {
 #[serde(rename_all = "camelCase")]
 struct Ledger {
     schema_version: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    variants: guest_records::Variants,
     sessions: BTreeMap<String, SessionRecord>,
     #[serde(default)]
     warnings: Vec<String>,
@@ -525,6 +560,7 @@ impl Default for Ledger {
     fn default() -> Self {
         Self {
             schema_version: 2,
+            variants: BTreeMap::new(),
             sessions: BTreeMap::new(),
             warnings: Vec::new(),
         }
@@ -557,6 +593,16 @@ struct Watch {
     home: PathBuf,
     project: PathBuf,
     ledger: PathBuf,
+}
+impl Watch {
+    fn namespace(&self) -> String {
+        guest_namespace(&fs::canonicalize(&self.home).unwrap_or_else(|_| self.home.clone()))
+    }
+    fn selected_ledger(&self) -> Result<Ledger, String> {
+        let mut ledger = load_ledger(&self.ledger)?;
+        ledger.select_guest(&self.namespace());
+        Ok(ledger)
+    }
 }
 #[derive(Default, Clone)]
 pub struct History {
@@ -627,6 +673,29 @@ pub struct Dashboard {
     pub coverage: usage::Coverage,
 }
 
+#[derive(Clone, Serialize)]
+pub struct DashboardUpdate {
+    #[serde(flatten)]
+    dashboard: Dashboard,
+    sequence: u64,
+}
+
+// Callers hold the history lock while reading and numbering each result.
+fn dashboard_sequence() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+impl DashboardUpdate {
+    fn new(dashboard: Dashboard) -> Self {
+        Self {
+            dashboard,
+            sequence: dashboard_sequence(),
+        }
+    }
+}
+
 fn paths(checked: &CheckedProject, file: PathBuf) -> Result<Watch, String> {
     let data = &checked.plan["data"];
     let home = data["home"]["host"]
@@ -655,18 +724,24 @@ fn ledger_file(app: &AppHandle, id: &str) -> Result<PathBuf, String> {
 fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
     let _file_guard = storage::lock(&watch.ledger)?;
     let mut ledger = load_ledger(&watch.ledger)?;
+    let namespace = watch.namespace();
+    let selection_changed = ledger.select_guest(&namespace);
     let scan = scan_history_known(&watch.home, &watch.project, &ledger.sessions)?;
-    let mut changed = ledger.schema_version != 2 || ledger.warnings != scan.warnings;
+    let mut changed =
+        selection_changed || ledger.schema_version != 2 || ledger.warnings != scan.warnings;
     ledger.warnings = scan.warnings;
+    for row in ledger.sessions.values_mut().chain(
+        ledger
+            .variants
+            .values_mut()
+            .flat_map(|rows| rows.values_mut()),
+    ) {
+        for request in row.turns.values_mut().flat_map(|turn| &mut turn.requests) {
+            changed |= usage::correct_provider_price(request);
+        }
+    }
     let mut sources = HashMap::new();
-    let namespace = if scan.sessions.is_empty() {
-        String::new()
-    } else {
-        guest_namespace(
-            &fs::canonicalize(&watch.home).map_err(|_| "The guest home is unavailable.")?,
-        )
-    };
-    if !namespace.is_empty() {
+    if !scan.sessions.is_empty() {
         let directory = fs::canonicalize(watch.home.join(".codex"))
             .map_err(|_| "The Codex history is unavailable.")?;
         for record in ledger.sessions.values_mut() {
@@ -680,7 +755,11 @@ fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
         }
     }
     for (id, exclusion) in &scan.exclusions {
-        if let Some(record) = ledger.sessions.get_mut(id) {
+        if let Some(record) = ledger
+            .sessions
+            .get_mut(id)
+            .filter(|record| record.guest_namespace.as_deref() == Some(&namespace))
+        {
             changed |= record.project_exclusion.as_ref() != Some(exclusion);
             record.project_exclusion = Some(exclusion.clone());
         }
@@ -688,7 +767,8 @@ fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
     for session in scan.sessions {
         sources.insert(session.id.clone(), session.clone());
         let owner = session.id.clone();
-        let record = ledger.sessions.entry(session.id).or_default();
+        ledger.admit_guest(&owner, &namespace);
+        let record = ledger.sessions.get_mut(&owner).expect("admitted session");
         if scan.positive_members.contains(&owner) && record.project_exclusion.take().is_some() {
             changed = true;
         }
@@ -732,7 +812,10 @@ fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
         ) {
             Ok(updated) => {
                 changed |= updated;
-                None
+                cursor.skipped_large_record().then(|| {
+                    "An oversized session record was skipped. Its usage could not be verified."
+                        .into()
+                })
             }
             Err(message) => Some(format!(
                 "Usage partially read: {message}. Refresh after the session file is repaired."
@@ -755,14 +838,18 @@ fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
         }
         changed |= record.available;
         record.available = false;
-        if let Some(problem) = scan.lineage_problems.get(id) {
+        if let Some(problem) = scan
+            .lineage_problems
+            .get(id)
+            .filter(|_| record.guest_namespace.as_deref() == Some(&namespace))
+        {
             changed |= record.lineage_problem.as_ref() != Some(problem);
             record.lineage_problem = Some(problem.clone());
         }
         let warning = record
             .cursors
             .keys()
-            .find_map(|source| scan.problems.get(source))
+            .find_map(|source| source.ancestors().find_map(|path| scan.problems.get(path)))
             .cloned()
             .or_else(|| {
                 record
@@ -779,6 +866,18 @@ fn synchronize(watch: &Watch) -> Result<(Dashboard, bool), String> {
     let graph = ledger_graph(&ledger);
     let mut usage = usage::Summary::default();
     let mut project_coverage = Vec::new();
+    for (id, variants) in &ledger.variants {
+        for record in variants
+            .values()
+            .filter(|record| record.project_exclusion.is_none())
+        {
+            let summary = usage::summarize(&usage::own_turns(&record.turns, id));
+            if summary.requests > 0 || !record.turns.is_empty() {
+                usage.add(&summary);
+                project_coverage.push(usage::Coverage::Partial);
+            }
+        }
+    }
     let mut conversations = Vec::new();
     for (id, record) in &ledger.sessions {
         if record.project_exclusion.is_some() {
@@ -896,6 +995,9 @@ fn guest_namespace(canonical_home: &Path) -> String {
 }
 
 fn record_namespace(id: &str, record: &SessionRecord) -> Option<String> {
+    if let Some(namespace) = &record.guest_namespace {
+        return Some(namespace.clone());
+    }
     let namespaces: BTreeSet<_> = record
         .cursors
         .values()
@@ -934,7 +1036,8 @@ fn own_coverage(id: &str, record: &SessionRecord, graph: &Graph) -> usage::Cover
     {
         return usage::Coverage::Unknown;
     }
-    let gap = !record.available
+    let gap = record.cursors.values().any(usage::Cursor::has_unread_bytes)
+        || !record.available
         || record.warning.is_some()
         || record.lineage_problem.is_some()
         || summary.unmeasured_turns > 0
@@ -1009,7 +1112,7 @@ fn root_family(ledger: &Ledger, session_id: &str) -> Result<Vec<String>, String>
 fn resume_dashboard(watch: &Watch, session_id: &str) -> Result<Dashboard, String> {
     let (dashboard, _) = synchronize(watch)?;
     let _file_guard = storage::lock(&watch.ledger)?;
-    let ledger = load_ledger(&watch.ledger)?;
+    let ledger = watch.selected_ledger()?;
     root_family(&ledger, session_id)?;
     if !project_record(&ledger, session_id).is_some_and(|record| record.available) {
         return Err("This saved session file is unavailable. Refresh the session list.".into());
@@ -1069,13 +1172,20 @@ pub fn monitor(app: AppHandle) {
                             .map_err(|error| error.to_string())?;
                     }
                     if history.should_publish(id, &dashboard)? {
-                        app.emit("project-usage-updated", (&id, &dashboard))
+                        let update = DashboardUpdate::new(dashboard);
+                        app.emit("project-usage-updated", (&id, &update))
                             .map_err(|error| error.to_string())?;
-                        history.record_published(id, &dashboard)?;
+                        history.record_published(id, &update.dashboard)?;
                     }
                 }
                 Err(message) => {
-                    app.emit("project-usage-error", (&id, message))
+                    // A successful recovery must clear the UI error even if its totals are unchanged.
+                    history
+                        .published
+                        .lock()
+                        .map_err(|error| error.to_string())?
+                        .remove(id);
+                    app.emit("project-usage-error", (&id, message, dashboard_sequence()))
                         .map_err(|error| error.to_string())?;
                 }
             }
@@ -1088,7 +1198,10 @@ pub fn monitor(app: AppHandle) {
 }
 
 #[tauri::command]
-pub async fn project_dashboard(app: AppHandle, identifier: String) -> Result<Dashboard, String> {
+pub async fn project_dashboard(
+    app: AppHandle,
+    identifier: String,
+) -> Result<DashboardUpdate, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let checked = environment::checked_project(&app, &identifier, None)?;
         observe(&app, &checked)?;
@@ -1105,7 +1218,7 @@ pub async fn project_dashboard(app: AppHandle, identifier: String) -> Result<Das
             app.emit("terminal-sessions-changed", &identifier)
                 .map_err(|error| error.to_string())?;
         }
-        Ok(dashboard)
+        Ok(DashboardUpdate::new(dashboard))
     })
     .await
     .map_err(|error| error.to_string())?
@@ -1128,7 +1241,7 @@ pub async fn change_conversation_state(
         let file = ledger_file(&app, &identifier)?;
         let watch = paths(&checked, file.clone())?;
         synchronize(&watch)?;
-        change_state(&file, &session_id, state, |ids| {
+        change_state(&watch, &session_id, state, |ids| {
             terminal::conversations_running(&identifier, ids)
         })
     })
@@ -1137,13 +1250,14 @@ pub async fn change_conversation_state(
 }
 
 fn change_state(
-    file: &Path,
+    watch: &Watch,
     session_id: &str,
     state: SessionState,
     running: impl Fn(&[String]) -> bool,
 ) -> Result<(), String> {
+    let file = &watch.ledger;
     let _file_guard = storage::lock(file)?;
-    let mut ledger = load_ledger(file)?;
+    let mut ledger = watch.selected_ledger()?;
     let family = root_family(&ledger, session_id)?;
     if state != SessionState::Active && running(&family) {
         return Err(
@@ -1168,11 +1282,28 @@ pub async fn conversation_usage(
     if !valid_id(&session_id) {
         return Err("Invalid saved session identity.".into());
     }
-    let history = app.state::<History>();
-    let _guard = history.lock.lock().map_err(|error| error.to_string())?;
-    projects::Registry::load(&projects::file(&app)?)?.project(&identifier)?;
-    let ledger = load_ledger(&ledger_file(&app, &identifier)?)?;
-    usage_details::from_ledger(&ledger, &session_id)
+    tauri::async_runtime::spawn_blocking(move || {
+        let history = app.state::<History>();
+        let _guard = history.lock.lock().map_err(|error| error.to_string())?;
+        projects::Registry::load(&projects::file(&app)?)?.project(&identifier)?;
+        let file = ledger_file(&app, &identifier)?;
+        let mut ledger = load_ledger(&file)?;
+        let watch = history
+            .watches
+            .lock()
+            .map_err(|error| error.to_string())?
+            .get(&identifier)
+            .cloned();
+        if let Some(watch) = watch {
+            ledger.select_guest(&watch.namespace());
+        } else if !ledger.variants.is_empty() {
+            let checked = environment::checked_project(&app, &identifier, None)?;
+            ledger.select_guest(&paths(&checked, file)?.namespace());
+        }
+        usage_details::from_ledger(&ledger, &session_id)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]
@@ -1511,7 +1642,7 @@ mod tests {
             SessionState::Deleted,
             SessionState::Active,
         ] {
-            change_state(&watch.ledger, &selected, state, |_| false).unwrap();
+            change_state(&watch, &selected, state, |_| false).unwrap();
             let after = load_ledger(&watch.ledger).unwrap();
             assert_eq!(after.sessions[&selected].state, state);
             for id in &descendants {
@@ -1525,18 +1656,18 @@ mod tests {
                 baseline["sessions"][&selected]["turns"]
             );
             for child in &descendants {
-                assert!(change_state(&watch.ledger, child, state, |_| false).is_err());
+                assert!(change_state(&watch, child, state, |_| false).is_err());
             }
         }
         let saved = fs::read(&watch.ledger).unwrap();
         for running in &family {
             assert!(
-                change_state(&watch.ledger, &selected, SessionState::Archived, |ids| ids
+                change_state(&watch, &selected, SessionState::Archived, |ids| ids
                     .contains(running))
                 .is_err()
             );
             assert!(
-                change_state(&watch.ledger, &selected, SessionState::Deleted, |ids| ids
+                change_state(&watch, &selected, SessionState::Deleted, |ids| ids
                     .contains(running))
                 .is_err()
             );
@@ -1589,7 +1720,7 @@ mod tests {
                 SessionState::Deleted,
                 SessionState::Active,
             ] {
-                assert!(change_state(&watch.ledger, SECOND, state, |_| false).is_err());
+                assert!(change_state(&watch, SECOND, state, |_| false).is_err());
             }
             // A raw header that now claims a primary cannot erase a persisted child role.
             header["payload"]["source"] = "cli".into();
@@ -1622,8 +1753,8 @@ mod tests {
         };
         write_rollout(&watch.home, FIRST, "/work/project", 100);
         assert!(resume_dashboard(&watch, FIRST).is_ok());
-        change_state(&watch.ledger, FIRST, SessionState::Archived, |_| false).unwrap();
-        change_state(&watch.ledger, FIRST, SessionState::Active, |_| false).unwrap();
+        change_state(&watch, FIRST, SessionState::Archived, |_| false).unwrap();
+        change_state(&watch, FIRST, SessionState::Active, |_| false).unwrap();
         let mut ledger = load_ledger(&watch.ledger).unwrap();
         ledger.sessions.get_mut(FIRST).unwrap().lineage = lineage::Lineage {
             kind: lineage::Kind::Primary,
@@ -1638,7 +1769,7 @@ mod tests {
             root_cwd: "/work/other".into(),
         });
         write_ledger(&watch.ledger, &mut ledger).unwrap();
-        assert!(change_state(&watch.ledger, FIRST, SessionState::Active, |_| false).is_err());
+        assert!(change_state(&watch, FIRST, SessionState::Active, |_| false).is_err());
         fs::remove_file(watch.home.join(format!(
             ".codex/sessions/2026/11/10/rollout-fixture-{FIRST}.jsonl"
         )))
@@ -1879,8 +2010,7 @@ mod tests {
         let mut notification: Value = body
             .lines()
             .map(|line| serde_json::from_str::<Value>(line).unwrap())
-            .filter(|record| record["payload"]["type"] == "token_count")
-            .last()
+            .rfind(|record| record["payload"]["type"] == "token_count")
             .unwrap();
         notification["payload"]["info"]["service_tier"] = "default".into();
         body.push_str(&format!("{notification}\n"));
@@ -2732,7 +2862,7 @@ mod tests {
             synchronize(&updating).unwrap();
         });
         barrier.wait();
-        change_state(&watch.ledger, FIRST, SessionState::Archived, |_| false).unwrap();
+        change_state(&watch, FIRST, SessionState::Archived, |_| false).unwrap();
         synchronize_thread.join().unwrap();
         let (dashboard, _) = synchronize(&watch).unwrap();
         assert_eq!(dashboard.conversations[0].state, SessionState::Archived);
@@ -2897,7 +3027,7 @@ mod tests {
         let tokens = serde_json::json!({"input_tokens":300,"cached_input_tokens":75,"output_tokens":30,"total_tokens":330});
         writeln!(output, "{}", serde_json::json!({"timestamp":"2026-11-11T01:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":tokens,"last_token_usage":tokens}}})).unwrap();
         synchronize(&watch).unwrap();
-        change_state(&watch.ledger, FIRST, SessionState::Archived, |_| false).unwrap();
+        change_state(&watch, FIRST, SessionState::Archived, |_| false).unwrap();
         let mut legacy = serde_json::to_value(load_ledger(&watch.ledger).unwrap()).unwrap();
         legacy["sessions"][FIRST]["parserVersion"] = 1.into();
         let record = &mut legacy["sessions"][FIRST]["turns"]["one"]["requests"][0];
@@ -2986,3 +3116,6 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[cfg(test)]
+mod history_tests;

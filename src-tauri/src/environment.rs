@@ -60,16 +60,19 @@ pub fn checked_project(
     }
     let plan = brig.plan(&project, &settings)?;
     brig::validate_plan(&plan, &project, &settings)?;
-    if project.stage != "environment-starting" {
-        project.stage =
-            if is_running(&brig, &project, &plan)? && project.environment_verified == Some(true) {
-                "environment-ready"
-            } else {
-                "ready"
-            }
-            .into();
-    }
     let fingerprint = plan_fingerprint(&plan)?;
+    if project.stage != "environment-starting" {
+        project.stage = project
+            .environment_stage(is_running(&brig, &project, &plan)?, &fingerprint)
+            .into();
+    } else if project
+        .environment_attempt
+        .as_ref()
+        .and_then(|attempt| attempt.plan_fingerprint.as_deref())
+        != Some(&fingerprint)
+    {
+        project.stage = "ready".into();
+    }
     if expected.is_some_and(|expected| expected != fingerprint) {
         return Err("The execution plan changed. Review it and start again.".into());
     }
@@ -206,10 +209,20 @@ pub async fn prepare_environment(
         let file = projects::file(&preparation_app)?;
         let _file_guard = storage::lock(&file)?;
         let mut checked = checked_project(&preparation_app, &identifier, Some(&fingerprint))?;
+        let home = checked
+            .brig
+            .environment
+            .get("HOME")
+            .ok_or("The current home directory is unavailable.")?;
+        let sandbox = checked.plan["data"]["sandbox"]
+            .as_str()
+            .ok_or("The plan does not identify the hull instance.")?;
+        crate::hull::check_instance_socket_paths(std::path::Path::new(home), sandbox)?;
         let command = command(&checked, run_arguments(&checked, &["--version"]));
         checked.project.stage = "environment-starting".into();
         checked.project.environment_verified = Some(false);
         checked.project.environment_attempt = Some(projects::EnvironmentAttempt {
+            plan_fingerprint: Some(checked.fingerprint.clone()),
             token: pending_token,
             terminal_identifier,
             completed: false,
@@ -319,6 +332,25 @@ fn complete_attempt(
     }))
 }
 
+fn verify_running_attempt(app: &AppHandle, identifier: &str) -> Result<(), String> {
+    let checked = checked_project(app, identifier, None)?;
+    if checked
+        .project
+        .environment_attempt
+        .as_ref()
+        .and_then(|attempt| attempt.plan_fingerprint.as_deref())
+        != Some(&checked.fingerprint)
+    {
+        return Err(
+            "The execution plan changed during preparation. Prepare the environment again.".into(),
+        );
+    }
+    if !is_running(&checked.brig, &checked.project, &checked.plan)? {
+        return Err("The Brig environment did not remain running. Prepare it again.".into());
+    }
+    Ok(())
+}
+
 fn complete_environment(
     app: &AppHandle,
     identifier: &str,
@@ -335,15 +367,7 @@ fn complete_environment(
             token,
             terminal_identifier,
             process_result,
-            || {
-                let checked = checked_project(app, identifier, None)?;
-                if !is_running(&checked.brig, &checked.project, &checked.plan)? {
-                    return Err(
-                        "The Brig environment did not remain running. Prepare it again.".into(),
-                    );
-                }
-                Ok(())
-            },
+            || verify_running_attempt(app, identifier),
         )
     })();
     match result {
@@ -389,13 +413,7 @@ pub async fn finish_environment(
             &attempt.token,
             terminal_identifier,
             process_result,
-            || {
-                let checked = checked_project(&app, &identifier, None)?;
-                if !is_running(&checked.brig, &checked.project, &checked.plan)? {
-                    return Err("The Brig environment is not running.".into());
-                }
-                Ok(())
-            },
+            || verify_running_attempt(&app, &identifier),
         )?
         .ok_or("This preparation attempt was superseded by a newer one.")?;
         if let Some(message) = result.message {
@@ -426,6 +444,7 @@ mod tests {
                 project.stage = "environment-starting".into();
                 project.environment_verified = Some(false);
                 project.environment_attempt = Some(projects::EnvironmentAttempt {
+                    plan_fingerprint: Some("fixture-plan".into()),
                     token: token.into(),
                     terminal_identifier,
                     completed: false,

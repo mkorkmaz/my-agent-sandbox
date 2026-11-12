@@ -36,6 +36,12 @@ struct Counter {
 #[serde(rename_all = "camelCase")]
 pub struct Cursor {
     offset: u64,
+    #[serde(default)]
+    skipping_large_line: bool,
+    #[serde(default)]
+    skipped_large_record: bool,
+    #[serde(default)]
+    pub(super) pending_bytes: bool,
     inode: u64,
     device: u64,
     previous: Option<Tokens>,
@@ -90,6 +96,13 @@ fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &
                 .is_some_and(|source| source.physical_key() == identity)
         })
     {
+        if record
+            .source
+            .as_ref()
+            .is_some_and(|source| source.model_provider != "openai")
+        {
+            continue;
+        }
         if record.tier_source.as_deref() == Some("request")
             && record.service_tier.as_deref() == Some(tier)
         {
@@ -145,14 +158,50 @@ fn matches_counter(exact: &Exact, counter: &Counter) -> bool {
         && counter.usage == exact.usage
         && counter.cumulative == exact.cumulative
 }
-fn find_key<'a>(
-    turns: &'a mut BTreeMap<String, TurnUsage>,
-    key: &str,
-) -> Option<&'a mut RequestUsage> {
-    turns
-        .values_mut()
-        .flat_map(|turn| &mut turn.requests)
-        .find(|request| request.key == key)
+// Positions remain stable for the duration of a read: requests are only appended.
+#[derive(Default)]
+struct RequestIndex {
+    keys: BTreeMap<String, (String, usize)>,
+    sources: BTreeMap<String, (String, usize)>,
+}
+impl RequestIndex {
+    fn new(turns: &BTreeMap<String, TurnUsage>) -> Self {
+        let mut index = Self::default();
+        for (turn, usage) in turns {
+            for (position, request) in usage.requests.iter().enumerate() {
+                index.insert(turn, position, request);
+            }
+        }
+        index
+    }
+    fn insert(&mut self, turn: &str, position: usize, request: &RequestUsage) {
+        self.keys
+            .entry(request.key.clone())
+            .or_insert_with(|| (turn.to_owned(), position));
+        if let Some(source) = &request.source {
+            self.sources
+                .entry(source.physical_key())
+                .or_insert_with(|| (turn.to_owned(), position));
+        }
+    }
+    fn attach_key(
+        &mut self,
+        turns: &mut BTreeMap<String, TurnUsage>,
+        key: &str,
+        exact: &Exact,
+    ) -> Result<(), String> {
+        if let Some(location) = self.keys.get(key) {
+            let record =
+                &mut turns.get_mut(&location.0).expect("indexed turn").requests[location.1];
+            attach(record, exact)?;
+            if let Some(source) = &record.source {
+                self.sources
+                    .entry(source.physical_key())
+                    .or_insert_with(|| location.clone());
+            }
+        }
+        Ok(())
+    }
 }
 fn compatible_class(record: &RequestUsage, next: &Tokens) -> bool {
     let Some(rates) = record.rates.as_ref() else {
@@ -193,6 +242,8 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
             return Err("Conflicting turn attribution for the same physical response".into());
         }
     }
+    record.source.get_or_insert_with(|| exact.source.clone());
+    super::correct_provider_price(record);
     if record.tokens != exact.usage || record.partial {
         let compatible = record
             .model
@@ -235,6 +286,9 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
         source.origin_turn_id = previous.origin_turn_id.clone().or(source.origin_turn_id);
         source.root_turn_id = previous.root_turn_id.clone().or(source.root_turn_id);
     }
+    if source.model_provider != "openai" {
+        record.unpriced_reason = Some("Provider price is unavailable".into());
+    }
     record.source = Some(source);
     Ok(())
 }
@@ -250,13 +304,19 @@ impl Cursor {
         self.namespace = Some(namespace.into());
         true
     }
+    pub fn has_unread_bytes(&self) -> bool {
+        self.pending_bytes
+    }
+    pub fn skipped_large_record(&self) -> bool {
+        self.skipped_large_record
+    }
     pub fn has_ownership_problem(&self) -> bool {
         self.ownership_problem.is_some()
             || self.provenance_problem
             || (self.owner.is_some() && self.active_owner != self.owner)
     }
     pub fn revision_state(&self) -> Value {
-        serde_json::json!({"offset":self.offset,"inode":self.inode,"device":self.device,"namespace":self.namespace,"owner":self.owner,"activeOwner":self.active_owner,"version":self.version,"header":self.header_fingerprint,"ownershipProblem":self.ownership_problem,"provenanceProblem":self.provenance_problem,"turn":self.turn_id,"model":self.model,"tier":self.tier,"threadTier":self.thread_tier,"bindings":self.matched_counters.len(),"pendingExact":self.pending_exact.len(),"pendingCounters":self.pending_counters.len()})
+        serde_json::json!({"offset":self.offset,"pendingBytes":self.pending_bytes,"inode":self.inode,"device":self.device,"namespace":self.namespace,"owner":self.owner,"activeOwner":self.active_owner,"version":self.version,"header":self.header_fingerprint,"ownershipProblem":self.ownership_problem,"provenanceProblem":self.provenance_problem,"turn":self.turn_id,"model":self.model,"tier":self.tier,"threadTier":self.thread_tier,"bindings":self.matched_counters.len(),"pendingExact":self.pending_exact.len(),"pendingCounters":self.pending_counters.len()})
     }
     fn supported(&self) -> bool {
         self.version.as_deref() == Some("0.167.0") && self.namespace.is_some()
@@ -316,6 +376,7 @@ impl Cursor {
         payload: &Value,
         document: &Value,
         turns: &mut BTreeMap<String, TurnUsage>,
+        index: &mut RequestIndex,
     ) -> Result<(), String> {
         let usage = Tokens::parse(&payload["usage"])?;
         let cumulative = Tokens::parse(&payload["thread_token_usage"])?;
@@ -357,19 +418,23 @@ impl Cursor {
             tier,
             tier_source,
         };
-        if let Some(index) = self
+        let matched_counter = self
             .pending_counters
             .iter()
-            .position(|counter| matches_counter(&exact, counter))
-        {
-            let counter = self.pending_counters.remove(index);
+            .position(|counter| matches_counter(&exact, counter));
+        if let Some(position) = matched_counter {
+            let counter = &self.pending_counters[position];
             if counter.tier_source == "request" {
                 exact.tier = counter.tier.clone();
                 exact.tier_source = counter.tier_source.clone();
             }
-            if let Some(record) = counter.key.as_deref().and_then(|key| find_key(turns, key)) {
-                attach(record, &exact)?;
+            if let Some(key) = &counter.key {
+                index.attach_key(turns, key, &exact)?;
             }
+        }
+        self.store_exact(&exact, turns, index)?;
+        if let Some(position) = matched_counter {
+            let counter = self.pending_counters.remove(position);
             self.matched_counters
                 .entry(counter.notification_key)
                 .or_insert_with(|| {
@@ -379,16 +444,16 @@ impl Cursor {
                     )
                 });
         }
-        self.store_exact(&exact, turns)?;
         if exact.tier_source == "request" {
             if let Some(tier) = exact.tier.as_deref() {
                 request_tier(turns, &exact.source.physical_key(), tier);
             }
         }
-        if !self
-            .pending_exact
-            .iter()
-            .any(|pending| pending.source.physical_key() == exact.source.physical_key())
+        if matched_counter.is_none()
+            && !self
+                .pending_exact
+                .iter()
+                .any(|pending| pending.source.physical_key() == exact.source.physical_key())
         {
             self.pending_exact.push(exact);
         }
@@ -399,19 +464,11 @@ impl Cursor {
         &self,
         exact: &Exact,
         turns: &mut BTreeMap<String, TurnUsage>,
+        index: &mut RequestIndex,
     ) -> Result<(), String> {
         let identity = exact.source.physical_key();
-        if let Some(record) =
-            turns
-                .values_mut()
-                .flat_map(|turn| &mut turn.requests)
-                .find(|record| {
-                    record
-                        .source
-                        .as_ref()
-                        .is_some_and(|source| source.physical_key() == identity)
-                })
-        {
+        if let Some((turn, position)) = index.sources.get(&identity) {
+            let record = &mut turns.get_mut(turn).expect("indexed turn").requests[*position];
             return attach(record, exact);
         }
         let id = exact
@@ -441,6 +498,7 @@ impl Cursor {
             recorded.unpriced_reason = Some("Provider price is unavailable".into());
         }
         recorded.source = Some(exact.source.clone());
+        index.insert(&turn.id, turn.requests.len(), &recorded);
         turn.requests.push(recorded);
         Ok(())
     }
@@ -479,6 +537,7 @@ impl Cursor {
         payload: &Value,
         document: &Value,
         turns: &mut BTreeMap<String, TurnUsage>,
+        index: &mut RequestIndex,
     ) -> Result<(), String> {
         let info = &payload["info"];
         let current = Tokens::parse(&info["total_token_usage"])?;
@@ -511,15 +570,13 @@ impl Cursor {
             }
             return Ok(());
         }
-        if let Some(index) = self
+        if let Some(position) = self
             .pending_exact
             .iter()
             .position(|exact| matches_counter(exact, &counter))
         {
-            let exact = self.pending_exact.remove(index);
-            if let Some(record) = find_key(turns, &key) {
-                attach(record, &exact)?;
-            }
+            index.attach_key(turns, &key, &self.pending_exact[position])?;
+            let exact = self.pending_exact.remove(position);
             self.matched_counters.insert(
                 key,
                 (exact.source.physical_key(), signature(&last, &current)),
@@ -562,7 +619,11 @@ impl Cursor {
                 ..Default::default()
             });
             let (tier, tier_source) = self.current_tier(payload);
-            if let Some(recorded) = turn.requests.iter_mut().find(|request| request.key == key) {
+            if let Some(recorded) = index
+                .keys
+                .get(&key)
+                .and_then(|_| turn.requests.iter_mut().find(|request| request.key == key))
+            {
                 recorded.tokens.recover_cache_knowledge(&tokens);
                 if let Some(tier) = tier.as_deref() {
                     correct_legacy_tier(recorded, tier, &tier_source);
@@ -577,6 +638,7 @@ impl Cursor {
                     partial,
                 );
                 recorded.tier_source = Some(tier_source);
+                index.insert(&turn.id, turn.requests.len(), &recorded);
                 turn.requests.push(recorded);
             }
             counter.key = Some(key);
@@ -588,10 +650,19 @@ impl Cursor {
         }
         Ok(())
     }
+    #[cfg(test)]
     pub(super) fn consume(
         &mut self,
         document: Value,
         turns: &mut BTreeMap<String, TurnUsage>,
+    ) -> Result<(), String> {
+        self.consume_indexed(document, turns, &mut RequestIndex::new(turns))
+    }
+    fn consume_indexed(
+        &mut self,
+        document: Value,
+        turns: &mut BTreeMap<String, TurnUsage>,
+        index: &mut RequestIndex,
     ) -> Result<(), String> {
         let payload = &document["payload"];
         if document["type"] == "session_meta" {
@@ -608,7 +679,7 @@ impl Cursor {
             return Ok(());
         }
         if document["type"] == "token_usage_record" {
-            return self.exact(payload, &document, turns);
+            return self.exact(payload, &document, turns, index);
         }
         if document["type"] != "event_msg" {
             return Ok(());
@@ -654,7 +725,7 @@ impl Cursor {
             return Ok(());
         }
         if kind == "token_count" && !payload["info"].is_null() {
-            return self.counter(payload, &document, turns);
+            return self.counter(payload, &document, turns, index);
         }
         Ok(())
     }
@@ -723,7 +794,22 @@ fn read_file(
     let mut reader = BufReader::new(file.take(64 * 1024 * 1024));
     let mut changed = false;
     let mut failure: Option<(Cursor, String)> = None;
+    let mut index = None;
     loop {
+        if cursor.skipping_large_line {
+            // Read to the delimiter without allocating the rest of an oversized line.
+            let chunk = reader.fill_buf().map_err(|error| error.to_string())?;
+            if chunk.is_empty() {
+                break;
+            }
+            let newline = chunk.iter().position(|byte| *byte == b'\n');
+            let consumed = newline.map_or(chunk.len(), |index| index + 1);
+            reader.consume(consumed);
+            cursor.offset += consumed as u64;
+            cursor.skipping_large_line = newline.is_none();
+            changed = true;
+            continue;
+        }
         let mut line = Vec::new();
         reader
             .by_ref()
@@ -731,21 +817,31 @@ fn read_file(
             .read_until(b'\n', &mut line)
             .map_err(|error| error.to_string())?;
         if line.len() > 16 * 1024 * 1024 {
-            return Err("A session record is too large to read.".into());
+            cursor.offset += line.len() as u64;
+            cursor.skipping_large_line = line.last() != Some(&b'\n');
+            cursor.skipped_large_record = true;
+            changed = true;
+            continue;
         }
         if line.last() != Some(&b'\n') {
             break;
         }
-        let checkpoint = cursor.clone();
         let consumed = serde_json::from_slice(&line)
             .map_err(|_| {
                 "A saved session record is invalid. Refresh after Codex finishes writing."
                     .to_owned()
             })
-            .and_then(|document| cursor.consume(document, turns));
+            .and_then(|document| {
+                cursor.consume_indexed(
+                    document,
+                    turns,
+                    index.get_or_insert_with(|| RequestIndex::new(turns)),
+                )
+            });
         if let Err(message) = consumed {
             if failure.is_none() {
-                failure = Some((checkpoint, message));
+                // Fallible record validation happens before pending notifications are consumed.
+                failure = Some((cursor.clone(), message));
             }
         }
         cursor.offset += line.len() as u64;
@@ -755,6 +851,9 @@ fn read_file(
         *cursor = checkpoint;
         return Err(message);
     }
+    let pending = cursor.offset < metadata.len();
+    changed |= pending != cursor.pending_bytes;
+    cursor.pending_bytes = pending;
     Ok(changed)
 }
 

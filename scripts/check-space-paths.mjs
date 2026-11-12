@@ -48,6 +48,8 @@ fs.writeFileSync(root + '/policy.yaml', 'apiVersion: brig.sh/v1alpha1\nkind: Pol
 fs.writeFileSync(editor, '#!/bin/sh\nexec /bin/cp "$BRIG_DESKTOP_POLICY_SOURCE" "$1"\n', { mode: 0o700 });
 env.EDITOR = editor; env.VISUAL = editor; env.BRIG_DESKTOP_POLICY_SOURCE = root + '/policy.yaml';
 let owned = false;
+fs.mkdirSync(path.dirname(evidence), { recursive: true });
+save();
 try {
   check('stock-brig-version', json(['version']).data.version === 'v0.5.2', 'Installed Brig v0.5.2; no modified Brig binary.');
   report.initialReferences = json(['ls']).data.sandboxes.map(value => value.ref);

@@ -79,6 +79,7 @@ export interface Conversation {
   usageRevision: string; // Opaque cheap revision of own ingestion state; not persisted spending.
 }
 export interface Dashboard {
+  sequence?: number;
   conversations: Conversation[]; // All nodes; UI hides resolved subagent rows.
   usage: UsageSummary; // Unique project spending, not sum(familyUsage).
   coverage: Coverage;

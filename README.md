@@ -36,11 +36,11 @@ Brig response fixtures were captured with Brig v0.5.2 and the `brig.sh/v1alpha1`
 
 ## Build and install
 
-Download the Apple silicon DMG from [GitHub Releases](https://github.com/mkorkmaz/my-agent-sandbox/releases), open it, and drag Tugboat into Applications. The first release (`v0.1.0-build.1`) uses ad hoc signing and can require approval in macOS Privacy & Security. New release builds require Developer ID signing and Apple notarization.
+The `v0.1.0-build.1` and `v0.1.0-build.2` releases contain ad hoc signed applications. Gatekeeper rejected both the unsigned build 2 disk image and the application inside it. Once a Developer ID signed and Apple-notarized DMG is available on [GitHub Releases](https://github.com/mkorkmaz/my-agent-sandbox/releases), open it and drag Tugboat into Applications. The source build instructions below also work for local development.
 
 The release workflow requires six repository secrets: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (`Developer ID Application: …`), `APPLE_API_KEY`, `APPLE_API_ISSUER`, and `APPLE_API_KEY_CONTENT` (the App Store Connect `.p8` private key). Add these through GitHub's repository settings. Local development and ordinary source builds continue to use ad hoc signing. The workflow signs the bundled hull helper, notarizes and staples the app and final DMG, then checks the version, signatures, notarization tickets and Gatekeeper result from a read-only mount before publishing. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
 
-To build from source, install Node.js and npm, Rust and Cargo, and Xcode with its command line tools. The recorded development environment uses Node.js 26.12.1 and Rust 1.99.1.
+To build from source, install Node.js and npm, Rust and Cargo, and Xcode with its command line tools. Supported Node.js versions are 22.22.2 or later in the 22.x series, 24.15.0 or later in the 24.x series, and 26.0.0 or later. The recorded development environment uses Node.js 26.12.1 and Rust 1.99.1.
 
 Run these commands from the project root:
 

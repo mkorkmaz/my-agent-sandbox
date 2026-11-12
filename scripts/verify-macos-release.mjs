@@ -1,10 +1,23 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 
 const run = (program, args) => execFileSync(program, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+
+export function verifyDeveloperId(file) {
+  const requirement = 'anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists';
+  run('/usr/bin/codesign', ['--verify', '--strict', '-R', '=' + requirement, file]);
+}
+
+export function verifyPackagedHull(app) {
+  const runtime = path.join(app, 'Contents/Resources/runtime');
+  const manifest = JSON.parse(fs.readFileSync(path.join(runtime, 'build.json'), 'utf8'));
+  const digest = createHash('sha256').update(fs.readFileSync(path.join(runtime, 'hull'))).digest('hex');
+  if (digest !== manifest.binarySha256) throw new Error('Packaged hull does not match the SHA-256 in runtime/build.json.');
+}
 
 export function verifyPackagedVersion(app, version) {
   const plist = path.join(app, 'Contents/Info.plist');
@@ -22,7 +35,9 @@ function main() {
   if (!installerPath || !version) throw new Error('Usage: node scripts/verify-macos-release.mjs <dmg> <version>');
   const installer = fs.realpathSync(installerPath);
   run('/usr/bin/hdiutil', ['verify', installer]);
+  verifyDeveloperId(installer);
   run('/usr/bin/xcrun', ['stapler', 'validate', installer]);
+  run('/usr/sbin/spctl', ['--assess', '--type', 'open', '--context', 'context:primary-signature', '--verbose=4', installer]);
   const mount = fs.mkdtempSync(path.join(os.tmpdir(), 'tugboat-release-'));
   let mounted = false;
   try {
@@ -30,11 +45,11 @@ function main() {
     mounted = true;
     const app = path.join(mount, 'Tugboat.app');
     run('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
-    for (const binary of [app, path.join(app, 'Contents/Resources/runtime/hull')]) {
-      run('/usr/bin/codesign', ['--verify', '--strict', '-R', 'anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists', binary]);
-    }
+    verifyDeveloperId(app);
+    verifyDeveloperId(path.join(app, 'Contents/Resources/runtime/hull'));
     run('/usr/bin/xcrun', ['stapler', 'validate', app]);
     run('/usr/sbin/spctl', ['--assess', '--type', 'execute', '--verbose=4', app]);
+    verifyPackagedHull(app);
     verifyPackagedVersion(app, version);
     console.log(`Verified Tugboat ${version}: Developer ID, notarization and Gatekeeper passed on the mounted installer.`);
   } finally {

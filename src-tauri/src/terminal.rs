@@ -714,6 +714,37 @@ pub fn any_running() -> bool {
         .is_ok_and(|sessions| sessions.values().any(|session| session.process.running()))
 }
 
+fn runs_in_guest(purpose: &str) -> bool {
+    matches!(
+        purpose,
+        "environment"
+            | "login"
+            | "codex"
+            | "resume"
+            | "shell"
+            | "git-status"
+            | "git-diff"
+            | "git-staged-diff"
+            | "tests"
+    )
+}
+
+pub fn stop_guest_processes(project_id: &str) -> Result<(), String> {
+    let processes: Vec<_> = sessions()
+        .lock()
+        .map_err(|error| error.to_string())?
+        .values()
+        .filter(|session| {
+            session.project_id == project_id
+                && runs_in_guest(session.purpose)
+                && session.process.running()
+        })
+        .map(|session| session.process.clone())
+        .collect();
+    // The normal exit handler keeps the native view and its scrollback available.
+    pty::terminate(&processes, std::time::Duration::from_millis(500))
+}
+
 pub async fn close_project(app: AppHandle, project_id: &str) -> Result<(), String> {
     let identifiers: Vec<u64> = sessions()
         .lock()

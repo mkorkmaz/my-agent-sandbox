@@ -21,22 +21,23 @@ export async function initializeHost(): Promise<void> {
   const doctor = document.getElementById('host-doctor') as HTMLElement;
   const message = document.getElementById('installation-status') as HTMLElement;
   const path = document.getElementById('cli-path') as HTMLInputElement;
-  let previous: HostStatus | null = null;
+  let previous: { cliPath: string | null; result: HostStatus } | null = null;
   async function inspect(): Promise<void> {
     check.disabled = true;
     cancel.hidden = false;
     cancel.disabled = false;
     status.textContent = 'Checking this Mac…';
     try {
-      const result = await invoke<HostStatus>('inspect_host', { cliPath: path.value.trim() || null });
+      const cliPath = path.value.trim() || null;
+      const checked = await invoke<HostStatus>('inspect_host', { cliPath });
       const labels: Record<string, string> = { missing: 'Brig not found', incompatible: 'Unsupported Brig version', installed: 'Brig installed', error: 'Brig check failed', cancelled: 'Mac check cancelled', 'timed-out': 'Mac check timed out', 'invalid-response': 'Invalid Brig response' };
-      if (previous && ['cancelled', 'timed-out'].includes(result.brigStatus)) {
-        status.textContent = labels[result.brigStatus] + '. Showing the previous completed check: Brig ' + previous.version?.data.version + ' · macOS ' + previous.osVersion + '. Run Check this Mac to refresh it.';
-        return;
-      }
-      status.textContent = [labels[result.brigStatus], result.version?.data.version, 'macOS ' + result.osVersion, result.architecture].filter(Boolean).join(' · ');
+      const interrupted = ['cancelled', 'timed-out'].includes(checked.brigStatus);
+      const retained = interrupted && previous?.cliPath === cliPath ? previous.result : null;
+      if (!interrupted) previous = { cliPath, result: checked };
+      const result = retained ?? checked;
+      const description = [labels[result.brigStatus], result.version?.data.version, 'macOS ' + result.osVersion, result.architecture].filter(Boolean).join(' · ');
+      status.textContent = retained ? labels[checked.brigStatus] + '. Showing the previous completed check: ' + description : description;
       if (result.message) status.textContent += '. ' + result.message;
-      if (result.brigStatus === 'installed') previous = result;
       tools.replaceChildren();
       for (const [name, value] of Object.entries(result.tools)) {
         const row = document.createElement('div');
@@ -54,8 +55,8 @@ export async function initializeHost(): Promise<void> {
         if (finding.state === '!!') row.className = 'error-message';
         doctor.append(row);
       }
-      install.hidden = result.brigStatus !== 'missing' || result.tools.homebrew === null;
-      document.getElementById('homebrew-help')!.hidden = result.tools.homebrew !== null;
+      install.hidden = result.brigStatus !== 'missing' || !result.tools.homebrew;
+      document.getElementById('homebrew-help')!.hidden = !!result.tools.homebrew;
     } catch (error) {
       status.textContent = String(error);
     } finally {

@@ -18,7 +18,7 @@ function input(id: string): HTMLInputElement { return document.getElementById(id
 function select(id: string): HTMLSelectElement { return document.getElementById(id) as HTMLSelectElement; }
 
 function renderTelemetry(status: TelemetryStatus): void {
-  const names: Record<string, string> = { on: 'On', off: 'Off' };
+  const names: Record<string, string> = { on: 'On', off: 'Off', unanswered: 'Not set yet' };
   document.getElementById('telemetry-status')!.textContent = 'Saved Brig preference: ' + (names[status.recorded ?? ''] ?? 'Unavailable') + '. Effective for app commands: ' + names[status.effective] + '.' + (status.message ? ' ' + status.message : '');
 }
 

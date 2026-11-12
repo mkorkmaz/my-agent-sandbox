@@ -39,7 +39,7 @@ function command(binary, args, timeout = 30_000) {
 }
 function brig(args, timeout) { return command('/opt/homebrew/bin/brig', args, timeout); }
 function checked(args, timeout) {
-  const result = brig(args, timeout); assert.equal(result.exitCode, 0, result.stderr || result.stdout); return result;
+  const result = brig(args, timeout); assert.equal(result.exitCode, 0, result.stderr || result.stdout || result.error || result.signal); return result;
 }
 function json(args) { return JSON.parse(checked(args).stdout); }
 function check(name, passed, observed) {
@@ -56,7 +56,10 @@ function createPolicy(name, session) {
   if (!fs.existsSync(root + '/policies/' + name + '.yaml')) checked(['policy', 'create', name]);
   checked(['policy', 'attach', name, 'codex', '-n', session]);
 }
-let ownedGuest = false;
+const passed = 'passed-with-native-and-account-acceptance-pending';
+let guestNeedsCleanup = false;
+fs.mkdirSync(path.dirname(evidence), { recursive: true });
+save();
 try {
   json(['--json', 'version']);
   const initial = json(['--json', 'ls']);
@@ -68,8 +71,8 @@ try {
   check('exact-project-plan', plan.data.project.host === project && plan.data.runtime.backend === 'hvi' && plan.data.runtime.available && plan.data.refused == null, plan.data);
   check('no-host-credentials', plan.data.credentials.every(value => ['unresolved', 'withheld'].includes(value.state)), plan.data.credentials);
   check('required-image-verification', plan.data.verify.mode === 'require', plan.data.verify);
+  guestNeedsCleanup = true;
   const boot = brig(['run', ...planArgs, '--', '--version'], 240_000);
-  ownedGuest = json(['--json', 'ls']).data.sandboxes.some(value => value.ref === reference);
   check('real-hvi-codex-version', boot.exitCode === 0 && /codex/i.test(boot.stdout), boot.stderr || boot.stdout);
   const info = json(['--json', 'info', reference]);
   check('info-project-home', info.data.project.host === project && info.data.workspace.startsWith(root + '/state/'), info.data);
@@ -91,20 +94,32 @@ try {
   checked(['stop', reference]);
   const dryRun = checked(['rm', reference, '--dry-run']);
   check('exact-removal-preview', dryRun.stdout.includes(reference), dryRun.stdout);
-  checked(['rm', reference]); ownedGuest = false;
+  checked(['rm', reference]); guestNeedsCleanup = false;
   check('second-project-preserved', fs.readFileSync(second + '/sentinel.txt', 'utf8') === 'Preserve the second project.\n' && secondHash === createHash('sha256').update(fs.readFileSync(root + '/policies/' + secondPolicy + '.yaml')).digest('hex'), 'Second folder and policy hashes match');
-  report.outcome = 'passed-with-native-and-account-acceptance-pending';
+  report.outcome = passed;
 } catch (error) {
   report.outcome = 'blocked'; report.blocker = String(error.message);
 } finally {
-  if (ownedGuest) {
-    brig(['stop', reference]);
-    const preview = brig(['rm', reference, '--dry-run']);
-    if (preview.exitCode === 0 && preview.stdout.includes(reference)) brig(['rm', reference]);
+  const errors = [];
+  if (guestNeedsCleanup) {
+    try {
+      if (json(['--json', 'ls']).data.sandboxes.some(value => value.ref === reference)) {
+        const stop = brig(['stop', reference]);
+        if (stop.exitCode !== 0) errors.push('Could not stop ' + reference);
+        const preview = checked(['rm', reference, '--dry-run']);
+        assert.ok(preview.stdout.includes(reference), 'Cleanup preview did not name ' + reference);
+        checked(['rm', reference]);
+      }
+    } catch (error) { errors.push(error.message); }
   }
-  try { report.remaining = json(['--json', 'ls']).data.sandboxes; }
-  catch (error) { report.cleanupError = String(error.message); }
+  try {
+    report.remaining = json(['--json', 'ls']).data.sandboxes;
+    if (report.remaining.some(value => value.ref === reference)) errors.push('Guest remains: ' + reference);
+  } catch (error) { errors.push('Could not verify final inventory: ' + error.message); }
   report.storeDetach = command('/opt/homebrew/bin/hull', ['store', 'detach']);
+  if (report.storeDetach.exitCode !== 0) errors.push('Could not detach the isolated hull store');
+  if (errors.length) { report.outcome = 'blocked'; report.cleanupError = errors.join('; '); }
+  process.exitCode = report.outcome === passed ? 0 : 1;
   report.completedAt = new Date().toISOString(); save();
   console.log('Outcome:', report.outcome, 'Evidence:', evidence);
 }

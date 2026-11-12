@@ -38,6 +38,15 @@ int main(int argc, const char *argv[]) {
         NSEvent *event = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:0 timestamp:0 windowNumber:0 context:nil characters:@"" charactersIgnoringModifiers:@"" isARepeat:NO keyCode:120];
         [view keyDown:event];
         NSCAssert([captured isEqualToData:[NSData dataWithBytes:"\033OQ" length:3]], @"F2 did not produce the xterm key sequence");
+        NSArray<NSString *> *controlKeys = @[@"2", @"/", @"c"];
+        const unsigned short codes[] = {19, 44, 8};
+        const uint8_t expected[] = {0x00, 0x1f, 0x03};
+        for (NSUInteger i = 0; i < controlKeys.count; i++) {
+            [captured setLength:0];
+            NSEvent *control = [NSEvent keyEventWithType:NSEventTypeKeyDown location:NSZeroPoint modifierFlags:NSEventModifierFlagControl timestamp:0 windowNumber:0 context:nil characters:controlKeys[i] charactersIgnoringModifiers:controlKeys[i] isARepeat:NO keyCode:codes[i]];
+            [view keyDown:control];
+            NSCAssert([captured isEqualToData:[NSData dataWithBytes:&expected[i] length:1]], @"Unexpected bytes for Ctrl+%@", controlKeys[i]);
+        }
         brig_terminal_destroy(pointer);
         puts("PASS native fonts: preferred font, bundled JetBrains Mono fallback, monospace metrics and 14pt size");
         puts("PASS native composition: marked text, UTF-8 commit, cancellation and F2 encoding");
