@@ -4,25 +4,58 @@ const TOKEN_LIMIT: u64 = 1_000_000_000_000;
 const PENDING: &str = "claude unrecorded response";
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum ResponseMerge { New, Unmeasured, FirstMeasurement, Conflict, Update }
+enum ResponseMerge {
+    New,
+    Unmeasured,
+    FirstMeasurement,
+    Conflict,
+    Update,
+}
 
-fn response_merge(previous: Option<&usage::TurnUsage>, current: &usage::TurnUsage) -> ResponseMerge {
-    let Some(previous) = previous else { return ResponseMerge::New; };
-    let Some(next) = current.requests.first() else { return ResponseMerge::Unmeasured; };
-    let Some(request) = previous.requests.first() else { return ResponseMerge::FirstMeasurement; };
+fn response_merge(
+    previous: Option<&usage::TurnUsage>,
+    current: &usage::TurnUsage,
+) -> ResponseMerge {
+    let Some(previous) = previous else {
+        return ResponseMerge::New;
+    };
+    let Some(next) = current.requests.first() else {
+        return ResponseMerge::Unmeasured;
+    };
+    let Some(request) = previous.requests.first() else {
+        return ResponseMerge::FirstMeasurement;
+    };
     if request.tokens.input != next.tokens.input
         || request.tokens.cached != next.tokens.cached
         || request.tokens.cache_write != next.tokens.cache_write
-        || request.model.as_ref().zip(next.model.as_ref()).is_some_and(|(previous, next)| previous != next)
-    { return ResponseMerge::Conflict; }
+        || request
+            .model
+            .as_ref()
+            .zip(next.model.as_ref())
+            .is_some_and(|(previous, next)| previous != next)
+    {
+        return ResponseMerge::Conflict;
+    }
     ResponseMerge::Update
 }
 
-enum CanonicalSource { Saved, RecoverSaved(String, String), Observed }
+enum CanonicalSource {
+    Saved,
+    RecoverSaved(String, String),
+    Observed,
+}
 
-fn canonical_source(candidates: &[(String, String)], known: &BTreeSet<(String, String)>) -> CanonicalSource {
-    if known.contains(&candidates[0]) { return CanonicalSource::Saved; }
-    if let Some((owner, turn)) = candidates.iter().find(|candidate| known.contains(candidate)) {
+fn canonical_source(
+    candidates: &[(String, String)],
+    known: &BTreeSet<(String, String)>,
+) -> CanonicalSource {
+    if known.contains(&candidates[0]) {
+        return CanonicalSource::Saved;
+    }
+    if let Some((owner, turn)) = candidates
+        .iter()
+        .find(|candidate| known.contains(candidate))
+    {
         return CanonicalSource::RecoverSaved(owner.clone(), turn.clone());
     }
     CanonicalSource::Observed
@@ -75,7 +108,11 @@ pub(in crate::conversations) fn ingest(
         .is_some_and(|value| !value.is_empty());
     let mut turn = usage::TurnUsage {
         id: id.into(),
-        status: if complete { usage::TurnStatus::Complete } else { usage::TurnStatus::InProgress },
+        status: if complete {
+            usage::TurnStatus::Complete
+        } else {
+            usage::TurnStatus::InProgress
+        },
         origin_thread_id: Some(session.into()),
         ..Default::default()
     };
@@ -131,13 +168,18 @@ pub(in crate::conversations) fn merge(
             continue;
         }
         previous.status.observe_completion(turn.status);
-        if state == ResponseMerge::Unmeasured { continue; }
+        if state == ResponseMerge::Unmeasured {
+            continue;
+        }
         if state == ResponseMerge::FirstMeasurement {
             previous.requests = turn.requests;
             continue;
         }
         let next = turn.requests.first().expect("measured Claude response");
-        let request = previous.requests.first_mut().expect("saved Claude measurement");
+        let request = previous
+            .requests
+            .first_mut()
+            .expect("saved Claude measurement");
         let correction = usage::anthropic::evidence(request, "Recovered recorded Anthropic model or billing metadata; original dated tariff retained when available.");
         let previous_metadata = request.anthropic.clone();
         let previous_model = request.model.clone();
@@ -276,12 +318,23 @@ pub(in crate::conversations) fn deduplicate(
                 .then_with(|| first.cmp(second))
         });
         let (owner, owner_turn) = &candidates[0];
-        if let CanonicalSource::RecoverSaved(saved_owner, saved_turn) = canonical_source(candidates, known_turns) {
+        if let CanonicalSource::RecoverSaved(saved_owner, saved_turn) =
+            canonical_source(candidates, known_turns)
+        {
             let mut recorded = ledger.sessions[&saved_owner].turns[&saved_turn].clone();
             set_owner(&mut recorded, owner, owner_turn);
-            let record = ledger.sessions.get_mut(owner).expect("canonical Claude request");
-            let current = record.turns.insert(owner_turn.clone(), recorded).expect("current Claude request");
-            if merge(&mut record.turns, BTreeMap::from([(owner_turn.clone(), current)])) {
+            let record = ledger
+                .sessions
+                .get_mut(owner)
+                .expect("canonical Claude request");
+            let current = record
+                .turns
+                .insert(owner_turn.clone(), recorded)
+                .expect("current Claude request");
+            if merge(
+                &mut record.turns,
+                BTreeMap::from([(owner_turn.clone(), current)]),
+            ) {
                 record.warning = Some("Conflicting copies of a Claude message were counted once. The first saved measurement is retained.".into());
             }
         }
@@ -315,7 +368,6 @@ pub(in crate::conversations) fn deduplicate(
     changed
 }
 
-
 #[cfg(test)]
 mod transition_review {
     use super::*;
@@ -324,11 +376,11 @@ mod transition_review {
     fn recheck_conflicting_measurement_cannot_complete_a_partial_response() {
         let mut saved = BTreeMap::new();
         let mut value = json!({"message":{"id":"response-a","model":"model-a","usage":{"input_tokens":8,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":1}}});
-        assert!(!ingest(&mut saved, &value, "session-a","fixture"));
+        assert!(!ingest(&mut saved, &value, "session-a", "fixture"));
         assert_eq!(saved["response-a"].status, usage::TurnStatus::InProgress);
         value["message"]["usage"]["input_tokens"] = json!(80);
         value["message"]["stop_reason"] = json!("end_turn");
-        assert!(ingest(&mut saved, &value,"session-a","fixture"));
+        assert!(ingest(&mut saved, &value, "session-a", "fixture"));
         assert_eq!(saved["response-a"].requests[0].tokens.input, 8);
         assert!(saved["response-a"].requests[0].partial);
         assert_eq!(saved["response-a"].status, usage::TurnStatus::InProgress);

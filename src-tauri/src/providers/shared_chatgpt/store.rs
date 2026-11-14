@@ -89,7 +89,8 @@ impl Session {
         }
         if let Some(login) = &self.pending_login {
             if (login.imported && login.cancelled)
-                || (login.imported && (self.credentials.is_none() || self.disconnected || self.reconnect_required))
+                || (login.imported
+                    && (self.credentials.is_none() || self.disconnected || self.reconnect_required))
                 || login.project_id.len() != 32
                 || !login
                     .project_id

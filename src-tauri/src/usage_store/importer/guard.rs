@@ -3,7 +3,10 @@ use super::leaf::LEAF_LIMIT;
 use std::io::{self, Read};
 
 #[derive(Clone, Copy)]
-enum Surrogate { None, High }
+enum Surrogate {
+    None,
+    High,
+}
 
 #[derive(Clone, Copy, Default)]
 enum StringPhase {
@@ -11,7 +14,11 @@ enum StringPhase {
     Outside,
     Text(Surrogate),
     Escape(Surrogate),
-    Unicode { remaining: u8, unit: u16, previous: Surrogate },
+    Unicode {
+        remaining: u8,
+        unit: u16,
+        previous: Surrogate,
+    },
 }
 
 #[derive(Default)]
@@ -22,19 +29,32 @@ struct StringState {
 
 impl StringState {
     fn add(&mut self, count: usize) -> io::Result<()> {
-        self.decoded = self.decoded.checked_add(count)
+        self.decoded = self
+            .decoded
+            .checked_add(count)
             .ok_or_else(|| invalid("Decoded legacy string length overflow."))?;
         if self.decoded > LEAF_LIMIT {
             return Err(invalid("Decoded legacy string exceeds 64 MiB."));
         }
         Ok(())
     }
-    fn unicode(&mut self, byte: u8, remaining: u8, unit: u16, previous: Surrogate) -> io::Result<()> {
-        let digit = (byte as char).to_digit(16)
+    fn unicode(
+        &mut self,
+        byte: u8,
+        remaining: u8,
+        unit: u16,
+        previous: Surrogate,
+    ) -> io::Result<()> {
+        let digit = (byte as char)
+            .to_digit(16)
             .ok_or_else(|| invalid("Invalid JSON Unicode escape."))?;
         let unit = (unit << 4) | digit as u16;
         if remaining > 1 {
-            self.phase = StringPhase::Unicode { remaining: remaining - 1, unit, previous };
+            self.phase = StringPhase::Unicode {
+                remaining: remaining - 1,
+                unit,
+                previous,
+            };
             return Ok(());
         }
         let count = match unit {
@@ -43,15 +63,27 @@ impl StringState {
             0x80..=0x7ff => 2,
             _ => 3,
         };
-        let surrogate = if (0xd800..=0xdbff).contains(&unit) { Surrogate::High } else { Surrogate::None };
+        let surrogate = if (0xd800..=0xdbff).contains(&unit) {
+            Surrogate::High
+        } else {
+            Surrogate::None
+        };
         self.phase = StringPhase::Text(surrogate);
         self.add(count)
     }
     fn consume(&mut self, byte: u8) -> io::Result<()> {
         match self.phase {
-            StringPhase::Unicode { remaining, unit, previous } => self.unicode(byte, remaining, unit, previous),
+            StringPhase::Unicode {
+                remaining,
+                unit,
+                previous,
+            } => self.unicode(byte, remaining, unit, previous),
             StringPhase::Escape(previous) if byte == b'u' => {
-                self.phase = StringPhase::Unicode { remaining: 4, unit: 0, previous };
+                self.phase = StringPhase::Unicode {
+                    remaining: 4,
+                    unit: 0,
+                    previous,
+                };
                 Ok(())
             }
             StringPhase::Escape(_) => {

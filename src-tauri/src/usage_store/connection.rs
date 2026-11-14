@@ -8,9 +8,17 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum RecoveryState { Verified, Required }
+enum RecoveryState {
+    Verified,
+    Required,
+}
 
-pub(super) enum ReconnectDecision { Current, OriginalAvailable, TransactionPending, Replace }
+pub(super) enum ReconnectDecision {
+    Current,
+    OriginalAvailable,
+    TransactionPending,
+    Replace,
+}
 
 #[derive(Clone)]
 struct Binding {
@@ -221,10 +229,14 @@ impl Store {
 
     pub(super) fn reconnect_decision(&self, records: &RecordsDirectory) -> ReconnectDecision {
         if self.require_active().is_ok() {
-            if self.is_at(records) { return ReconnectDecision::Current; }
+            if self.is_at(records) {
+                return ReconnectDecision::Current;
+            }
             return ReconnectDecision::OriginalAvailable;
         }
-        if !self.connection.is_autocommit() { return ReconnectDecision::TransactionPending; }
+        if !self.connection.is_autocommit() {
+            return ReconnectDecision::TransactionPending;
+        }
         ReconnectDecision::Replace
     }
 

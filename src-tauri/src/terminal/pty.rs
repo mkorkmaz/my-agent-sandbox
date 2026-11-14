@@ -71,7 +71,10 @@ impl Process {
         let pid = match self.state() {
             ProcessState::Running(pid) | ProcessState::Stopping(pid) => pid,
             ProcessState::Finishing => return,
-            _ => { self.transition(ProcessState::Exited); return; }
+            _ => {
+                self.transition(ProcessState::Exited);
+                return;
+            }
         };
         self.transition(ProcessState::Stopping(pid));
         self.signal(signal);
@@ -86,7 +89,10 @@ impl Process {
 
     pub fn child_exited(&self) {
         let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
-        if !matches!(self.state(), ProcessState::Running(_) | ProcessState::Stopping(_)) {
+        if !matches!(
+            self.state(),
+            ProcessState::Running(_) | ProcessState::Stopping(_)
+        ) {
             return;
         }
         self.signal(libc::SIGKILL);
@@ -232,12 +238,18 @@ mod tests {
     fn an_exited_child_keeps_drain_pending_until_its_callback_finishes() {
         let pty = Pty::open().unwrap();
         let process = Process::new(&pty).unwrap();
-        process.spawn(&pty, &mut Command::new("/usr/bin/true")).unwrap().wait().unwrap();
+        process
+            .spawn(&pty, &mut Command::new("/usr/bin/true"))
+            .unwrap()
+            .wait()
+            .unwrap();
         process.child_exited();
         assert_eq!(process.state(), ProcessState::Finishing);
         process.stop(libc::SIGKILL);
         assert!(process.running());
-        assert!(process.spawn(&pty, &mut Command::new("/usr/bin/true")).is_err());
+        assert!(process
+            .spawn(&pty, &mut Command::new("/usr/bin/true"))
+            .is_err());
         process.exited();
         assert!(!process.running());
     }

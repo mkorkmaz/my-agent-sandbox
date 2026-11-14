@@ -30,8 +30,12 @@ impl Completion {
             _ => Self::Exited,
         }
     }
-    fn timed_out(self) -> bool { matches!(self, Self::TimedOut | Self::TimedOutAndCancelled) }
-    fn cancelled(self) -> bool { matches!(self, Self::Cancelled | Self::TimedOutAndCancelled) }
+    fn timed_out(self) -> bool {
+        matches!(self, Self::TimedOut | Self::TimedOutAndCancelled)
+    }
+    fn cancelled(self) -> bool {
+        matches!(self, Self::Cancelled | Self::TimedOutAndCancelled)
+    }
 }
 static ACTIVE: (Mutex<usize>, Condvar) = (Mutex::new(0), Condvar::new());
 
@@ -102,13 +106,22 @@ pub fn brig_environment() -> BTreeMap<String, String> {
         .unwrap_or_else(|| system_path.into());
     values.insert("PATH".into(), path);
     if let Some(hull) = crate::platform::runtime::tool("hull") {
-        values.insert("BRIG_RUNTIME_BIN".into(), hull.to_string_lossy().into_owned());
+        values.insert(
+            "BRIG_RUNTIME_BIN".into(),
+            hull.to_string_lossy().into_owned(),
+        );
     }
     if let Some(configuration) = crate::platform::runtime::configuration() {
-        values.insert("MKE2FS_CONFIG".into(), configuration.to_string_lossy().into_owned());
+        values.insert(
+            "MKE2FS_CONFIG".into(),
+            configuration.to_string_lossy().into_owned(),
+        );
     }
     if let Some(directory) = crate::platform::runtime::registry_directory() {
-        values.insert("DOCKER_CONFIG".into(), directory.to_string_lossy().into_owned());
+        values.insert(
+            "DOCKER_CONFIG".into(),
+            directory.to_string_lossy().into_owned(),
+        );
     }
     values
 }
@@ -403,20 +416,39 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod transition_review {
     use super::*;
     #[test]
     fn recheck_precancelled_command_returns_before_process_creation() {
-        let marker = std::env::temp_dir().join(format!("tugboat-precancel-review-{}", std::process::id()));
+        let marker =
+            std::env::temp_dir().join(format!("tugboat-precancel-review-{}", std::process::id()));
         let args = vec![marker.to_string_lossy().into_owned()];
-        let result = run(Path::new("/usr/bin/touch"), &args, None, &BTreeMap::new(), Duration::from_secs(1), &AtomicBool::new(true));
+        let result = run(
+            Path::new("/usr/bin/touch"),
+            &args,
+            None,
+            &BTreeMap::new(),
+            Duration::from_secs(1),
+            &AtomicBool::new(true),
+        );
         let created = marker.exists();
-        if created { std::fs::remove_file(marker).unwrap(); }
+        if created {
+            std::fs::remove_file(marker).unwrap();
+        }
         // An unavailable executable makes attempted creation observable even if cancellation wins the race with touch.
-        let probe = run(Path::new("/missing/tugboat-review-command"), &[], None,
-            &BTreeMap::new(), Duration::from_secs(1), &AtomicBool::new(true));
-        assert!(result.is_ok_and(|output| output.cancelled) && !created && probe.is_ok_and(|output| output.cancelled));
+        let probe = run(
+            Path::new("/missing/tugboat-review-command"),
+            &[],
+            None,
+            &BTreeMap::new(),
+            Duration::from_secs(1),
+            &AtomicBool::new(true),
+        );
+        assert!(
+            result.is_ok_and(|output| output.cancelled)
+                && !created
+                && probe.is_ok_and(|output| output.cancelled)
+        );
     }
 }

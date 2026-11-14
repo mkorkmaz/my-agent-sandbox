@@ -1,5 +1,5 @@
-use super::Store;
 use super::connection::ReconnectDecision;
+use super::Store;
 use std::sync::{Arc, Condvar, Mutex};
 use tauri::AppHandle;
 

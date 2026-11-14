@@ -14,7 +14,11 @@ impl Cursor {
         let Some(owner) = &self.owner else {
             return OwnershipPhase::Unclaimed;
         };
-        if self.expected_owner.as_ref().is_some_and(|expected| expected != owner) {
+        if self
+            .expected_owner
+            .as_ref()
+            .is_some_and(|expected| expected != owner)
+        {
             return OwnershipPhase::Blocked;
         }
         match &self.active_owner {
@@ -55,7 +59,10 @@ impl Cursor {
 
     pub(super) fn restore_owner(&mut self, id: &str) {
         if self.owner.as_deref() != Some(id)
-            || self.expected_owner.as_deref().is_some_and(|expected| expected != id)
+            || self
+                .expected_owner
+                .as_deref()
+                .is_some_and(|expected| expected != id)
         {
             return;
         }

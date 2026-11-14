@@ -1,8 +1,8 @@
+use super::pricing_state::PriceQuote;
 use super::{
     correct_legacy_tier, price, request, AmountCorrection, RequestSource, RequestUsage, Tokens,
     TurnStatus, TurnUsage, PRICING_DATE,
 };
-use super::pricing_state::PriceQuote;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -86,7 +86,9 @@ pub struct Cursor {
 }
 
 fn signature(usage: &Tokens, cumulative: &Tokens) -> String {
-    crate::hash::hex(Sha256::digest(serde_json::to_vec(&(usage, cumulative)).expect("token serialization")))
+    crate::hash::hex(Sha256::digest(
+        serde_json::to_vec(&(usage, cumulative)).expect("token serialization"),
+    ))
 }
 
 fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &str) {
@@ -118,7 +120,9 @@ fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &
                 .as_deref()
                 .is_some_and(|previous| previous != tier)
         {
-            record.record_quote(PriceQuote::Unknown(Some("Recorded request service tiers conflict".into())));
+            record.record_quote(PriceQuote::Unknown(Some(
+                "Recorded request service tiers conflict".into(),
+            )));
             continue;
         }
         if record.rates.as_ref().is_some_and(|rates| {
@@ -128,7 +132,9 @@ fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &
         {
             record.service_tier = Some(tier.into());
             record.tier_source = Some("request".into());
-            record.record_quote(PriceQuote::Unknown(Some("The recorded request tier price is unavailable".into())));
+            record.record_quote(PriceQuote::Unknown(Some(
+                "The recorded request tier price is unavailable".into(),
+            )));
             continue;
         }
         let earlier = record.rate_correction.clone();
@@ -266,7 +272,9 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
         }
         record.tokens = exact.usage.clone();
         record.partial = false;
-        record.record_quote(PriceQuote::Unknown(Some("A compatible saved historical rate is unavailable".into())));
+        record.record_quote(PriceQuote::Unknown(Some(
+            "A compatible saved historical rate is unavailable".into(),
+        )));
         if compatible
             && record.tokens.cached_is_known()
             && record.tokens.writes_are_known()
@@ -276,8 +284,9 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
                 .rates
                 .as_ref()
                 .and_then(|rates| price(&record.tokens, rates));
-            record.record_quote(PriceQuote::from(cost.ok_or_else(
-                || "A compatible saved historical rate is unavailable".into())));
+            record.record_quote(PriceQuote::from(
+                cost.ok_or_else(|| "A compatible saved historical rate is unavailable".into()),
+            ));
         }
     }
     let mut source = exact.source.clone();
@@ -286,7 +295,9 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
         source.root_turn_id = previous.root_turn_id.clone().or(source.root_turn_id);
     }
     if source.model_provider != "openai" {
-        record.record_quote(PriceQuote::Unknown(Some("Provider price is unavailable".into())));
+        record.record_quote(PriceQuote::Unknown(Some(
+            "Provider price is unavailable".into(),
+        )));
     }
     record.source = Some(source);
     Ok(())
@@ -350,7 +361,10 @@ impl Cursor {
     pub fn has_ownership_problem(&self) -> bool {
         self.ownership_problem.is_some()
             || self.provenance_problem
-            || matches!(self.ownership_phase(), OwnershipPhase::CopiedAncestor | OwnershipPhase::Blocked)
+            || matches!(
+                self.ownership_phase(),
+                OwnershipPhase::CopiedAncestor | OwnershipPhase::Blocked
+            )
     }
     pub fn revision_state(&self) -> Value {
         serde_json::json!({"offset":self.offset,"pendingBytes":self.pending_bytes,"inode":self.inode,"device":self.device,"namespace":self.namespace,"owner":self.owner,"activeOwner":self.active_owner,"version":self.version,"header":self.header_fingerprint,"ownershipProblem":self.ownership_problem,"provenanceProblem":self.provenance_problem,"turn":self.turn_id,"model":self.model,"tier":self.tier,"threadTier":self.thread_tier,"bindings":self.matched_counters.len(),"pendingExact":self.pending_exact.len(),"pendingCounters":self.pending_counters.len()})
@@ -382,7 +396,9 @@ impl Cursor {
             self.ownership_problem = Some("Session owner metadata is invalid".into());
             return;
         };
-        if !self.accept_owner(&id, payload) { return; }
+        if !self.accept_owner(&id, payload) {
+            return;
+        }
         if let Some(provider) = text(&payload["model_provider"]) {
             self.providers.insert(id, provider);
         }
@@ -510,7 +526,9 @@ impl Cursor {
         recorded.tier_source = Some(exact.tier_source.clone());
         if exact.source.model_provider != "openai" {
             recorded.rates = None;
-            recorded.record_quote(PriceQuote::Unknown(Some("Provider price is unavailable".into())));
+            recorded.record_quote(PriceQuote::Unknown(Some(
+                "Provider price is unavailable".into(),
+            )));
         }
         recorded.source = Some(exact.source.clone());
         index.insert(&turn.id, turn.requests.len(), &recorded);
@@ -598,7 +616,9 @@ impl Cursor {
             self.previous = Some(current);
             return Ok(());
         }
-        if let Some((tokens, partial)) = DeltaState::between(self.previous.as_ref(), &current, &last).measurement() {
+        if let Some((tokens, partial)) =
+            DeltaState::between(self.previous.as_ref(), &current, &last).measurement()
+        {
             if tokens.cached + tokens.cache_write > tokens.input {
                 return Err("Invalid token delta".into());
             }
@@ -691,7 +711,10 @@ impl Cursor {
                     self.providers.insert(id, provider);
                 }
             }
-            if matches!(self.ownership_phase(), OwnershipPhase::Unclaimed | OwnershipPhase::Own) {
+            if matches!(
+                self.ownership_phase(),
+                OwnershipPhase::Unclaimed | OwnershipPhase::Own
+            ) {
                 self.thread_tier = payload["thread_settings"]["service_tier"]
                     .as_str()
                     .map(str::to_owned);
@@ -715,7 +738,11 @@ impl Cursor {
                         "task_complete" => TurnStatus::Complete,
                         _ => TurnStatus::Interrupted,
                     };
-                    turns.get_mut(id).unwrap().status.observe_completion(completion);
+                    turns
+                        .get_mut(id)
+                        .unwrap()
+                        .status
+                        .observe_completion(completion);
                 }
             }
             return Ok(());
@@ -1414,17 +1441,27 @@ mod tests {
     }
 }
 
-
 #[cfg(test)]
 mod transition_review {
     use super::*;
     use serde_json::json;
     fn read_events(name: &str, expected: &str, events: Vec<Value>) -> BTreeMap<String, TurnUsage> {
-        let file = std::env::temp_dir().join(format!("tugboat-turn-review-{}-{name}", std::process::id()));
-        let content: String = events.into_iter().map(|value| format!("{value}\n")).collect();
+        let file =
+            std::env::temp_dir().join(format!("tugboat-turn-review-{}-{name}", std::process::id()));
+        let content: String = events
+            .into_iter()
+            .map(|value| format!("{value}\n"))
+            .collect();
         std::fs::write(&file, content).unwrap();
         let mut turns = BTreeMap::new();
-        sync_file_bound(&file, "fixture", expected, &mut Cursor::default(), &mut turns).unwrap();
+        sync_file_bound(
+            &file,
+            "fixture",
+            expected,
+            &mut Cursor::default(),
+            &mut turns,
+        )
+        .unwrap();
         std::fs::remove_file(file).unwrap();
         turns
     }
@@ -1438,20 +1475,24 @@ mod transition_review {
             json!({"type":"event_msg","payload":{"type":"thread_settings_applied","thread_id":other}}),
             json!({"type":"event_msg","payload":{"type":"task_started","turn_id":turn}}),
         ];
-        assert!(read_events("owner",expected,events).is_empty());
+        assert!(read_events("owner", expected, events).is_empty());
     }
     #[test]
     fn recheck_replayed_completion_cannot_reverse_a_terminal_turn() {
         let owner = "30000000-0000-4000-8000-000000000001";
         let turn = "40000000-0000-4000-8000-000000000001";
-        let mut events = vec![json!({"type":"session_meta","payload":{"id":owner,"cli_version":"0.167.0","model_provider":"openai"}})];
-        for event in ["task_started","task_complete","turn_aborted"] {
+        let mut events = vec![
+            json!({"type":"session_meta","payload":{"id":owner,"cli_version":"0.167.0","model_provider":"openai"}}),
+        ];
+        for event in ["task_started", "task_complete", "turn_aborted"] {
             events.push(json!({"type":"event_msg","payload":{"type":event,"turn_id":turn}}));
         }
-        assert_eq!(read_events("turn",owner,events)[turn].status, TurnStatus::Complete);
+        assert_eq!(
+            read_events("turn", owner, events)[turn].status,
+            TurnStatus::Complete
+        );
     }
 }
-
 
 #[cfg(test)]
 mod review_replay {
@@ -1461,12 +1502,14 @@ mod review_replay {
     fn recheck_a_rejected_line_does_not_publish_events_beyond_its_checkpoint() {
         let owner = "30000000-0000-4000-8000-000000000001";
         let turn = "40000000-0000-4000-8000-000000000001";
-        let file = std::env::temp_dir().join(format!("tugboat-checkpoint-review-{}", std::process::id()));
+        let file =
+            std::env::temp_dir().join(format!("tugboat-checkpoint-review-{}", std::process::id()));
         let header = json!({"type":"session_meta","payload":{"id":owner,"cli_version":"0.167.0"}});
         let later = json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":turn}});
         std::fs::write(&file, format!("{header}\nunfinished fixture\n{later}\n")).unwrap();
-        let mut turns = BTreeMap::new(); let mut cursor = Cursor::default();
-        let read = sync_file_bound(&file, "fixture",owner,&mut cursor,&mut turns);
+        let mut turns = BTreeMap::new();
+        let mut cursor = Cursor::default();
+        let read = sync_file_bound(&file, "fixture", owner, &mut cursor, &mut turns);
         std::fs::remove_file(file).unwrap();
         assert!(read.is_err());
         assert_eq!(cursor.offset, header.to_string().len() as u64 + 1);

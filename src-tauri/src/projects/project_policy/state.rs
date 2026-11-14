@@ -22,9 +22,16 @@ pub(super) struct PolicyState {
 
 impl PolicyState {
     pub(super) fn already_applied(&self, action: Action) -> bool {
-        matches!((action, self.binding),
-            (Action::Attach, BindingState::AttachedOwned | BindingState::AttachedExternal)
-            | (Action::Detach, BindingState::DetachedOwned | BindingState::DetachedExternal))
+        matches!(
+            (action, self.binding),
+            (
+                Action::Attach,
+                BindingState::AttachedOwned | BindingState::AttachedExternal
+            ) | (
+                Action::Detach,
+                BindingState::DetachedOwned | BindingState::DetachedExternal
+            )
+        )
     }
 
     pub(super) fn observed(editable: bool, attached: bool, owned: bool) -> Self {

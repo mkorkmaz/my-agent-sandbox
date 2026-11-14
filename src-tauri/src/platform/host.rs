@@ -66,7 +66,9 @@ pub struct HostStatus {
 }
 
 impl HostStatus {
-    pub fn ready(&self) -> bool { self.brig_status == "installed" }
+    pub fn ready(&self) -> bool {
+        self.brig_status == "installed"
+    }
 }
 
 pub fn discover(name: &str, configured: Option<&str>) -> Option<PathBuf> {
@@ -242,7 +244,9 @@ fn inspect_with_runtime(
         brig_source: match configured {
             Some(_) => "custom",
             None => match crate::platform::runtime::directory() {
-                Some(directory) if directory.file_name().is_some_and(|name| name == "MacOS") => "bundled",
+                Some(directory) if directory.file_name().is_some_and(|name| name == "MacOS") => {
+                    "bundled"
+                }
                 _ => "development",
             },
         },
@@ -378,7 +382,8 @@ fi
         let cancel = Arc::new(AtomicBool::new(false));
         let stopping = cancel.clone();
         let path = executable.to_string_lossy().into_owned();
-        let worker = std::thread::spawn(move || inspect_with_runtime(Some(path), &stopping, || Ok(())));
+        let worker =
+            std::thread::spawn(move || inspect_with_runtime(Some(path), &stopping, || Ok(())));
         let started = std::time::Instant::now();
         while !root.join("started").is_file() && started.elapsed() < Duration::from_secs(3) {
             std::thread::sleep(Duration::from_millis(5));
@@ -407,7 +412,11 @@ fi
     fn missing_and_incompatible_installations_are_distinct() {
         let missing = inspect(Some("/not-present/brig".into()), &AtomicBool::new(false));
         assert_eq!(missing.brig_status, "missing");
-        let incompatible = inspect_with_runtime(Some("/usr/bin/true".into()), &AtomicBool::new(false), || Ok(()));
+        let incompatible = inspect_with_runtime(
+            Some("/usr/bin/true".into()),
+            &AtomicBool::new(false),
+            || Ok(()),
+        );
         assert_eq!(incompatible.brig_status, "invalid-response");
         assert!(discover("brig", Some("relative/path")).is_none());
     }
@@ -441,7 +450,13 @@ fi
                 stderr: String::new(), exit_code: Some(exit_code), cancelled: false,
                 timed_out: false, output_exceeded: false,
             };
-            assert_eq!(inspection_output(Ok(output), "Doctor").err().unwrap().status(), "error");
+            assert_eq!(
+                inspection_output(Ok(output), "Doctor")
+                    .err()
+                    .unwrap()
+                    .status(),
+                "error"
+            );
         }
     }
 
@@ -461,8 +476,11 @@ fi
         let executable = root.join("brig");
         std::fs::write(&executable, "#!/bin/sh\ntouch \"$0.ran\"\n").unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
-        let result = inspect_with_runtime(Some(executable.to_string_lossy().into_owned()),
-            &AtomicBool::new(false), || Err("Damaged fixture runtime".into()));
+        let result = inspect_with_runtime(
+            Some(executable.to_string_lossy().into_owned()),
+            &AtomicBool::new(false),
+            || Err("Damaged fixture runtime".into()),
+        );
         assert_eq!(result.brig_status, "error");
         assert_eq!(result.message.as_deref(), Some("Damaged fixture runtime"));
         assert!(!root.join("brig.ran").exists());

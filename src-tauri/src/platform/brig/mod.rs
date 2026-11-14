@@ -147,7 +147,9 @@ impl Brig {
 }
 
 pub fn fingerprint(value: &Value) -> Result<String, String> {
-    Ok(crate::hash::hex(Sha256::digest(serde_json::to_vec(value).map_err(|error| error.to_string())?)))
+    Ok(crate::hash::hex(Sha256::digest(
+        serde_json::to_vec(value).map_err(|error| error.to_string())?,
+    )))
 }
 
 pub fn validate_plan(

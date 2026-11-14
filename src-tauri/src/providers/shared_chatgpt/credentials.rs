@@ -25,12 +25,16 @@ impl Credentials {
     pub(crate) fn from_tokens(response: Value) -> Result<Self, String> {
         let identity = claims(response["id_token"].as_str().ok_or(INVALID)?)?;
         let account = identity["https://api.openai.com/auth"]["chatgpt_account_id"]
-            .as_str().ok_or(INVALID)?;
-        Self::parse(serde_json::json!({"auth_mode":"chatgpt", "OPENAI_API_KEY":null,
+            .as_str()
+            .ok_or(INVALID)?;
+        Self::parse(
+            serde_json::json!({"auth_mode":"chatgpt", "OPENAI_API_KEY":null,
             "tokens":{"id_token":response["id_token"], "access_token":response["access_token"],
                 "refresh_token":response["refresh_token"], "account_id":account,
                 "oauth_provenance":{"issuer":"https://auth.openai.com","client_id":LEGACY_CLIENT}},
-            "last_refresh":Utc::now().to_rfc3339()}), true)
+            "last_refresh":Utc::now().to_rfc3339()}),
+            true,
+        )
     }
 
     pub fn parse(value: Value, renewable: bool) -> Result<Self, String> {

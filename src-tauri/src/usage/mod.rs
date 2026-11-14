@@ -8,13 +8,13 @@ pub const PARSER_VERSION: u32 = 4;
 
 pub mod anthropic;
 mod cursor;
-mod turn_status;
 mod pricing_state;
-use pricing_state::{PriceEvidence, PriceQuote};
-pub use turn_status::TurnStatus;
+mod turn_status;
 #[cfg(test)]
 pub use cursor::sync_file;
 pub use cursor::{sync_file_bound, Cursor};
+use pricing_state::{PriceEvidence, PriceQuote};
+pub use turn_status::TurnStatus;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -284,7 +284,9 @@ pub fn correct_provider_price(record: &mut RequestUsage) -> bool {
             reason: "The verified provider has no recorded tariff.".into(),
         });
     }
-    record.record_quote(PriceQuote::Unknown(Some("Provider price is unavailable".into())));
+    record.record_quote(PriceQuote::Unknown(Some(
+        "Provider price is unavailable".into(),
+    )));
     true
 }
 
@@ -556,7 +558,9 @@ fn correct_legacy_tier(request: &mut RequestUsage, tier: &str, source: &str) {
     });
     let Some(ratio) = ratio else {
         request.rates = None;
-        request.record_quote(PriceQuote::Unknown(Some("The recorded service tier price is unavailable".into())));
+        request.record_quote(PriceQuote::Unknown(Some(
+            "The recorded service tier price is unavailable".into(),
+        )));
         return;
     };
     let mut corrected = previous;
@@ -568,8 +572,10 @@ fn correct_legacy_tier(request: &mut RequestUsage, tier: &str, source: &str) {
     corrected.tier = tier.into();
     corrected.tier_assumed = tier == "auto";
     if request.cost_usd.is_some() {
-        request.record_quote(PriceQuote::from(price(&request.tokens, &corrected)
-            .ok_or_else(|| "The recorded service tier price is unavailable".into())));
+        request.record_quote(PriceQuote::from(
+            price(&request.tokens, &corrected)
+                .ok_or_else(|| "The recorded service tier price is unavailable".into()),
+        ));
     }
     request.rates = Some(corrected);
 }

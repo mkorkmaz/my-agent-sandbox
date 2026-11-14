@@ -4,7 +4,11 @@ use super::{guest_namespace, Ledger, SessionRecord};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
-enum OwnershipEvidence { Unknown, Single(String), Mixed }
+enum OwnershipEvidence {
+    Unknown,
+    Single(String),
+    Mixed,
+}
 
 impl From<BTreeSet<String>> for OwnershipEvidence {
     fn from(owners: BTreeSet<String>) -> Self {
@@ -17,12 +21,27 @@ impl From<BTreeSet<String>> for OwnershipEvidence {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum SlotState { Empty, Selected, Retained, AvailableVariant }
+enum SlotState {
+    Empty,
+    Selected,
+    Retained,
+    AvailableVariant,
+}
 
-fn slot_state(current: Option<&SessionRecord>, variants: Option<&BTreeMap<String, SessionRecord>>, guest: &str) -> SlotState {
-    if current.is_some_and(|record| record.guest_namespace.as_deref() == Some(guest)) { return SlotState::Selected; }
-    if variants.is_some_and(|variants| variants.contains_key(guest)) { return SlotState::AvailableVariant; }
-    if current.is_some() { return SlotState::Retained; }
+fn slot_state(
+    current: Option<&SessionRecord>,
+    variants: Option<&BTreeMap<String, SessionRecord>>,
+    guest: &str,
+) -> SlotState {
+    if current.is_some_and(|record| record.guest_namespace.as_deref() == Some(guest)) {
+        return SlotState::Selected;
+    }
+    if variants.is_some_and(|variants| variants.contains_key(guest)) {
+        return SlotState::AvailableVariant;
+    }
+    if current.is_some() {
+        return SlotState::Retained;
+    }
     SlotState::Empty
 }
 

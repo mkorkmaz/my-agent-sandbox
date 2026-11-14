@@ -11,7 +11,8 @@ pub(super) enum AccountState {
 
 impl Session {
     pub(super) fn generation_after(&self, changes: u64) -> Result<u64, String> {
-        self.generation.checked_add(changes)
+        self.generation
+            .checked_add(changes)
             .ok_or_else(|| "The account record generation is invalid.".into())
     }
 

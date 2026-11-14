@@ -70,7 +70,13 @@ mod tests {
     #[test]
     fn quote_transitions_keep_amount_and_unknown_reason_consistent() {
         let mut request = super::super::request(
-            "fixture".into(), "fixture".into(), None, None, Tokens::default(), false);
+            "fixture".into(),
+            "fixture".into(),
+            None,
+            None,
+            Tokens::default(),
+            false,
+        );
         request.record_quote(PriceQuote::Known(0.25));
         assert_eq!(request.cost_usd, Some(0.25));
         assert!(request.unpriced_reason.is_none());

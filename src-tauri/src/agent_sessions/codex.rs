@@ -88,10 +88,17 @@ fn arguments(
         Action::Login => LaunchMode::Login,
         _ => LaunchMode::Chat,
     };
-    let mut admission = Admission::begin(&checked.project, AgentKind::Codex, mode,
-        "Prepare the environment and verify the guest Codex version first.")?;
+    let mut admission = Admission::begin(
+        &checked.project,
+        AgentKind::Codex,
+        mode,
+        "Prepare the environment and verify the guest Codex version first.",
+    )?;
     if mode != LaunchMode::Shell {
-        admission.online(&checked.settings.network, "Sign-in and online Codex sessions are unavailable in offline mode.")?;
+        admission.online(
+            &checked.settings.network,
+            "Sign-in and online Codex sessions are unavailable in offline mode.",
+        )?;
     }
     if session_id.is_some() && !matches!(action, Action::Resume) {
         return Err("This action does not accept a saved session ID.".into());
@@ -121,9 +128,11 @@ fn arguments(
             );
         }
         admission.capabilities()?;
-        return admission.prepare(AgentKind::Codex
-            .command(request)?
-            .in_guest(checked.project.reference()));
+        return admission.prepare(
+            AgentKind::Codex
+                .command(request)?
+                .in_guest(checked.project.reference()),
+        );
     }
 
     admission.authorize(login(checked)?.method == "chatgpt", "This project's Codex configuration did not accept the shared ChatGPT account. Check its Codex settings or reconnect the account in Settings.")?;

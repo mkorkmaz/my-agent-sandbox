@@ -19,21 +19,35 @@ const STAGING: &str = "usage.sqlite3.importing";
 const DATABASE: &str = "usage.sqlite3";
 
 #[derive(Eq, PartialEq)]
-enum ActivationState { Active, Legacy }
+enum ActivationState {
+    Active,
+    Legacy,
+}
 
 #[derive(Eq, PartialEq)]
-enum PublicationState { Missing, Staged, Published }
+enum PublicationState {
+    Missing,
+    Staged,
+    Published,
+}
 
 impl PublicationState {
     fn inspect(records: &RecordsDirectory) -> Result<Self, String> {
-        if exists(&records.path().join(DATABASE))? { return Ok(Self::Published); }
-        if exists(&records.path().join(STAGING))? { return Ok(Self::Staged); }
+        if exists(&records.path().join(DATABASE))? {
+            return Ok(Self::Published);
+        }
+        if exists(&records.path().join(STAGING))? {
+            return Ok(Self::Staged);
+        }
         Ok(Self::Missing)
     }
 }
 
 #[derive(Eq, PartialEq)]
-enum StagingState { Empty, VerifiedImport }
+enum StagingState {
+    Empty,
+    VerifiedImport,
+}
 
 fn sync_directory(records: &RecordsDirectory) -> Result<(), String> {
     records.verify()?;

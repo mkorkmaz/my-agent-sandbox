@@ -16,7 +16,9 @@ impl Removal {
             || (self.logged_out && !self.logout)
             || (self.logout && !self.logged_out && self.environment_removed)
         {
-            return Err("The saved removal checkpoints are out of order. Review the removal record.".into());
+            return Err(
+                "The saved removal checkpoints are out of order. Review the removal record.".into(),
+            );
         }
         Ok(())
     }

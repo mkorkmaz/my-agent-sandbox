@@ -1129,7 +1129,9 @@ fn uncommitted_login_files_require_a_confirmed_process_result_and_ignore_late_ca
         !runtime.recovery_success(&pending),
         "A file alone does not prove a completed login after a crash"
     );
-    runtime.attach_login_process(pending.nonce.clone(), 42).unwrap();
+    runtime
+        .attach_login_process(pending.nonce.clone(), 42)
+        .unwrap();
     runtime.record_login_exit(&pending.nonce, true);
     assert!(runtime.recovery_success(&pending));
     runtime.record_login_exit(&"c".repeat(32), false);
@@ -1270,12 +1272,14 @@ fn a_pending_renewal_rebinds_only_to_the_verified_matching_records_dataset() {
     assert!(!records.exists());
 }
 
-
 #[test]
 fn recheck_disconnected_record_cannot_require_renewal_without_credentials() {
     let fixture = Fixture::new();
     let (store, _) = fixture.records();
-    let session = Session { reconnect_required:true, ..Default::default() };
+    let session = Session {
+        reconnect_required: true,
+        ..Default::default()
+    };
     assert!(store.save(&session).is_err());
 }
 
@@ -1284,10 +1288,21 @@ fn recheck_an_imported_login_requires_committed_credentials() {
     let fixture = Fixture::new();
     let (store, _) = fixture.records();
     let nonce = "a".repeat(32);
-    let pending = super::store::PendingLogin { project_id:"b".repeat(32),
-        directory:fixture.0.join("guest-home/.tugboat-chatgpt-login").join(&nonce), nonce,
-        identity:(1,2), imported:true, cancelled:false };
-    let session = Session { pending_login:Some(pending), ..Default::default() };
+    let pending = super::store::PendingLogin {
+        project_id: "b".repeat(32),
+        directory: fixture
+            .0
+            .join("guest-home/.tugboat-chatgpt-login")
+            .join(&nonce),
+        nonce,
+        identity: (1, 2),
+        imported: true,
+        cancelled: false,
+    };
+    let session = Session {
+        pending_login: Some(pending),
+        ..Default::default()
+    };
     assert!(store.save(&session).is_err());
 }
 
@@ -1296,13 +1311,23 @@ fn recheck_renewal_can_commit_before_requesting_replacement_credentials() {
     let fixture = Fixture::new();
     let (store, records) = fixture.records();
     let mut session = Session::default();
-    let credentials = super::credentials::Credentials::parse(credential_value("test"), true).unwrap();
+    let credentials =
+        super::credentials::Credentials::parse(credential_value("test"), true).unwrap();
     session.connect(credentials.clone()).unwrap();
     session.generation = u64::MAX;
     store.save(&session).unwrap();
     let mut requested = false;
-    let result = super::account::refresh_with(&mut super::account::Runtime::default(), &store, &mut session, true,
-        records, |_| { requested = true; Ok(credentials) });
+    let result = super::account::refresh_with(
+        &mut super::account::Runtime::default(),
+        &store,
+        &mut session,
+        true,
+        records,
+        |_| {
+            requested = true;
+            Ok(credentials)
+        },
+    );
     assert!(result.is_err());
     assert!(!requested);
 }
@@ -1314,10 +1339,17 @@ fn recheck_failed_guest_cleanup_preserves_retry_receipts_in_memory() {
     for index in 1..=2 {
         let dir = fixture.0.join(index.to_string());
         fs::create_dir(&dir).unwrap();
-        session.bindings.push(Binding { project_id:format!("{index:032x}"),
-            identity:super::guest::identity(&dir).unwrap(), directory:dir.clone(),
-            auth_hash:None,access_hash:None,pending:false });
-        if index == 1 { fs::create_dir(dir.join("auth.json")).unwrap(); }
+        session.bindings.push(Binding {
+            project_id: format!("{index:032x}"),
+            identity: super::guest::identity(&dir).unwrap(),
+            directory: dir.clone(),
+            auth_hash: None,
+            access_hash: None,
+            pending: false,
+        });
+        if index == 1 {
+            fs::create_dir(dir.join("auth.json")).unwrap();
+        }
     }
     assert!(super::guest::cleanup(&mut session).is_err());
     assert_eq!(session.bindings.len(), 2);

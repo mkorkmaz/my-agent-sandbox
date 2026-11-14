@@ -469,7 +469,9 @@ fn scan_history_known(
     let graph_ids: BTreeSet<_> = sessions.keys().chain(known.keys()).cloned().collect();
     for id in &graph_ids {
         result.record_membership(id, graph.resolved_root_cwd(id), guest_project);
-        let saved = known.get(id).filter(|record| record.guest_namespace.as_deref() == Some(&namespace));
+        let saved = known
+            .get(id)
+            .filter(|record| record.guest_namespace.as_deref() == Some(&namespace));
         if result.membership(id, saved) == MembershipState::RetainedExclusion {
             members.remove(id);
         }
@@ -684,7 +686,11 @@ impl History {
     fn unobserve(&self, id: &str) -> Result<(), String> {
         self.remove(id, None, false)
     }
-    fn publication_state(&self, id: &str, dashboard: &Dashboard) -> Result<PublicationState, String> {
+    fn publication_state(
+        &self,
+        id: &str,
+        dashboard: &Dashboard,
+    ) -> Result<PublicationState, String> {
         let published = self.published.lock().map_err(|error| error.to_string())?;
         Ok(PublicationState::observe(published.get(id), dashboard))
     }
@@ -1054,7 +1060,9 @@ fn ledger_graph(ledger: &Ledger) -> Graph {
 fn guest_namespace(canonical_home: &Path) -> String {
     format!(
         "guest:{}",
-        crate::hash::hex(Sha256::digest(canonical_home.as_os_str().as_encoded_bytes()))
+        crate::hash::hex(Sha256::digest(
+            canonical_home.as_os_str().as_encoded_bytes()
+        ))
     )
 }
 
@@ -1183,7 +1191,9 @@ fn resume_dashboard(watch: &Watch, session_id: &str) -> Result<Dashboard, String
     let _file_guard = watch.legacy_lock()?;
     let ledger = watch.stored_metadata()?;
     root_family(&ledger, session_id)?;
-    if !project_record(&ledger, session_id).is_some_and(|record| record.source_state() == SourceState::Available) {
+    if !project_record(&ledger, session_id)
+        .is_some_and(|record| record.source_state() == SourceState::Available)
+    {
         return Err("This saved session file is unavailable. Refresh the session list.".into());
     }
     Ok(dashboard)
@@ -1257,7 +1267,10 @@ pub fn monitor(app: AppHandle) {
             history.refresh(key, watch)?;
             let dashboard = history.merged(id)?;
             environment_history::bind(&app, id, &dashboard)?;
-            if history.publication_state(id, &dashboard)?.permits_publication() {
+            if history
+                .publication_state(id, &dashboard)?
+                .permits_publication()
+            {
                 let update = DashboardUpdate::new(dashboard);
                 app.emit("project-usage-updated", (&id, &update))
                     .map_err(|error| error.to_string())?;

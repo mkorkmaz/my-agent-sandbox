@@ -1,5 +1,5 @@
-use crate::storage::RecordSchema;
 use super::{EnvironmentId, Project, Registry};
+use crate::storage::RecordSchema;
 use crate::{agents::AgentKind, desktop::settings};
 use serde::Deserialize;
 use serde_json::Value;

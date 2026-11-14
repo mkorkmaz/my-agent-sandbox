@@ -30,7 +30,9 @@ impl RenewalRetry {
         matches!(self.phase, RetryPhase::Waiting(deadline) if deadline > now)
     }
 
-    pub fn exhausted(&self) -> bool { self.failures >= 5 }
+    pub fn exhausted(&self) -> bool {
+        self.failures >= 5
+    }
 
     pub fn failed(&mut self, now: Instant) {
         self.failures = self.failures.saturating_add(1).min(5);

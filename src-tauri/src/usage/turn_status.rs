@@ -88,7 +88,11 @@ mod tests {
         for terminal in [TurnStatus::Complete, TurnStatus::Interrupted] {
             let mut status = TurnStatus::InProgress;
             assert!(status.observe_completion(terminal.clone()));
-            for replay in [TurnStatus::Complete, TurnStatus::Interrupted, TurnStatus::InProgress] {
+            for replay in [
+                TurnStatus::Complete,
+                TurnStatus::Interrupted,
+                TurnStatus::InProgress,
+            ] {
                 assert!(!status.observe_completion(replay));
                 assert_eq!(status, terminal);
             }

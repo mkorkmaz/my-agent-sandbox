@@ -9,7 +9,10 @@ pub(super) enum ShutdownState {
 
 impl ShutdownState {
     pub fn abort(&mut self) {
-        if matches!(self, Self::Confirming | Self::Draining | Self::WindowCloseAllowed) {
+        if matches!(
+            self,
+            Self::Confirming | Self::Draining | Self::WindowCloseAllowed
+        ) {
             *self = Self::Open;
         }
     }

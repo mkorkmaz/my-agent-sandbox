@@ -165,7 +165,10 @@ fn saved_project_snapshot_combines_agent_environments_without_merging_their_sess
     let claude_target = claude.target.as_ref().unwrap().clone();
     store
         .with(|store| {
-            store.save_environment(&claude_target.usage_environment()?, &claude.selected_ledger()?)
+            store.save_environment(
+                &claude_target.usage_environment()?,
+                &claude.selected_ledger()?,
+            )
         })
         .unwrap();
 

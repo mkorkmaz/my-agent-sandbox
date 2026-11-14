@@ -110,7 +110,10 @@ pub async fn start_agent_session(
     layout: Layout,
 ) -> Result<u64, String> {
     if action == Action::Login {
-        return Err("Connect the provider in Settings, Providers. Sign-in does not require a project.".into());
+        return Err(
+            "Connect the provider in Settings, Providers. Sign-in does not require a project."
+                .into(),
+        );
     }
     let app = window.app_handle().clone();
     let project = selected(&app, &identifier, environment_id.as_ref())?;
@@ -175,11 +178,14 @@ pub async fn start_agent_session(
         }
         crate::conversations::observe(&prepare_app, &checked)?;
         let command = environment::command(&checked, arguments);
-        Ok::<_, String>((Launch::Prepared {
-            command,
-            project: checked.project,
-            conversation: session.map(|session| session.argument()),
-        }, account))
+        Ok::<_, String>((
+            Launch::Prepared {
+                command,
+                project: checked.project,
+                conversation: session.map(|session| session.argument()),
+            },
+            account,
+        ))
     })
     .await
     .map_err(|_| "Could not prepare this agent session.")??;
@@ -241,7 +247,16 @@ pub async fn agent_account_status(
             );
         }
         let shared = crate::providers::shared_claude::ensure(&app, &checked)?;
-        let status = Status::new(&project, if shared.state == "signed-in" && claude::signed_in(&checked)? { State::SignedIn } else { State::SignedOut }, &shared.message, None);
+        let status = Status::new(
+            &project,
+            if shared.state == "signed-in" && claude::signed_in(&checked)? {
+                State::SignedIn
+            } else {
+                State::SignedOut
+            },
+            &shared.message,
+            None,
+        );
         accounts.publish(&project, status)
     })
     .await
@@ -255,7 +270,10 @@ pub async fn agent_logout(
     environment_id: EnvironmentId,
 ) -> Result<Status, String> {
     let _ = (app, identifier, environment_id);
-    Err("Use Sign out of Tugboat in Settings, Providers to disconnect the shared Claude account.".into())
+    Err(
+        "Use Sign out of Tugboat in Settings, Providers to disconnect the shared Claude account."
+            .into(),
+    )
 }
 
 #[cfg(test)]

@@ -11,7 +11,10 @@ static SHUTDOWN: Mutex<ShutdownState> = Mutex::new(ShutdownState::Open);
 const MESSAGE: &str = "An agent or terminal is still running. Closing the app will end these processes and save final usage. Brig environments, guest homes and conversation history will be preserved.";
 
 pub fn is_closing() -> bool {
-    SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).is_closing()
+    SHUTDOWN
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .is_closing()
 }
 
 enum Target {
@@ -21,7 +24,13 @@ enum Target {
 }
 
 fn begin(app: AppHandle, target: Target) {
-    if !SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).begin() { return; }
+    if !SHUTDOWN
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .begin()
+    {
+        return;
+    }
     crate::providers::provider_login::cancel_all(&app);
     // Keep AppKit responsive while PTY readers drain output and child.wait reaps processes.
     std::thread::spawn(move || {
@@ -48,10 +57,7 @@ fn begin(app: AppHandle, target: Target) {
         }
         if errors.is_empty() {
             // Writers have exited; the last usage event cannot race the final scan.
-            if let Err(error) = finish_usage(
-                || conversations::flush(&app),
-                || Ok(()),
-            ) {
+            if let Err(error) = finish_usage(|| conversations::flush(&app), || Ok(())) {
                 errors.push(error);
             }
         }
@@ -66,12 +72,19 @@ fn begin(app: AppHandle, target: Target) {
                 }
             }
             if errors.is_empty() {
-                if let Err(error) = SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).approve() {
+                if let Err(error) = SHUTDOWN
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .approve()
+                {
                     errors.push(error);
                 }
             }
             if !errors.is_empty() {
-                SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).abort();
+                SHUTDOWN
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .abort();
                 complete
                     .dialog()
                     .message(errors.join("\n"))
@@ -85,21 +98,31 @@ fn begin(app: AppHandle, target: Target) {
                 Target::Restart => complete.restart(),
                 Target::Window(window) => {
                     if let Err(error) = window.close() {
-                        SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).abort();
+                        SHUTDOWN
+                            .lock()
+                            .unwrap_or_else(|error| error.into_inner())
+                            .abort();
                         eprintln!("Could not close the window: {error}");
                     }
                 }
             }
         });
         if let Err(error) = dispatched {
-            SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).abort();
+            SHUTDOWN
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .abort();
             eprintln!("Could not dispatch app shutdown. Retry closing the app. {error}");
         }
     });
 }
 
 fn request(app: &AppHandle, target: Target) {
-    if !SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).request() {
+    if !SHUTDOWN
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .request()
+    {
         return;
     }
     if !terminal::any_running() {
@@ -130,7 +153,10 @@ fn request(app: &AppHandle, target: Target) {
         if confirmed {
             begin(app, target);
         } else {
-            SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).abort();
+            SHUTDOWN
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .abort();
         }
     });
 }
@@ -139,7 +165,11 @@ pub fn window_event(window: &Window, event: &WindowEvent) {
     let WindowEvent::CloseRequested { api, .. } = event else {
         return;
     };
-    if SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).consume_window_close() {
+    if SHUTDOWN
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .consume_window_close()
+    {
         return;
     }
     api.prevent_close();
@@ -159,7 +189,11 @@ pub fn request_restart(app: &AppHandle) {
 
 pub fn event(app: &AppHandle, event: RunEvent) {
     if let RunEvent::ExitRequested { api, .. } = event {
-        if SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()).allows_exit() {
+        if SHUTDOWN
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .allows_exit()
+        {
             return;
         }
         api.prevent_exit();

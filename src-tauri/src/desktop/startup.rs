@@ -26,7 +26,10 @@ impl Startup {
         self.advance(WindowState::UsageStarting, WindowState::AwaitingFrontend)
     }
     fn advance(&self, expected: WindowState, next: WindowState) -> Result<(), String> {
-        self.0.lock().map_err(|error| error.to_string())?.advance(expected, next)
+        self.0
+            .lock()
+            .map_err(|error| error.to_string())?
+            .advance(expected, next)
     }
 }
 

@@ -177,7 +177,11 @@ fn prepare_selected(
     if project.removal_pending() {
         return Ok(Preparation { project, plan: None, candidates: Vec::new(), message: Some("Removal is incomplete. Review the removal preview to continue. Project setup is paused.".into()), fingerprint: None });
     }
-    if matches!(project.stage, crate::projects::ProjectStage::EnvironmentStarting | crate::projects::ProjectStage::Stopping) {
+    if matches!(
+        project.stage,
+        crate::projects::ProjectStage::EnvironmentStarting
+            | crate::projects::ProjectStage::Stopping
+    ) {
         return Ok(Preparation {
             project,
             plan: None,
@@ -431,10 +435,13 @@ pub async fn prepare_project(
         crate::storage::data_location::validate_project_records(&app, &registry)?;
         let mut project = registry.environment(&identifier, &environment_id)?;
         let active = crate::environment::EnvironmentOperation::pending(&environment_id)
-            || crate::terminal::terminal_sessions(identifier.clone()).iter().any(|session| {
-                session.environment_id.as_ref() == Some(&environment_id)
-                    && session.purpose == "environment" && session.running
-            });
+            || crate::terminal::terminal_sessions(identifier.clone())
+                .iter()
+                .any(|session| {
+                    session.environment_id.as_ref() == Some(&environment_id)
+                        && session.purpose == "environment"
+                        && session.running
+                });
         if project.recover_preparation(active)? {
             save(&registry_file, &project)?;
         }

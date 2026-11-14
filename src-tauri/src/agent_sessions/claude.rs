@@ -66,12 +66,19 @@ pub(super) fn arguments(
         Action::Login => LaunchMode::Login,
         _ => LaunchMode::Chat,
     };
-    let mut admission = Admission::begin(&checked.project, AgentKind::ClaudeCode, mode,
-        "Prepare the selected Claude environment first.")?;
+    let mut admission = Admission::begin(
+        &checked.project,
+        AgentKind::ClaudeCode,
+        mode,
+        "Prepare the selected Claude environment first.",
+    )?;
     if action == Action::Shell {
         return admission.prepare(vec!["sh".into(), checked.project.reference()]);
     }
-    admission.online(&checked.settings.network, "Claude sign-in and chats are unavailable in offline mode.")?;
+    admission.online(
+        &checked.settings.network,
+        "Claude sign-in and chats are unavailable in offline mode.",
+    )?;
     if use_brig_boundary == Some(false) {
         return Err(
             "Claude uses the Brig boundary. Enable it before starting this session.".into(),
@@ -79,11 +86,16 @@ pub(super) fn arguments(
     }
     if action == Action::Login {
         admission.capabilities()?;
-        return admission.prepare(AgentKind::ClaudeCode
-            .command(AgentCommand::Login)?
-            .in_guest(checked.project.reference()));
+        return admission.prepare(
+            AgentKind::ClaudeCode
+                .command(AgentCommand::Login)?
+                .in_guest(checked.project.reference()),
+        );
     }
-    admission.authorize(signed_in(checked)?, "Sign in with Claude in Settings, Providers.")?;
+    admission.authorize(
+        signed_in(checked)?,
+        "Sign in with Claude in Settings, Providers.",
+    )?;
     let help = checked.brig.checked(
         &[
             "exec".into(),

@@ -140,7 +140,11 @@ impl ChatState {
 
     fn update_title(&mut self, title: title::ChatTitle) -> bool {
         let changed_prefix = title.prefix.is_some() && title.prefix != self.prefix;
-        let activity = if title.busy { ChatActivity::Busy } else { ChatActivity::Idle };
+        let activity = if title.busy {
+            ChatActivity::Busy
+        } else {
+            ChatActivity::Idle
+        };
         let changed = changed_prefix || self.activity != activity;
         if changed_prefix {
             self.prefix = title.prefix;
@@ -350,7 +354,10 @@ const LIVE_LIMIT: usize = 16;
 const FINISHED_LIMIT: usize = 32;
 
 #[derive(Debug, PartialEq)]
-enum Capacity { Available, Full }
+enum Capacity {
+    Available,
+    Full,
+}
 
 #[derive(Debug, PartialEq)]
 struct Retention {
@@ -367,8 +374,15 @@ fn retention(statuses: &[(u64, bool)]) -> Retention {
         .collect();
     finished.sort_unstable();
     finished.truncate(finished.len().saturating_sub(FINISHED_LIMIT));
-    let capacity = if can_start { Capacity::Available } else { Capacity::Full };
-    Retention { capacity, expired: finished }
+    let capacity = if can_start {
+        Capacity::Available
+    } else {
+        Capacity::Full
+    };
+    Retention {
+        capacity,
+        expired: finished,
+    }
 }
 
 fn trim_finished(app: &AppHandle) {
@@ -608,7 +622,9 @@ pub(crate) async fn start_reserved(
             );
         }
         if let Err(error) = creating.view.attach(pointer as usize) {
-            unsafe { brig_terminal_destroy(pointer); }
+            unsafe {
+                brig_terminal_destroy(pointer);
+            }
             return Err(error);
         }
         unsafe {
@@ -625,7 +641,7 @@ pub(crate) async fn start_reserved(
     })
     .await;
     match view {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(error) => {
             state.process.stop(libc::SIGHUP);
             if let Ok(mut states) = sessions().lock() {
@@ -827,10 +843,19 @@ pub fn chatgpt_in_use(skip_finished_login: bool) -> bool {
 }
 
 pub fn claude_in_use() -> bool {
-    sessions().lock().is_ok_and(|states| states.values().any(|session| {
-        session.process.running() && matches!(session.purpose, "claude" | "claude-resume" | "login" | "shell") && session.target.as_ref()
-            .is_some_and(|target| target.agent_kind == crate::agents::AgentKind::ClaudeCode)
-    }))
+    sessions().lock().is_ok_and(|states| {
+        states.values().any(|session| {
+            session.process.running()
+                && matches!(
+                    session.purpose,
+                    "claude" | "claude-resume" | "login" | "shell"
+                )
+                && session
+                    .target
+                    .as_ref()
+                    .is_some_and(|target| target.agent_kind == crate::agents::AgentKind::ClaudeCode)
+        })
+    })
 }
 
 fn runs_in_guest(purpose: &str) -> bool {
@@ -887,13 +912,37 @@ mod tests {
     fn completed_outputs_do_not_consume_live_capacity_and_retention_never_evicts_running_processes()
     {
         let mut states: Vec<_> = (1..=16).map(|id| (id, false)).collect();
-        assert_eq!(retention(&states), Retention { capacity: Capacity::Available, expired: Vec::new() });
+        assert_eq!(
+            retention(&states),
+            Retention {
+                capacity: Capacity::Available,
+                expired: Vec::new()
+            }
+        );
         states.extend((17..=32).map(|id| (id, true)));
-        assert_eq!(retention(&states), Retention { capacity: Capacity::Full, expired: Vec::new() });
+        assert_eq!(
+            retention(&states),
+            Retention {
+                capacity: Capacity::Full,
+                expired: Vec::new()
+            }
+        );
         states.extend((33..=50).map(|id| (id, false)));
-        assert_eq!(retention(&states), Retention { capacity: Capacity::Full, expired: vec![1, 2] });
+        assert_eq!(
+            retention(&states),
+            Retention {
+                capacity: Capacity::Full,
+                expired: vec![1, 2]
+            }
+        );
         states.retain(|(id, _)| *id != 17);
-        assert_eq!(retention(&states), Retention { capacity: Capacity::Available, expired: vec![1, 2] });
+        assert_eq!(
+            retention(&states),
+            Retention {
+                capacity: Capacity::Available,
+                expired: vec![1, 2]
+            }
+        );
     }
 
     fn conversation(id: &str) -> crate::conversations::Conversation {

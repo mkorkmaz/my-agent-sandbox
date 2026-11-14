@@ -1,5 +1,5 @@
-use crate::storage::RecordSchema;
 use super::{AgentDefaults, Network, Settings, Verification};
+use crate::storage::RecordSchema;
 use serde::Deserialize;
 use serde_json::Value;
 

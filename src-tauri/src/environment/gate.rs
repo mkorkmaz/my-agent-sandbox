@@ -14,19 +14,27 @@ impl EnvironmentOperation {
     pub fn begin(identifier: &EnvironmentId) -> Result<Self, String> {
         let mut operations = active().lock().map_err(|error| error.to_string())?;
         if !operations.insert(identifier.clone()) {
-            return Err("This environment operation is already in progress. Wait and retry.".into());
+            return Err(
+                "This environment operation is already in progress. Wait and retry.".into(),
+            );
         }
         Ok(Self(identifier.clone()))
     }
 
     pub fn pending(identifier: &EnvironmentId) -> bool {
-        active().lock().unwrap_or_else(|error| error.into_inner()).contains(identifier)
+        active()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .contains(identifier)
     }
 }
 
 impl Drop for EnvironmentOperation {
     fn drop(&mut self) {
-        active().lock().unwrap_or_else(|error| error.into_inner()).remove(&self.0);
+        active()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .remove(&self.0);
     }
 }
 

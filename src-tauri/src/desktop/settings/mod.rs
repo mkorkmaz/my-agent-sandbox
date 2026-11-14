@@ -153,7 +153,10 @@ impl Settings {
         let output = host::query(&brig, &["--json", "version"], &AtomicBool::new(false))?;
         let version = host::envelope(&output, "Version")?;
         if version["data"]["version"] != host::SUPPORTED_BRIG_VERSION {
-            return Err(format!("This app requires Brig {}. Clear or update the CLI path in Settings.", host::SUPPORTED_BRIG_VERSION));
+            return Err(format!(
+                "This app requires Brig {}. Clear or update the CLI path in Settings.",
+                host::SUPPORTED_BRIG_VERSION
+            ));
         }
         Ok(brig)
     }
@@ -215,9 +218,7 @@ pub fn migrate(
     file: &Path,
     records: &crate::storage::data_location::RecordsDirectory,
 ) -> Result<bool, String> {
-    storage::upgrade_record(file, records, |bytes| {
-        migration::decode(bytes)
-    })
+    storage::upgrade_record(file, records, |bytes| migration::decode(bytes))
 }
 
 #[derive(Default, Serialize, Deserialize)]

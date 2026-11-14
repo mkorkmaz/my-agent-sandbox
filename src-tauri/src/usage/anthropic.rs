@@ -230,7 +230,9 @@ pub fn refresh(record: &mut RequestUsage) {
     let recovery = record.anthropic.is_none().then(|| evidence(record, "Backfilled recorded Anthropic token API equivalent using the verified catalogue; missing billing metadata is explicitly assumed."));
     super::correct_provider_price(record);
     if !record.tokens.cached_is_known() || !record.tokens.writes_are_known() {
-        record.record_quote(PriceQuote::Unknown(Some("Anthropic cache usage is not recorded".into())));
+        record.record_quote(PriceQuote::Unknown(Some(
+            "Anthropic cache usage is not recorded".into(),
+        )));
         return;
     }
     let metadata = record.anthropic.get_or_insert_with(Metadata::default);
@@ -250,7 +252,9 @@ pub fn refresh(record: &mut RequestUsage) {
         .into(),
     );
     let Some(rate) = record.rates.as_mut() else {
-        record.record_quote(PriceQuote::Unknown(Some("Anthropic model or long-context price is unavailable".into())));
+        record.record_quote(PriceQuote::Unknown(Some(
+            "Anthropic model or long-context price is unavailable".into(),
+        )));
         return;
     };
     let result = apply_metadata(rate, metadata, record.tokens.cache_write).and_then(|_| {

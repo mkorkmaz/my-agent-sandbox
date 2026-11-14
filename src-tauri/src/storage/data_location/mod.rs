@@ -1,8 +1,8 @@
 mod state;
-use state::{ChangeKind, MarkerState, MovePhase};
 use crate::storage::{self, FileLock};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use state::{ChangeKind, MarkerState, MovePhase};
 use std::fs::{self, File};
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
@@ -261,7 +261,10 @@ fn private_records_directory(directory: &Path, id: &str) -> Result<(), String> {
     private_directory(directory, || require_directory(directory, id))
 }
 
-fn private_directory(directory: &Path, verify: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
+fn private_directory(
+    directory: &Path,
+    verify: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
     let folder = fs::OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
@@ -284,9 +287,13 @@ fn private_directory(directory: &Path, verify: impl FnOnce() -> Result<(), Strin
     folder
         .set_permissions(fs::Permissions::from_mode(0o700))
         .and_then(|_| folder.sync_all())
-        .map_err(|error| format!("Could not set private permissions on the records folder. {error}"))?;
+        .map_err(|error| {
+            format!("Could not set private permissions on the records folder. {error}")
+        })?;
     if folder.metadata().map_err(|error| error.to_string())?.mode() & 0o777 != 0o700 {
-        return Err("This volume could not apply private permissions to the records folder.".into());
+        return Err(
+            "This volume could not apply private permissions to the records folder.".into(),
+        );
     }
     Ok(())
 }
@@ -452,7 +459,9 @@ fn finish_move(
         } else {
             &location.directory
         };
-        if source.join("chatgpt/session.json").exists() || source.join("claude/session.json").exists() {
+        if source.join("chatgpt/session.json").exists()
+            || source.join("claude/session.json").exists()
+        {
             let registry = crate::projects::Registry::load(&source.join("projects.json"))?;
             require_private_records(&target, &registry)?;
         }
@@ -679,10 +688,10 @@ impl DataLocation {
                         .map_err(|error| error.to_string())?
                         .as_nanos();
                     let id = crate::hash::hex(Sha256::digest(format!(
-                            "{}:{}:{stamp}",
-                            directory.display(),
-                            std::process::id()
-                        )))[..32]
+                        "{}:{}:{stamp}",
+                        directory.display(),
+                        std::process::id()
+                    )))[..32]
                         .to_owned();
                     storage::write(
                         &directory.join(MARKER),
@@ -709,9 +718,12 @@ impl DataLocation {
             };
             match initialize() {
                 Ok(mut location) => {
-                    let restored =
-                        upgrade_known_marker(&location.directory, &location.directory_id, MarkerState::Complete)
-                            .and_then(|_| finish_move(&mut location, &pointer, &default_directory));
+                    let restored = upgrade_known_marker(
+                        &location.directory,
+                        &location.directory_id,
+                        MarkerState::Complete,
+                    )
+                    .and_then(|_| finish_move(&mut location, &pointer, &default_directory));
                     if let Err(error) = restored {
                         saved.message = Some(format!("Could not finish moving records. {error}"));
                     }
@@ -771,7 +783,11 @@ impl DataLocation {
         let Some(location) = &saved.location else {
             return Ok(None);
         };
-        let Some(pending) = location.pending.as_ref().filter(|pending| pending.kind == ChangeKind::Locate) else {
+        let Some(pending) = location
+            .pending
+            .as_ref()
+            .filter(|pending| pending.kind == ChangeKind::Locate)
+        else {
             return Ok(None);
         };
         let records = RecordsDirectory {
@@ -823,7 +839,12 @@ impl DataLocation {
         if saved.reconnected.is_some() {
             return Err("Restart Tugboat to finish reconnecting records before changing their location again.".into());
         }
-        if kind == ChangeKind::Move && saved.location.as_ref().is_some_and(|location| location.previous_directory.is_some()) {
+        if kind == ChangeKind::Move
+            && saved
+                .location
+                .as_ref()
+                .is_some_and(|location| location.previous_directory.is_some())
+        {
             return Err("Reconnect the previous records folder and restart Tugboat to finish cleanup before moving records again.".into());
         }
         if kind == ChangeKind::Locate {
@@ -1548,9 +1569,26 @@ mod tests {
         drop(location);
         let moved = DataLocation::open(default.clone(), legacy);
         assert_eq!(moved.status().unwrap().directory, Some(target.clone()));
-        assert_eq!(fs::read(target.join("claude/session.json")).unwrap(), original);
-        assert_eq!(fs::metadata(target.join("claude")).unwrap().permissions().mode() & 0o777, 0o700);
-        assert_eq!(fs::metadata(target.join("claude/session.json")).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::read(target.join("claude/session.json")).unwrap(),
+            original
+        );
+        assert_eq!(
+            fs::metadata(target.join("claude"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            fs::metadata(target.join("claude/session.json"))
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
         assert!(!default.join("claude").exists());
         drop(moved);
         fs::remove_dir_all(root).unwrap();
@@ -1846,7 +1884,10 @@ mod tests {
         let next = root.join("next");
         create_directory(&next).unwrap();
         let pointer_before = fs::read(&preserved.pointer).unwrap();
-        assert!(preserved.schedule(&next, false).unwrap_err().contains("cleanup"));
+        assert!(preserved
+            .schedule(&next, false)
+            .unwrap_err()
+            .contains("cleanup"));
         assert_eq!(fs::read(&preserved.pointer).unwrap(), pointer_before);
         drop(preserved);
         fs::copy(target.join("settings.json"), default.join("settings.json")).unwrap();
@@ -1949,7 +1990,6 @@ mod sqlite_tests;
 #[cfg(test)]
 mod p06_volume_tests;
 
-
 #[cfg(test)]
 mod review_move {
     use super::*;
@@ -1958,23 +1998,43 @@ mod review_move {
         let root = std::env::temp_dir().join(format!("tugboat-move-review-{}", std::process::id()));
         create_directory(&root).unwrap();
         let root = std::fs::canonicalize(root).unwrap();
-        let default = root.join("current"); let legacy = root.join("legacy");
-        let target = root.join("next"); create_directory(&target).unwrap();
-        let first = DataLocation::open(default.clone(),legacy.clone());
+        let default = root.join("current");
+        let legacy = root.join("legacy");
+        let target = root.join("next");
+        create_directory(&target).unwrap();
+        let first = DataLocation::open(default.clone(), legacy.clone());
         let mut committed = first.saved.lock().unwrap().location.clone().unwrap();
         committed.previous_directory = Some(root.join("unavailable-previous-drive"));
-        storage::write(&first.pointer, &committed).unwrap(); drop(first);
-        let recovered = DataLocation::open(default,legacy);
-        assert!(recovered.saved.lock().unwrap().location.as_ref().unwrap().previous_directory.is_some());
-        let scheduled = recovered.schedule(&target,false);
-        let next = storage::read::<Location>(&recovered.pointer).unwrap().unwrap();
+        storage::write(&first.pointer, &committed).unwrap();
+        drop(first);
+        let recovered = DataLocation::open(default, legacy);
+        assert!(recovered
+            .saved
+            .lock()
+            .unwrap()
+            .location
+            .as_ref()
+            .unwrap()
+            .previous_directory
+            .is_some());
+        let scheduled = recovered.schedule(&target, false);
+        let next = storage::read::<Location>(&recovered.pointer)
+            .unwrap()
+            .unwrap();
         let lost = if scheduled.is_ok() {
             drop(recovered);
-            let moved = DataLocation::open(root.join("current"),root.join("legacy"));
+            let moved = DataLocation::open(root.join("current"), root.join("legacy"));
             let location = moved.saved.lock().unwrap().location.clone().unwrap();
-            location.directory == target && location.previous_directory != committed.previous_directory
-        } else { false };
+            location.directory == target
+                && location.previous_directory != committed.previous_directory
+        } else {
+            false
+        };
         std::fs::remove_dir_all(root).unwrap();
-        assert!(!lost, "second commit discarded the first cleanup receipt (pending persisted: {})",next.pending.is_some());
+        assert!(
+            !lost,
+            "second commit discarded the first cleanup receipt (pending persisted: {})",
+            next.pending.is_some()
+        );
     }
 }

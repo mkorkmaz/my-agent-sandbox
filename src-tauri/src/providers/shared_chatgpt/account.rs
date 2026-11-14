@@ -1,11 +1,11 @@
-use super::session_state::AccountState;
 use super::renewal::{CredentialWrite, RenewalRetry};
-use super::{login_phase::LoginPhase, login_process::LoginProcess};
+use super::session_state::AccountState;
 use super::{
     credentials::Credentials,
     guest, http,
     store::{PendingLogin, Session, Store},
 };
+use super::{login_phase::LoginPhase, login_process::LoginProcess};
 use crate::{
     environment::{self, CheckedProject},
     projects,
@@ -40,14 +40,20 @@ impl Runtime {
 
     pub fn recovery_success(&self, pending: &PendingLogin) -> bool {
         pending.phase() == LoginPhase::Imported
-            || self.login.result().is_some_and(|(nonce, success)| nonce == pending.nonce && success)
+            || self
+                .login
+                .result()
+                .is_some_and(|(nonce, success)| nonce == pending.nonce && success)
     }
     pub(crate) fn reconnect_records(
         &mut self,
         records: &data_location::RecordsDirectory,
     ) -> Result<(), String> {
         records.verify()?;
-        let CredentialWrite::Pending { records: previous, .. } = &mut self.pending_write else {
+        let CredentialWrite::Pending {
+            records: previous, ..
+        } = &mut self.pending_write
+        else {
             return Ok(());
         };
         if previous.id() != records.id() {
@@ -152,7 +158,10 @@ fn save_after_request(
     store: &Store,
     session: &Session,
 ) -> Result<(), String> {
-    runtime.pending_write = CredentialWrite::Pending { records, session: session.clone() };
+    runtime.pending_write = CredentialWrite::Pending {
+        records,
+        session: session.clone(),
+    };
     store.save(session)?;
     runtime.pending_write = CredentialWrite::Clean;
     Ok(())
@@ -193,9 +202,7 @@ pub fn refresh_with(
     if !force && credentials.expires_at()? > chrono::Utc::now().timestamp() + 600 {
         return Ok(());
     }
-    if !force
-        && runtime.retry.waiting(Instant::now())
-    {
+    if !force && runtime.retry.waiting(Instant::now()) {
         return Err(runtime
             .error
             .clone()
@@ -455,7 +462,11 @@ pub fn complete_login(
     if pending.nonce != nonce || pending.project_id != project_id {
         return Ok(());
     }
-    let changes = if success && pending.phase() == LoginPhase::Pending { 2 } else { 1 };
+    let changes = if success && pending.phase() == LoginPhase::Pending {
+        2
+    } else {
+        1
+    };
     session.generation_after(changes)?;
     if success && pending.phase() == LoginPhase::Pending {
         let checked = checked.ok_or(
@@ -541,7 +552,8 @@ pub fn read_status(app: &AppHandle, runtime: &mut Runtime) -> Result<Status, Str
     if let Some(pending) = &session.pending_login {
         if runtime.login.process().is_none() {
             let success = runtime.recovery_success(pending);
-            let interrupted = pending.phase() != LoginPhase::Imported && runtime.login.result().is_none();
+            let interrupted =
+                pending.phase() != LoginPhase::Imported && runtime.login.result().is_none();
             let mut response =
                 finish_login(app, runtime, &pending.project_id, &pending.nonce, success)?;
             if interrupted {
@@ -557,7 +569,8 @@ pub fn read_status(app: &AppHandle, runtime: &mut Runtime) -> Result<Status, Str
 }
 
 pub fn flush(app: &AppHandle, runtime: &mut Runtime) -> Result<(), String> {
-    if matches!(&runtime.pending_write, CredentialWrite::Clean) && runtime.login.result().is_none() {
+    if matches!(&runtime.pending_write, CredentialWrite::Clean) && runtime.login.result().is_none()
+    {
         return Ok(());
     }
     load(app, runtime)?;

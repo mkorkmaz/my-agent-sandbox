@@ -68,7 +68,11 @@ pub enum RemovalEffect {
 
 impl Environments {
     pub fn membership(&self, kind: AgentKind) -> Membership<'_> {
-        match self.0.iter().find(|environment| environment.agent_kind == kind) {
+        match self
+            .0
+            .iter()
+            .find(|environment| environment.agent_kind == kind)
+        {
             Some(environment) => Membership::Present(environment),
             None => Membership::Absent,
         }

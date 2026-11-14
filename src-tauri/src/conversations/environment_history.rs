@@ -149,7 +149,10 @@ impl History {
         message: String,
     ) -> Result<(), String> {
         let dashboard = sql_backend::dashboard(target, store, true)?;
-        self.record_result(key, HistoryObservation::Saved(dashboard).dashboard(Some(message)))
+        self.record_result(
+            key,
+            HistoryObservation::Saved(dashboard).dashboard(Some(message)),
+        )
     }
     pub(super) fn retain_project_keys(
         &self,
@@ -182,8 +185,15 @@ impl History {
         self.record_result(key, observation.dashboard(warning))
     }
     fn recover_observation(&self, key: &str, watch: &Watch) -> Result<HistoryObservation, String> {
-        let previous = self.latest.lock().map_err(|error| error.to_string())?.get(key).cloned();
-        if let Some(dashboard) = previous { return Ok(HistoryObservation::Retained(dashboard)); }
+        let previous = self
+            .latest
+            .lock()
+            .map_err(|error| error.to_string())?
+            .get(key)
+            .cloned();
+        if let Some(dashboard) = previous {
+            return Ok(HistoryObservation::Retained(dashboard));
+        }
         match watch.saved_dashboard() {
             Ok(dashboard) => Ok(HistoryObservation::Saved(dashboard)),
             Err(_) => Ok(HistoryObservation::Unavailable),

@@ -572,19 +572,25 @@ fn each_agent_checks_offline_resources_signature_ports_skills_and_credential_sta
     drop(brig);
 }
 
-
 #[test]
 fn recheck_preparation_does_not_clear_a_pending_attempt_stage() {
     let fixture = Fixture::new();
     let prepared = fixture.prepare(&fixture.project(AgentKind::Codex));
     let mut project = prepared.project;
-    project.begin_environment(crate::projects::EnvironmentAttempt::pending(
-        "in-flight".into(), 52, prepared.fingerprint.unwrap(),
-    )).unwrap();
+    project
+        .begin_environment(crate::projects::EnvironmentAttempt::pending(
+            "in-flight".into(),
+            52,
+            prepared.fingerprint.unwrap(),
+        ))
+        .unwrap();
     save(&fixture.file(), &project).unwrap();
     let reopened = fixture.prepare(&project);
     assert!(reopened.project.environment_attempt.is_some());
-    assert_eq!(reopened.project.stage, crate::projects::ProjectStage::EnvironmentStarting);
+    assert_eq!(
+        reopened.project.stage,
+        crate::projects::ProjectStage::EnvironmentStarting
+    );
 }
 
 #[test]
@@ -594,7 +600,10 @@ fn recheck_setup_preserves_an_unfinished_stop() {
     project.stop_environment().unwrap();
     save(&fixture.file(), &project).unwrap();
     let reopened = fixture.prepare(&project);
-    assert_eq!(reopened.project.stage, crate::projects::ProjectStage::Stopping);
+    assert_eq!(
+        reopened.project.stage,
+        crate::projects::ProjectStage::Stopping
+    );
 }
 
 #[test]
@@ -603,26 +612,43 @@ fn recheck_a_second_admission_cannot_replace_a_live_attempt_before_registration(
     let prepared = fixture.prepare(&fixture.project(AgentKind::Codex));
     let mut project = prepared.project;
     let plan = prepared.fingerprint.unwrap();
-    project.begin_environment(crate::projects::EnvironmentAttempt::pending("one".into(), 21, plan.clone())).unwrap();
-    let second = project.begin_environment(crate::projects::EnvironmentAttempt::pending("two".into(), 22, plan));
+    project
+        .begin_environment(crate::projects::EnvironmentAttempt::pending(
+            "one".into(),
+            21,
+            plan.clone(),
+        ))
+        .unwrap();
+    let second = project.begin_environment(crate::projects::EnvironmentAttempt::pending(
+        "two".into(),
+        22,
+        plan,
+    ));
     assert!(second.is_err());
     assert!(!project.recover_preparation(true).unwrap());
     assert_eq!(project.environment_attempt.as_ref().unwrap().token, "one");
     assert!(project.recover_preparation(false).unwrap());
     assert_eq!(project.stage, crate::projects::ProjectStage::Ready);
     assert!(project.environment_attempt.as_ref().unwrap().completed);
-    assert!(project.begin_environment(crate::projects::EnvironmentAttempt::pending(
-        "retry".into(), 23, "new-plan".into(),
-    )).is_ok());
+    assert!(project
+        .begin_environment(crate::projects::EnvironmentAttempt::pending(
+            "retry".into(),
+            23,
+            "new-plan".into(),
+        ))
+        .is_ok());
 }
-
 
 #[test]
 fn recheck_an_already_attached_policy_keeps_a_valid_verification_receipt() {
     let fixture = Fixture::new();
     let prepared = fixture.prepare(&fixture.project(AgentKind::Codex));
     let mut project = prepared.project;
-    let mut receipt = crate::projects::EnvironmentAttempt::pending("done".into(), 12, prepared.fingerprint.unwrap());
+    let mut receipt = crate::projects::EnvironmentAttempt::pending(
+        "done".into(),
+        12,
+        prepared.fingerprint.unwrap(),
+    );
     receipt.finish(Ok(())).unwrap();
     project.environment_attempt = Some(receipt);
     project.environment_verified = Some(true);

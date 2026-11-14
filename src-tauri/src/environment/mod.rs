@@ -296,9 +296,13 @@ pub async fn prepare_environment(
             .command(crate::agents::AgentCommand::Version)?
             .in_profile();
         let command = command(&checked, run_arguments(&checked, &version));
-        checked.project.begin_environment(projects::EnvironmentAttempt::pending(
-            pending_token, terminal_identifier, checked.fingerprint.clone(),
-        ))?;
+        checked
+            .project
+            .begin_environment(projects::EnvironmentAttempt::pending(
+                pending_token,
+                terminal_identifier,
+                checked.fingerprint.clone(),
+            ))?;
         let terminal_target = terminal::AgentTarget::for_project(&checked.project);
         let mut registry = Registry::load(&file)?;
         registry.update(checked.project)?;
@@ -383,7 +387,11 @@ fn complete_attempt(
         projects::AttemptCompletion::Superseded => return Ok(None),
         projects::AttemptCompletion::Recorded(message) => {
             let message = message.map(str::to_owned);
-            return Ok(Some(EnvironmentResult { terminal_identifier, message, project }));
+            return Ok(Some(EnvironmentResult {
+                terminal_identifier,
+                message,
+                project,
+            }));
         }
         projects::AttemptCompletion::Pending => {}
     }

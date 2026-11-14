@@ -563,12 +563,21 @@ fn continue_removal_with(
             return Err("The guest disappeared before sign-out could be verified. Guest credentials may remain; review the guest home before continuing.".into());
         }
         sign_out(brig, &project)?;
-        project.removal.as_mut().unwrap().complete(projects::RemovalStep::SignOut)?;
+        project
+            .removal
+            .as_mut()
+            .unwrap()
+            .complete(projects::RemovalStep::SignOut)?;
         persist_removal(file, &project)?;
     }
     if project.removal.as_ref().unwrap().next_step() == projects::RemovalStep::Environment {
         if current.has_environment {
-            if project.removal.as_ref().unwrap().needs_stop(current.running) {
+            if project
+                .removal
+                .as_ref()
+                .unwrap()
+                .needs_stop(current.running)
+            {
                 verify_target(brig, &project)?;
                 brig.checked(&["stop".into(), project.reference()], None)?;
                 project.removal.as_mut().unwrap().stopped = true;
@@ -577,7 +586,11 @@ fn continue_removal_with(
             verify_target(brig, &project)?;
             brig.checked(&["rm".into(), project.reference()], None)?;
         }
-        project.removal.as_mut().unwrap().complete(projects::RemovalStep::Environment)?;
+        project
+            .removal
+            .as_mut()
+            .unwrap()
+            .complete(projects::RemovalStep::Environment)?;
         persist_removal(file, &project)?;
     }
     if project.removal.as_ref().unwrap().next_step() == projects::RemovalStep::Binding {
@@ -612,7 +625,11 @@ fn continue_removal_with(
                 }
             }
         }
-        project.removal.as_mut().unwrap().complete(projects::RemovalStep::Binding)?;
+        project
+            .removal
+            .as_mut()
+            .unwrap()
+            .complete(projects::RemovalStep::Binding)?;
         persist_removal(file, &project)?;
     }
     if project.removal.as_ref().unwrap().next_step() == projects::RemovalStep::Policy {
@@ -635,7 +652,11 @@ fn continue_removal_with(
                 }
             }
         }
-        project.removal.as_mut().unwrap().complete(projects::RemovalStep::Policy)?;
+        project
+            .removal
+            .as_mut()
+            .unwrap()
+            .complete(projects::RemovalStep::Policy)?;
         persist_removal(file, &project)?;
     }
     let progress = project.removal.as_ref().unwrap();

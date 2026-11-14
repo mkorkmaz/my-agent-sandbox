@@ -27,9 +27,9 @@ use agent_environment::{Membership, RemovalEffect};
 pub use attempt::{AttemptCompletion, EnvironmentAttempt};
 pub use environment_id::EnvironmentId;
 pub use folder::FolderState;
-pub use stage::ProjectStage;
-pub use removal::RemovalStep;
 use record::ProjectRecord;
+pub use removal::RemovalStep;
+pub use stage::ProjectStage;
 
 static NEXT_PROBE: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
@@ -150,9 +150,10 @@ impl Project {
     pub fn environment_stage(&self, running: bool, fingerprint: &str) -> ProjectStage {
         if running
             && self.environment_verified == Some(true)
-            && self.environment_attempt.as_ref().is_some_and(|attempt| {
-                attempt.verifies(fingerprint)
-            })
+            && self
+                .environment_attempt
+                .as_ref()
+                .is_some_and(|attempt| attempt.verifies(fingerprint))
         {
             return ProjectStage::EnvironmentReady;
         }
@@ -160,7 +161,12 @@ impl Project {
     }
     pub fn begin_environment(&mut self, attempt: EnvironmentAttempt) -> Result<(), String> {
         self.require_active()?;
-        if self.policy_detached || !matches!(self.stage, ProjectStage::Ready | ProjectStage::EnvironmentReady) {
+        if self.policy_detached
+            || !matches!(
+                self.stage,
+                ProjectStage::Ready | ProjectStage::EnvironmentReady
+            )
+        {
             return Err("Complete project setup before starting the environment.".into());
         }
         self.stage = ProjectStage::EnvironmentStarting;
@@ -175,7 +181,9 @@ impl Project {
         }
         if let Some(attempt) = self.environment_attempt.as_mut() {
             if attempt.state() == attempt::AttemptState::Pending {
-                attempt.finish(Err("The preparation process ended before verification. Prepare again.".into()))?;
+                attempt.finish(Err(
+                    "The preparation process ended before verification. Prepare again.".into(),
+                ))?;
             }
         }
         self.environment_verified = Some(false);
@@ -255,7 +263,9 @@ impl Project {
     pub fn check_path(&self) -> Result<(), String> {
         match self.folder_state() {
             FolderState::Available => Ok(()),
-            FolderState::Unavailable => Err("The project moved or is unavailable. Select the folder again.".into()),
+            FolderState::Unavailable => {
+                Err("The project moved or is unavailable. Select the folder again.".into())
+            }
             FolderState::Replaced => Err(
                 "The folder at this path changed. Select it again to create a new record.".into(),
             ),
@@ -494,7 +504,12 @@ impl Registry {
     ) -> Result<(), String> {
         self.environment(id, environment)?;
         let mut proposed = self.clone();
-        if proposed.record(id)?.environments.removal_effect(environment)? == RemovalEffect::RemoveProject {
+        if proposed
+            .record(id)?
+            .environments
+            .removal_effect(environment)?
+            == RemovalEffect::RemoveProject
+        {
             proposed.projects.retain(|record| record.id != id);
             proposed.validate()?;
             *self = proposed;
@@ -576,7 +591,9 @@ impl Registry {
         defaults: &settings::Settings,
     ) -> Result<AgentEnvironment, String> {
         defaults.validate()?;
-        if let Membership::Present(existing) = self.record(project_id)?.environments.membership(kind) {
+        if let Membership::Present(existing) =
+            self.record(project_id)?.environments.membership(kind)
+        {
             return Ok(existing.clone());
         }
         let mut project = self.project(project_id)?;
@@ -839,7 +856,8 @@ fn git_for_metadata(
     developer_tools: impl FnOnce() -> Option<PathBuf>,
 ) -> Option<PathBuf> {
     if git == Path::new("/usr/bin/git")
-        && !developer_tools().is_some_and(|directory| directory.is_absolute() && directory.is_dir()) {
+        && !developer_tools().is_some_and(|directory| directory.is_absolute() && directory.is_dir())
+    {
         return None;
     }
     Some(git)
@@ -853,8 +871,10 @@ fn selected_developer_tools() -> Option<PathBuf> {
         &command::environment(),
         Duration::from_secs(2),
         &AtomicBool::new(false),
-    ).ok()?;
-    if output.exit_code != Some(0) || output.cancelled || output.timed_out || output.output_exceeded {
+    )
+    .ok()?;
+    if output.exit_code != Some(0) || output.cancelled || output.timed_out || output.output_exceeded
+    {
         return None;
     }
     Some(PathBuf::from(output.stdout.trim()))
@@ -1410,7 +1430,8 @@ mod tests {
         let mut registry = Registry::load(&root.join("registry.json")).unwrap();
         let project = registry.register(&root, "codex").unwrap();
         assert_eq!(git_branch(&project), None);
-        let git = host::discover("git", None).and_then(|git| git_for_metadata(git, selected_developer_tools));
+        let git = host::discover("git", None)
+            .and_then(|git| git_for_metadata(git, selected_developer_tools));
         let Some(git) = git else {
             fs::remove_dir_all(root).unwrap();
             return;
@@ -1429,19 +1450,37 @@ mod tests {
     fn branch_metadata_skips_the_system_git_shim_without_selected_developer_tools() {
         let system_git = PathBuf::from("/usr/bin/git");
         assert!(git_for_metadata(system_git.clone(), || None).is_none());
-        assert!(git_for_metadata(system_git.clone(), || Some("relative/Developer".into())).is_none());
-        assert!(git_for_metadata(system_git.clone(), || Some("/missing/tugboat/Developer".into())).is_none());
-        let root = std::env::temp_dir().join(format!("tugboat-developer-tools-{}", std::process::id()));
+        assert!(
+            git_for_metadata(system_git.clone(), || Some("relative/Developer".into())).is_none()
+        );
+        assert!(git_for_metadata(system_git.clone(), || Some(
+            "/missing/tugboat/Developer".into()
+        ))
+        .is_none());
+        let root =
+            std::env::temp_dir().join(format!("tugboat-developer-tools-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
-        assert_eq!(git_for_metadata(system_git.clone(), || Some(root.clone())), Some(system_git));
+        assert_eq!(
+            git_for_metadata(system_git.clone(), || Some(root.clone())),
+            Some(system_git)
+        );
         fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
     fn branch_metadata_keeps_custom_git_without_checking_apple_developer_tools() {
-        for executable in ["/opt/homebrew/bin/git", "/usr/local/bin/git", "/fixture/custom/git"] {
+        for executable in [
+            "/opt/homebrew/bin/git",
+            "/usr/local/bin/git",
+            "/fixture/custom/git",
+        ] {
             let git = PathBuf::from(executable);
-            assert_eq!(git_for_metadata(git.clone(), || panic!("Custom Git must not query xcode-select")), Some(git));
+            assert_eq!(
+                git_for_metadata(git.clone(), || panic!(
+                    "Custom Git must not query xcode-select"
+                )),
+                Some(git)
+            );
         }
     }
 
@@ -1532,32 +1571,52 @@ pub(crate) fn forget_fixture_project(registry: &mut Registry, id: &str) -> Resul
     registry.forget_unavailable(id)
 }
 
-
 #[cfg(test)]
 mod transition_review {
     use super::*;
     #[test]
     fn recheck_reloaded_removal_cannot_skip_environment_and_binding_checkpoints() {
-        let root = std::env::temp_dir().join(format!("tugboat-removal-review-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("tugboat-removal-review-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("projects.json");
         let mut registry = Registry::default();
         let mut project = registry.register(&root, "codex").unwrap();
         project.stage = ProjectStage::Removing;
-        project.removal = Some(Removal { reference:project.reference(), workspace:root.to_string_lossy().into(),
-            had_environment:true,logout:false,logged_out:false,stopped:true,environment_removed:true,
-            binding_detached:false, policy_handled:false,preserved_policy:false });
+        project.removal = Some(Removal {
+            reference: project.reference(),
+            workspace: root.to_string_lossy().into(),
+            had_environment: true,
+            logout: false,
+            logged_out: false,
+            stopped: true,
+            environment_removed: true,
+            binding_detached: false,
+            policy_handled: false,
+            preserved_policy: false,
+        });
         registry.update(project).unwrap();
         let mut saved = serde_json::to_value(&registry).unwrap();
-        assert_eq!(saved["projects"][0]["environments"][0]["removal"]["bindingDetached"], false);
+        assert_eq!(
+            saved["projects"][0]["environments"][0]["removal"]["bindingDetached"],
+            false
+        );
         saved["projects"][0]["environments"][0]["removal"]["policyHandled"] = true.into();
         crate::storage::write(&file, &saved).unwrap();
         let loaded = Registry::load(&file);
         std::fs::remove_dir_all(root).unwrap();
         if let Ok(registry) = loaded {
-            let mut removal = registry.projects[0].codex_project().unwrap().removal.unwrap();
+            let mut removal = registry.projects[0]
+                .codex_project()
+                .unwrap()
+                .removal
+                .unwrap();
             removal.complete(RemovalStep::Binding).unwrap();
-            assert_ne!(removal.next_step(), RemovalStep::Record, "policy cleanup was skipped");
+            assert_ne!(
+                removal.next_step(),
+                RemovalStep::Record,
+                "policy cleanup was skipped"
+            );
         }
     }
 }

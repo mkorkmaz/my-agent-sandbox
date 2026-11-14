@@ -143,14 +143,25 @@ fn same_access(bytes: &[u8], guest: &Value) -> bool {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum ProjectionState { Current, NeedsReceipt, NeedsWrite, Foreign }
+enum ProjectionState {
+    Current,
+    NeedsReceipt,
+    NeedsWrite,
+    Foreign,
+}
 
 fn projection_state(binding: &Binding, current: Option<&[u8]>, guest: &Value) -> ProjectionState {
     let matches = current.is_some_and(|bytes| same_access(bytes, guest));
     let unchanged = current.map(hash) == binding.auth_hash;
-    if !matches && !unchanged { return ProjectionState::Foreign; }
-    if !matches { return ProjectionState::NeedsWrite; }
-    if unchanged && binding.phase() == BindingPhase::Published { return ProjectionState::Current; }
+    if !matches && !unchanged {
+        return ProjectionState::Foreign;
+    }
+    if !matches {
+        return ProjectionState::NeedsWrite;
+    }
+    if unchanged && binding.phase() == BindingPhase::Published {
+        return ProjectionState::Current;
+    }
     ProjectionState::NeedsReceipt
 }
 
@@ -192,11 +203,14 @@ pub fn publish(store: &Store, session: &mut Session) -> Result<(), String> {
             directory.write(&bytes)?;
         }
         let binding = &mut session.bindings[index];
-        binding.publish_receipt(if projection == ProjectionState::NeedsReceipt {
-            current.as_deref().unwrap()
-        } else {
-            &bytes
-        }, guest["tokens"]["access_token"].as_str().unwrap());
+        binding.publish_receipt(
+            if projection == ProjectionState::NeedsReceipt {
+                current.as_deref().unwrap()
+            } else {
+                &bytes
+            },
+            guest["tokens"]["access_token"].as_str().unwrap(),
+        );
         store.save(session)?;
     }
     Ok(())
@@ -218,7 +232,10 @@ pub fn connected(
         return Ok(false);
     };
     let active = Directory::open(directory, None)?;
-    if binding.directory != directory || binding.identity != active.identity()? || binding.phase() == BindingPhase::Pending {
+    if binding.directory != directory
+        || binding.identity != active.identity()?
+        || binding.phase() == BindingPhase::Pending
+    {
         return Ok(false);
     }
     let current = active.read()?;
@@ -239,17 +256,26 @@ pub fn cleanup(session: &mut Session) -> Result<usize, String> {
 }
 
 #[derive(Eq, PartialEq)]
-enum CleanupState { Deferred, Preserved, Removed }
+enum CleanupState {
+    Deferred,
+    Preserved,
+    Removed,
+}
 
 fn cleanup_binding(binding: &Binding) -> Result<CleanupState, String> {
     let Ok(directory) = Directory::open(&binding.directory, Some(binding.identity)) else {
         return Ok(CleanupState::Deferred);
     };
     let current = directory.read()?;
-    if !current.as_deref().is_some_and(|bytes| managed_copy(bytes, binding)) {
+    if !current
+        .as_deref()
+        .is_some_and(|bytes| managed_copy(bytes, binding))
+    {
         return Ok(CleanupState::Preserved);
     }
-    if directory.remove().is_err() { return Ok(CleanupState::Deferred); }
+    if directory.remove().is_err() {
+        return Ok(CleanupState::Deferred);
+    }
     Ok(CleanupState::Removed)
 }
 

@@ -144,7 +144,9 @@ fn seed_and_move(root: &Path, mount: &Path) -> Value {
     assert_eq!(moved.status().unwrap().directory, Some(target.clone()));
     assert!(moved.status().unwrap().message.is_none());
     check_dataset(&target, &expected);
-    expected["pointerSha256"] = json!(crate::hash::hex(Sha256::digest(fs::read(&moved.pointer).unwrap())));
+    expected["pointerSha256"] = json!(crate::hash::hex(Sha256::digest(
+        fs::read(&moved.pointer).unwrap()
+    )));
     storage::write_bytes(
         &root.join("expected.json"),
         &serde_json::to_vec_pretty(&expected).unwrap(),

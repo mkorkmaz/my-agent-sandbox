@@ -125,7 +125,11 @@ pub(crate) fn change(
     let mut registry = Registry::load(file)?;
     let mut project = registry.environment(identifier, environment_id)?;
     project.require_active()?;
-    if matches!(project.stage, crate::projects::ProjectStage::EnvironmentStarting | crate::projects::ProjectStage::Stopping) {
+    if matches!(
+        project.stage,
+        crate::projects::ProjectStage::EnvironmentStarting
+            | crate::projects::ProjectStage::Stopping
+    ) {
         return Err("Wait for the environment operation before changing its policy.".into());
     }
     project.check_path()?;
@@ -148,7 +152,9 @@ pub(crate) fn change(
     state.authorize(action)?;
     if state.already_applied(action) {
         let detached = matches!(action, Action::Detach);
-        if project.policy_detached != detached || project.stage == crate::projects::ProjectStage::EditingPolicy {
+        if project.policy_detached != detached
+            || project.stage == crate::projects::ProjectStage::EditingPolicy
+        {
             state.complete(&mut project, action);
             registry.update(project.clone())?;
             storage::write(file, &registry)?;

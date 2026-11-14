@@ -150,7 +150,9 @@ impl ProjectRecord {
         }
         let mut proposed = self.clone();
         proposed.environments.replace(environment)?;
-        if ResourceChange::between(&proposed.options, &resources) == ResourceChange::InvalidatePreparation {
+        if ResourceChange::between(&proposed.options, &resources)
+            == ResourceChange::InvalidatePreparation
+        {
             proposed
                 .environments
                 .invalidate_others(&project.environment_id);

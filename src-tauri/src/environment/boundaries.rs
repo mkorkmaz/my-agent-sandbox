@@ -17,13 +17,24 @@ const CHECK_VERSION: u32 = 2;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum ProbeOutcome { Pass, Fail, Inconclusive }
+pub enum ProbeOutcome {
+    Pass,
+    Fail,
+    Inconclusive,
+}
 
 #[derive(Clone, Copy, Eq, PartialEq)]
-enum CanaryState { Owned, Changed, Missing }
+enum CanaryState {
+    Owned,
+    Changed,
+    Missing,
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CleanupState { Cleaned, Preserved }
+enum CleanupState {
+    Cleaned,
+    Preserved,
+}
 
 #[derive(Default)]
 pub struct BoundaryTests(pub Arc<Mutex<()>>);
@@ -53,7 +64,13 @@ pub struct Report {
     pub inner_codex: String,
 }
 
-fn probe(name: &str, target: String, expected: &str, observed: &str, outcome: ProbeOutcome) -> Probe {
+fn probe(
+    name: &str,
+    target: String,
+    expected: &str,
+    observed: &str,
+    outcome: ProbeOutcome,
+) -> Probe {
     Probe {
         name: name.into(),
         target,
@@ -123,7 +140,10 @@ fn denial(
         return (ProbeOutcome::Inconclusive, "The network probe was cancelled, exceeded its time limit or returned incomplete output.");
     }
     if connected(output) {
-        return (ProbeOutcome::Fail, "The guest connected to the denied destination.");
+        return (
+            ProbeOutcome::Fail,
+            "The guest connected to the denied destination.",
+        );
     }
     if !allowed {
         return (
@@ -319,14 +339,22 @@ impl Canary {
     }
     fn state(&self) -> CanaryState {
         match fs::symlink_metadata(&self.outside) {
-            Ok(metadata) if metadata.is_file() && metadata.dev() == self.device && metadata.ino() == self.inode
-                && fs::read(&self.outside).ok().as_deref() == Some(self.token.as_bytes()) => CanaryState::Owned,
+            Ok(metadata)
+                if metadata.is_file()
+                    && metadata.dev() == self.device
+                    && metadata.ino() == self.inode
+                    && fs::read(&self.outside).ok().as_deref() == Some(self.token.as_bytes()) =>
+            {
+                CanaryState::Owned
+            }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => CanaryState::Missing,
             _ => CanaryState::Changed,
         }
     }
     fn clean(&self) -> CleanupState {
-        if self.state() != CanaryState::Owned { return CleanupState::Preserved; }
+        if self.state() != CanaryState::Owned {
+            return CleanupState::Preserved;
+        }
         if self.inside.exists() {
             if !fs::symlink_metadata(&self.inside).is_ok_and(|metadata| metadata.is_file())
                 || fs::read(&self.inside).ok().as_deref() != Some(self.token.as_bytes())
@@ -337,8 +365,12 @@ impl Canary {
                 return CleanupState::Preserved;
             }
         }
-        if fs::remove_file(&self.outside).is_err() { return CleanupState::Preserved; }
-        if fs::remove_dir(&self.directory).is_err() { return CleanupState::Preserved; }
+        if fs::remove_file(&self.outside).is_err() {
+            return CleanupState::Preserved;
+        }
+        if fs::remove_dir(&self.directory).is_err() {
+            return CleanupState::Preserved;
+        }
         CleanupState::Cleaned
     }
 }
@@ -387,7 +419,11 @@ fn run(
         "uname -s".into(),
         "Linux",
         kernel.stdout.trim(),
-        if linux { ProbeOutcome::Pass } else { ProbeOutcome::Fail },
+        if linux {
+            ProbeOutcome::Pass
+        } else {
+            ProbeOutcome::Fail
+        },
     ));
     let guest_project = &checked.paths.guest_project;
     let guest_inside = guest_project.join(canary.inside.file_name().ok_or("Invalid probe file.")?);
@@ -414,7 +450,11 @@ fn run(
         } else {
             "Could not verify write access to the shared folder."
         },
-        if write_ok { ProbeOutcome::Pass } else { ProbeOutcome::Fail },
+        if write_ok {
+            ProbeOutcome::Pass
+        } else {
+            ProbeOutcome::Fail
+        },
     ));
     let outside = guest(
         &checked,
@@ -436,7 +476,11 @@ fn run(
         } else {
             "Could not verify the file boundary."
         },
-        if absent { ProbeOutcome::Pass } else { ProbeOutcome::Fail },
+        if absent {
+            ProbeOutcome::Pass
+        } else {
+            ProbeOutcome::Fail
+        },
     ));
     results.extend(network_probes(
         &checked.plan,
@@ -469,7 +513,11 @@ fn run(
             ProbeOutcome::Inconclusive,
         ));
     }
-    let passed = cleanup && unchanged && results.iter().all(|result| result.outcome == ProbeOutcome::Pass);
+    let passed = cleanup
+        && unchanged
+        && results
+            .iter()
+            .all(|result| result.outcome == ProbeOutcome::Pass);
     let report = Report {
         check_version: CHECK_VERSION,
         project_id: identifier.into(),
@@ -597,9 +645,12 @@ mod tests {
 
     #[test]
     fn canary_cleanup_preserves_replaced_files_and_removes_only_owned_probes() {
-        let root = std::env::temp_dir().join(format!("tugboat-canary-state-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("tugboat-canary-state-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
-        let project = projects::Registry::default().register(&root, "codex").unwrap();
+        let project = projects::Registry::default()
+            .register(&root, "codex")
+            .unwrap();
         let canary = Canary::create(&project).unwrap();
         let retained = root.join("retained-canary");
         fs::rename(&canary.outside, &retained).unwrap();
@@ -616,10 +667,22 @@ mod tests {
     }
     #[test]
     fn network_failures_are_not_automatically_policy_passes() {
-        assert_eq!(denial(&result(6), false, true).0, ProbeOutcome::Inconclusive);
-        assert_eq!(denial(&result(6), true, false).0, ProbeOutcome::Inconclusive);
-        assert_eq!(denial(&result(60), true, true).0, ProbeOutcome::Inconclusive);
-        assert_eq!(denial(&result(127), true, true).0, ProbeOutcome::Inconclusive);
+        assert_eq!(
+            denial(&result(6), false, true).0,
+            ProbeOutcome::Inconclusive
+        );
+        assert_eq!(
+            denial(&result(6), true, false).0,
+            ProbeOutcome::Inconclusive
+        );
+        assert_eq!(
+            denial(&result(60), true, true).0,
+            ProbeOutcome::Inconclusive
+        );
+        assert_eq!(
+            denial(&result(127), true, true).0,
+            ProbeOutcome::Inconclusive
+        );
         assert_eq!(denial(&result(6), true, true).0, ProbeOutcome::Pass);
         let connected = command::CommandOutput {
             stdout: "http=200".into(),
@@ -667,7 +730,9 @@ mod tests {
             |_| Ok(success()),
         )
         .unwrap();
-        assert!(probes.iter().all(|probe| probe.outcome == ProbeOutcome::Pass));
+        assert!(probes
+            .iter()
+            .all(|probe| probe.outcome == ProbeOutcome::Pass));
         let regular = plan("isolated", serde_json::json!([{"host":"api.openai.com"}]));
         let probes = network_probes(
             &regular,
@@ -682,7 +747,9 @@ mod tests {
         )
         .unwrap();
         assert_eq!(probes[1].target, "https://example.com");
-        assert!(probes.iter().all(|probe| probe.outcome == ProbeOutcome::Pass));
+        assert!(probes
+            .iter()
+            .all(|probe| probe.outcome == ProbeOutcome::Pass));
         for (posture, rules, name) in [
             ("isolated", serde_json::json!([]), "Deny-all guest network"),
             (
@@ -706,7 +773,9 @@ mod tests {
             );
         }
         let probes = network_probes(&regular, |_| Ok(result(60)), |_| Ok(success())).unwrap();
-        assert!(probes.iter().all(|probe| probe.outcome == ProbeOutcome::Inconclusive));
+        assert!(probes
+            .iter()
+            .all(|probe| probe.outcome == ProbeOutcome::Inconclusive));
         let all_hosts = plan(
             "isolated",
             serde_json::json!([{"host":"example.com"},{"host":"example.org"},{"host":"www.iana.org"},{"host":"www.ietf.org"}]),

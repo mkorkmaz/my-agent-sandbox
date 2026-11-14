@@ -7,8 +7,16 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Component, Path, PathBuf};
 
 pub const TOOLS: [&str; 10] = [
-    "brig", "brigd", "brig-broker", "hull", "hvi", "vz-runner", "cosign",
-    "mke2fs", "debugfs", "e2fsck",
+    "brig",
+    "brigd",
+    "brig-broker",
+    "hull",
+    "hvi",
+    "vz-runner",
+    "cosign",
+    "mke2fs",
+    "debugfs",
+    "e2fsck",
 ];
 
 #[derive(Deserialize)]
@@ -22,14 +30,21 @@ struct Manifest {
 }
 
 #[derive(Deserialize)]
-struct FileRecord { sha256: String }
+struct FileRecord {
+    sha256: String,
+}
 
 #[derive(Deserialize)]
-struct Library { name: String, sha256: String }
+struct Library {
+    name: String,
+    sha256: String,
+}
 
 pub fn directory_for(executable: &Path) -> Option<PathBuf> {
     let directory = executable.parent()?;
-    if directory.file_name()? == "MacOS" { return Some(directory.to_owned()); }
+    if directory.file_name()? == "MacOS" {
+        return Some(directory.to_owned());
+    }
     cfg!(debug_assertions)
         .then(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../.build/brig-runtime/bin"))
 }
@@ -54,9 +69,8 @@ pub fn registry_directory() -> Option<PathBuf> {
 }
 
 pub fn executable(path: &Path) -> bool {
-    path.metadata().is_ok_and(|metadata| {
-        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
-    })
+    path.metadata()
+        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
 }
 
 pub fn tool(name: &str) -> Option<PathBuf> {
@@ -65,8 +79,11 @@ pub fn tool(name: &str) -> Option<PathBuf> {
 }
 
 pub fn validate() -> Result<(), String> {
-    let directory = directory().ok_or("The bundled runtime directory is unavailable. Reinstall Tugboat.")?;
-    validate_at(&directory).map_err(|error| format!("{error} Reinstall Tugboat or prepare the development runtime again."))
+    let directory =
+        directory().ok_or("The bundled runtime directory is unavailable. Reinstall Tugboat.")?;
+    validate_at(&directory).map_err(|error| {
+        format!("{error} Reinstall Tugboat or prepare the development runtime again.")
+    })
 }
 
 fn validate_at(directory: &Path) -> Result<(), String> {
@@ -136,16 +153,23 @@ fn verify(path: &Path, expected: &str) -> Result<(), String> {
     if !fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_file()) {
         return Err(format!("The bundled {name} file must be a regular file."));
     }
-    let mut file = fs::File::open(path).map_err(|error| format!("The bundled {name} file is unavailable: {error}"))?;
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("The bundled {name} file is unavailable: {error}"))?;
     let mut digest = Sha256::new();
     let mut buffer = [0; 65_536];
     loop {
-        let size = file.read(&mut buffer).map_err(|error| format!("Could not verify bundled {name}: {error}"))?;
-        if size == 0 { break; }
+        let size = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not verify bundled {name}: {error}"))?;
+        if size == 0 {
+            break;
+        }
         digest.update(&buffer[..size]);
     }
     if crate::hash::hex(digest.finalize()) != expected {
-        return Err(format!("The bundled {name} SHA-256 does not match its manifest."));
+        return Err(format!(
+            "The bundled {name} SHA-256 does not match its manifest."
+        ));
     }
     Ok(())
 }

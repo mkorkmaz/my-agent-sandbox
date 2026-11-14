@@ -73,9 +73,14 @@ fn main() {
         let ready = status.ready();
         match serde_json::to_string_pretty(&status) {
             Ok(json) => println!("{json}"),
-            Err(error) => { eprintln!("Could not encode the runtime check: {error}"); std::process::exit(1); }
+            Err(error) => {
+                eprintln!("Could not encode the runtime check: {error}");
+                std::process::exit(1);
+            }
         }
-        if !ready { std::process::exit(1); }
+        if !ready {
+            std::process::exit(1);
+        }
         return;
     }
     tauri::Builder::default()
@@ -161,10 +166,14 @@ fn main() {
         ])
         .setup(|app| {
             app.manage(data_location::initialize(app.handle()).map_err(std::io::Error::other)?);
-            app.state::<startup::Startup>().records_resolved().map_err(std::io::Error::other)?;
+            app.state::<startup::Startup>()
+                .records_resolved()
+                .map_err(std::io::Error::other)?;
             app.state::<usage_store::Runtime>()
                 .start(app.handle().clone());
-            app.state::<startup::Startup>().usage_started().map_err(std::io::Error::other)?;
+            app.state::<startup::Startup>()
+                .usage_started()
+                .map_err(std::io::Error::other)?;
             records_watch::monitor(app.handle().clone());
             let window = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
                 .on_navigation(|url| {
@@ -176,7 +185,9 @@ fn main() {
                 })
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .build()?;
-            app.state::<startup::Startup>().window_created().map_err(std::io::Error::other)?;
+            app.state::<startup::Startup>()
+                .window_created()
+                .map_err(std::io::Error::other)?;
             unsafe { brig_window_set_dark_appearance(window.ns_window()?) };
             app.set_menu(menu::create(app.handle())?)?;
             conversations::monitor(app.handle().clone());

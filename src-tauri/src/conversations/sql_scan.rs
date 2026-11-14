@@ -6,17 +6,34 @@ pub(super) struct ScanState {
 }
 
 enum ScanOrigin {
-    Sql { headers: Ledger, preparation: PreparationEffect },
-    Legacy { #[cfg(test)] initial_ledger: Option<Ledger> },
+    Sql {
+        headers: Ledger,
+        preparation: PreparationEffect,
+    },
+    Legacy {
+        #[cfg(test)]
+        initial_ledger: Option<Ledger>,
+    },
 }
 
-enum PreparationEffect { Unchanged, Updated }
+enum PreparationEffect {
+    Unchanged,
+    Updated,
+}
 impl From<bool> for PreparationEffect {
-    fn from(changed: bool) -> Self { if changed { return Self::Updated; } Self::Unchanged }
+    fn from(changed: bool) -> Self {
+        if changed {
+            return Self::Updated;
+        }
+        Self::Unchanged
+    }
 }
 
 #[derive(Eq, PartialEq)]
-enum HydrationState { HeadersOnly, Loaded }
+enum HydrationState {
+    HeadersOnly,
+    Loaded,
+}
 
 impl Watch {
     pub(super) fn claude_owner_ids(&self, scan: &HistoryScan) -> Result<Vec<String>, String> {
@@ -50,7 +67,10 @@ impl Watch {
                 let ledger = store.load_scan_state(&environment)?.0;
                 Ok((ledger, claude_changed || codex_changed))
             })?;
-            let origin = ScanOrigin::Sql { headers: ledger.clone(), preparation: prepared.into() };
+            let origin = ScanOrigin::Sql {
+                headers: ledger.clone(),
+                preparation: prepared.into(),
+            };
             return Ok((
                 ledger,
                 ScanState {
@@ -72,7 +92,10 @@ impl Watch {
             ledger,
             ScanState {
                 loaded_ids,
-                origin: ScanOrigin::Legacy { #[cfg(test)] initial_ledger },
+                origin: ScanOrigin::Legacy {
+                    #[cfg(test)]
+                    initial_ledger,
+                },
             },
         ))
     }
@@ -80,7 +103,10 @@ impl Watch {
 
 impl ScanState {
     fn changed_records(&self, mut ledger: Ledger) -> Ledger {
-        let ScanOrigin::Sql { headers: initial, .. } = &self.origin else {
+        let ScanOrigin::Sql {
+            headers: initial, ..
+        } = &self.origin
+        else {
             return ledger;
         };
         let ids: BTreeSet<_> = ledger
@@ -102,7 +128,9 @@ impl ScanState {
         self.hydration_state(id) == HydrationState::Loaded
     }
     fn hydration_state(&self, id: &str) -> HydrationState {
-        if self.loaded_ids.contains(id) { return HydrationState::Loaded; }
+        if self.loaded_ids.contains(id) {
+            return HydrationState::Loaded;
+        }
         HydrationState::HeadersOnly
     }
     pub(super) fn sync_codex_source(
@@ -216,12 +244,20 @@ impl ScanState {
             })?;
             return Ok((
                 sql_projection::dashboard(metadata, rollups, sources)?,
-                changed || matches!(&self.origin, ScanOrigin::Sql { preparation: PreparationEffect::Updated, .. }),
+                changed
+                    || matches!(
+                        &self.origin,
+                        ScanOrigin::Sql {
+                            preparation: PreparationEffect::Updated,
+                            ..
+                        }
+                    ),
             ));
         }
         #[cfg(test)]
         let changed = changed
-            && (ledger.schema_version != 2 || !matches!(&self.origin, ScanOrigin::Legacy { initial_ledger: Some(initial) } if initial == &ledger));
+            && (ledger.schema_version != 2
+                || !matches!(&self.origin, ScanOrigin::Legacy { initial_ledger: Some(initial) } if initial == &ledger));
         if changed {
             watch.save(&mut ledger)?;
         }
@@ -294,7 +330,9 @@ mod tests {
         let saved_cursor = cursor.clone();
         let mut state = ScanState {
             loaded_ids: BTreeSet::new(),
-            origin: ScanOrigin::Legacy { initial_ledger: None },
+            origin: ScanOrigin::Legacy {
+                initial_ledger: None,
+            },
         };
         let mut metadata_only_turns = BTreeMap::new();
         append_request(&mut file, "request-two", 2);

@@ -33,10 +33,9 @@ fn publication_and_cleanup_preserve_a_replaced_temporary_path() {
     fs::remove_dir_all(root).unwrap();
 }
 
-
 #[test]
 fn recheck_staging_sync_requires_the_file_being_published() {
-    let root = std::env::temp_dir().join(format!("tugboat-sync-review-{}",std::process::id()));
+    let root = std::env::temp_dir().join(format!("tugboat-sync-review-{}", std::process::id()));
     fs::create_dir_all(&root).unwrap();
     let mut record = TemporaryRecord::new(root.join("first"));
     let own = record.create().unwrap();
