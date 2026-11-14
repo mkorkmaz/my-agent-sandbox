@@ -3500,16 +3500,20 @@ test('a background shared Claude update preserves the current Codex account feed
   harness.dom.window.close();
 });
 
-test('shared Claude checks retain Sign out and recover keyboard focus after status changes', async () => {
+test('shared Claude checks retain Sign out and recover keyboard focus after status changes', { timeout: 5000 }, async context => {
   const checking = deferred();
   const harness = await twoAgentHarness({ retry_shared_claude: () => checking.promise });
+  context.after(() => harness.dom.window.close());
   await harness.ready; harness.element('settings-navigation').click(); await flush();
   harness.element('settings-tab-providers').click(); await flush(); harness.element('claude-sign-out').focus();
+  const blurred = new Promise(resolve => harness.element('claude-sign-out').addEventListener('blur', resolve, { once: true }));
   harness.element('claude-check-account').click(); await flush();
   assert.equal(harness.element('claude-sign-out').hidden, false);
   assert.equal(harness.element('claude-sign-out').disabled, true);
   assert.equal(harness.element('claude-account-status').hidden, true);
   assert.match(harness.element('workspace-status-text').textContent, /Checking the shared Claude account/);
+  await blurred;
+  assert.equal(harness.dom.window.document.activeElement, harness.dom.window.document.body);
   checking.reject(Error('The check failed.')); await flush();
   assert.equal(harness.element('workspace-status-bar').hidden, true);
   assert.equal(harness.element('claude-account-status').hidden, false);
@@ -3517,11 +3521,14 @@ test('shared Claude checks retain Sign out and recover keyboard focus after stat
   assert.equal(harness.element('claude-sign-out').disabled, false);
   assert.equal(harness.dom.window.document.activeElement.id, 'claude-sign-out');
   assert.match(harness.element('claude-account-status').textContent, /check failed/);
-  harness.handlers.shared_claude_status = () => ({ ...sharedClaudeAccount, generation: 2, state: 'signed-out', email: null });
+  const retry = deferred();
+  harness.handlers.shared_claude_status = () => retry.promise;
+  const retryBlurred = new Promise(resolve => harness.element('claude-sign-out').addEventListener('blur', resolve, { once: true }));
   harness.element('claude-check-account').click(); await flush();
+  await retryBlurred;
+  retry.resolve({ ...sharedClaudeAccount, generation: 2, state: 'signed-out', email: null }); await flush();
   assert.equal(harness.element('claude-sign-out').hidden, true);
   assert.equal(harness.dom.window.document.activeElement.id, 'claude-sign-in');
-  harness.dom.window.close();
 });
 
 test('a delayed shared Claude sign-out cannot replace a newer account or browser sign-in', async () => {
@@ -3536,6 +3543,28 @@ test('a delayed shared Claude sign-out cannot replace a newer account or browser
   assert.equal(harness.element('claude-account-email').textContent, 'new@example.invalid');
   assert.equal(harness.element('start-codex').disabled, true);
   harness.dom.window.close();
+});
+
+test('a delayed Claude check preserves a new focus target or Settings tab', { timeout: 5000 }, async context => {
+  for (const destination of ['shared-chatgpt-sign-in', 'settings-tab-general']) {
+    const checking = deferred();
+    const harness = await twoAgentHarness({ retry_shared_claude: () => checking.promise });
+    context.after(() => harness.dom.window.close());
+    await harness.ready; harness.element('settings-navigation').click(); await flush();
+    harness.element('settings-tab-providers').click();
+    const signOut = harness.element('claude-sign-out');
+    signOut.focus();
+    const blurred = new Promise(resolve => signOut.addEventListener('blur', resolve, { once: true }));
+    harness.element('claude-check-account').click(); await blurred;
+    const target = harness.element(destination);
+    if (destination === 'settings-tab-general') target.click();
+    if (destination !== 'settings-tab-general') target.focus();
+    const focused = harness.dom.window.document.activeElement;
+    assert.equal(focused, destination === 'settings-tab-general' ? harness.dom.window.document.body : target);
+    checking.resolve({ ...sharedClaudeAccount, generation: 2, state: 'signed-out', email: null }); await flush();
+    assert.equal(harness.dom.window.document.activeElement, focused);
+    harness.dom.window.close();
+  }
 });
 
 test('returning to an environment with pending preparation applies that one result to its new view', async () => {

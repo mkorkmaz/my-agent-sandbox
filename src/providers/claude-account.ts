@@ -62,13 +62,16 @@ export async function initializeClaudeAccount(changed: () => void): Promise<Clau
 
   async function run(command: string): Promise<void> {
     if (operation !== 'idle') return;
+    const signOut = element<HTMLButtonElement>('claude-sign-out');
+    const restoreFocus = document.activeElement === signOut;
     operation = 'working'; error = null; render();
     let failure: string | null = null;
     try { accept(await invoke<ClaudeAccountStatus>(command)); }
     catch (caught) { failure = String(caught); await refresh(); }
     finally {
       operation = 'idle'; error = failure; render(); changed();
-      if (document.activeElement === element('claude-sign-out') && element('claude-sign-out').hidden) element(command === 'disconnect_shared_claude' || element('claude-check-account').hidden ? 'claude-sign-in' : 'claude-check-account').focus();
+      const target = signOut.hidden ? element<HTMLButtonElement>(command === 'disconnect_shared_claude' || element('claude-check-account').hidden ? 'claude-sign-in' : 'claude-check-account') : signOut;
+      if (restoreFocus && !target.disabled && !target.closest('[hidden]') && (document.activeElement === signOut || document.activeElement === document.body)) target.focus();
     }
   }
 
