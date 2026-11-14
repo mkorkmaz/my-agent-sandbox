@@ -242,6 +242,18 @@ fn killed_sql_writers_keep_request_cursor_and_rollup_in_one_commit() {
 fn a_busy_external_writer_times_out_without_advancing_saved_usage() {
     let (fixture, sql, native, original, baseline) = generated();
     let original_bytes = fs::read(&original).unwrap();
+    let configured_timeout = sql
+        .store
+        .as_ref()
+        .unwrap()
+        .with(|store| {
+            store
+                .connection
+                .pragma_query_value(None, "busy_timeout", |row| row.get::<_, i64>(0))
+                .map_err(crate::usage_store::error)
+        })
+        .unwrap();
+    assert_eq!(configured_timeout, 5000);
     append(&native);
     let mut locker = command(&fixture.0, "lock").spawn().unwrap();
     let deadline = Instant::now() + Duration::from_secs(3);
@@ -254,8 +266,9 @@ fn a_busy_external_writer_times_out_without_advancing_saved_usage() {
     let elapsed = start.elapsed();
     locker.kill().unwrap();
     locker.wait().unwrap();
-    assert!(result.is_err());
-    assert!(elapsed >= Duration::from_millis(4500) && elapsed < Duration::from_secs(9));
+    assert!(result.err().unwrap().contains("database is locked"));
+    // Scheduling pauses can extend wall time beyond SQLite's configured busy wait.
+    assert!(elapsed >= Duration::from_millis(4500), "{elapsed:?}");
     assert_eq!(value(&sql.load().unwrap()), value(&baseline));
     assert_eq!(synchronize(&sql).unwrap().0.usage.requests, 2);
     assert_eq!(fs::read(&original).unwrap(), original_bytes);
