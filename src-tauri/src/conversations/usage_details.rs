@@ -1,20 +1,37 @@
+use super::source_state::SourceState;
 use crate::usage::{self, Coverage, Summary, TurnUsage};
-use crate::{conversation_graph::Status, lineage::Lineage};
+use crate::{conversations::graph::Status, conversations::lineage::Lineage};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+#[cfg(test)]
 pub(super) fn from_ledger(
     ledger: &super::Ledger,
     session_id: &str,
 ) -> Result<ConversationUsageDetails, String> {
-    super::project_record(ledger, session_id).ok_or("Saved session not found in this project.")?;
-    let graph = super::ledger_graph(ledger);
+    from_ledger_graph(ledger, session_id, &super::ledger_graph(ledger))
+}
+
+pub(super) fn from_ledger_graph(
+    ledger: &super::Ledger,
+    session_id: &str,
+    graph: &crate::conversations::graph::Graph,
+) -> Result<ConversationUsageDetails, String> {
+    let selected = super::project_record(ledger, session_id)
+        .ok_or("Saved session not found in this project.")?;
+    let claude = selected.agent_kind == Some(crate::agents::AgentKind::ClaudeCode);
     let root_session_id = graph.relation(session_id).root_session_id;
-    let root_turns = root_session_id.as_ref().and_then(|root| {
-        super::project_record(ledger, root).map(|record| usage::own_turns(&record.turns, root))
-    });
+    let root_turns = root_session_id
+        .as_ref()
+        .filter(|_| !claude)
+        .and_then(|root| {
+            super::project_record(ledger, root).map(|record| usage::own_turns(&record.turns, root))
+        });
     let mut agents = Vec::new();
     let mut warnings = Vec::new();
+    if claude {
+        warnings.push(super::claude::usage::COVERAGE_NOTE.into());
+    }
     for id in std::iter::once(session_id.to_owned()).chain(graph.descendants(session_id)) {
         let Some(record) = super::project_record(ledger, &id) else {
             continue;
@@ -24,7 +41,7 @@ pub(super) fn from_ledger(
         if let Some(warning) = &record.warning {
             warnings.push(format!("{}: {warning}", record.title));
         }
-        if !record.available {
+        if record.source_state() == SourceState::Unavailable {
             warnings.push(format!(
                 "{}: Session file unavailable; saved usage is retained.",
                 record.title
@@ -35,7 +52,9 @@ pub(super) fn from_ledger(
             Status::Invalid => {
                 Some("Session relationship is invalid; family attribution is unverified.")
             }
-            Status::Unknown if record.lineage.kind == crate::lineage::Kind::Subagent => {
+            Status::Unknown
+                if record.lineage.kind == crate::conversations::lineage::Kind::Subagent =>
+            {
                 Some("Subagent relationship could not be verified.")
             }
             _ => None,
@@ -44,6 +63,7 @@ pub(super) fn from_ledger(
             warnings.push(format!("{}: {warning}", record.title));
         }
         agents.push(AgentUsageDetails {
+            agent_kind: record.agent_kind,
             session_id: id.clone(),
             title: record.title.clone(),
             available: record.available,
@@ -67,6 +87,8 @@ pub(super) fn from_ledger(
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentUsageDetails {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_kind: Option<crate::agents::AgentKind>,
     pub session_id: String,
     pub title: String,
     pub available: bool,
@@ -256,7 +278,7 @@ pub fn build(
 fn prompt(turn: &TurnUsage) -> PromptUsage {
     PromptUsage {
         turn_id: turn.id.clone(),
-        status: turn.status.clone(),
+        status: turn.status.as_str().into(),
         own_usage: Summary::default(),
         descendants_usage: Summary::default(),
         combined_usage: Summary::default(),
@@ -287,6 +309,7 @@ mod tests {
             .unwrap()
             .iter()
             .map(|agent| AgentUsageDetails {
+                agent_kind: None,
                 session_id: agent["sessionId"].as_str().unwrap().into(),
                 title: agent["title"].as_str().unwrap().into(),
                 available: agent["available"].as_bool().unwrap(),

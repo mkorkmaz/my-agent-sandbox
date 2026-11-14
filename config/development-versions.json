@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "verifiedAt": "2026-11-10T10:34:19.358Z",
+  "verifiedAt": "2026-11-13T18:31:51.597Z",
   "target": {
     "os": "macos",
     "minimumVersion": "15.0",
@@ -20,8 +20,8 @@
       "integrity": "sha512-pVmfis+4zT8H0Qhp3xPZx9Ju7kpzvA6rr/PSJPyuwfvucTQ8sVt61NYU9KMkK703UFlYadFmjKA4HhybOtN0gg=="
     },
     "vite": {
-      "version": "8.3.7",
-      "integrity": "sha512-oxh0dMxrayBr33ScJvvBJ2HBQ2jc1TBrXKR2NyL/MJ9WPuX19mN2DXWUmywKdyw5RFVQBo8hmtb2FMC0LHrnng=="
+      "version": "8.3.8",
+      "integrity": "sha512-LzOn3h9rG/0vhLdXrV4yJ4QFA9eEoqCl+Yx+kGJd7aB9w6nfNgVHKSYwLPZUHrz4ZGa+t+kXjV9itvcHDLQouA=="
     },
     "typescript": {
       "version": "7.0.2",
@@ -53,21 +53,21 @@
       "checksum": "adddb0e648752aaac5da9c3c3c6a68e1e87cab55e3b757b18a9441ef8c3ac614"
     },
     "dialog": {
-      "version": "2.7.3"
+      "version": "2.8.4"
     }
   },
   "ghostty": {
     "library": "libghostty-vt",
-    "version": "1.0.0",
-    "tag": "vt-1.0.0",
-    "commit": "0fa3d577a5614150ff8e2c152de5fb9d5c6d2dec",
+    "version": "1.0.1",
+    "tag": "vt-1.0.1",
+    "commit": "108cacb17ed8990840cd14abfce43d8ed8503ca1",
     "source": {
-      "url": "https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0.tar.gz",
-      "sha256": "4a6ef758be721923e1969e7b81b443dcc92d8dd3fb5a39600c03a8817a753676"
+      "url": "https://release.files.ghostty.org/libghostty-vt/1.0.1/libghostty-vt-1.0.1.tar.gz",
+      "sha256": "333dfce97641ef9b536bb9e08907ad86abaaada50e8f7417b70d9284adef37aa"
     },
     "dependencies": {
-      "url": "https://release.files.ghostty.org/libghostty-vt/1.0.0/libghostty-vt-1.0.0-deps.tar.gz",
-      "sha256": "4d5ea5e448e4c7ea8fb55ccbaa8668f2a97d44f438cee831e2b7ecd162d85c29"
+      "url": "https://release.files.ghostty.org/libghostty-vt/1.0.1/libghostty-vt-1.0.1-deps.tar.gz",
+      "sha256": "91a4e10960a52bf5bf4b15aa2a2cddaff8a89d6cd903d3055bda4fd17de3356d"
     },
     "zig": {
       "version": "0.17.1",
@@ -77,7 +77,7 @@
     },
     "buildArguments": [
       "--system",
-      "../libghostty-vt-1.0.0-deps",
+      "../libghostty-vt-1.0.1-deps",
       "--prefix",
       "<WORK>/ghostty-install",
       "-Demit-lib-vt",

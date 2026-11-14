@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="only light">
+  <meta name="description" content="Follow a Tugboat chat from the Mac interface into a Brig guest, through the native terminal, and back to saved history.">
+  <title>Architecture · Tugboat handbook</title>
+  <link rel="stylesheet" href="handbook.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to architecture</a>
+  <header class="masthead">
+    <nav class="global-nav" aria-label="Handbook">
+      <a class="brand" href="index.html">Tugboat handbook</a>
+      <a href="architecture.html" aria-current="page">Architecture</a>
+      <a href="developer-guide.html">Developer</a>
+      <a href="user-guide.html">User</a>
+      <a href="adr.html">Decisions</a>
+      <a href="agent-guide.html">Agent</a>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <h1>Tugboat architecture</h1>
+    <p class="lead">Tugboat connects a local project folder to Codex and Claude Code on an Apple silicon Mac. Each agent runs in its own Brig guest. Both can edit the same project files.</p>
+    <nav class="contents" aria-label="On this page">
+      <ul>
+        <li><a href="#runtime">Runtime map</a></li>
+        <li><a href="#ownership">What belongs to whom</a></li>
+        <li><a href="#desktop">Desktop commands and events</a></li>
+        <li><a href="#launch">From New Chat to a guest process</a></li>
+        <li><a href="#terminal">Terminal input and output</a></li>
+        <li><a href="#accounts">Accounts and access boundaries</a></li>
+        <li><a href="#history">From transcript to usage</a></li>
+        <li><a href="#storage">Durable records and recovery</a></li>
+        <li><a href="#lifecycle">Stop, remove, and quit</a></li>
+        <li><a href="#distribution">Build and distribution</a></li>
+      </ul>
+    </nav>
+
+    <section id="runtime">
+      <h2>Runtime map</h2>
+      <p>The desktop process controls the guest. The selected guest runs the agent command and makes model requests under its network policy. Select a component to read about its contract.</p>
+      <figure>
+        <svg class="runtime-map" viewBox="0 0 1150 550" aria-labelledby="map-title map-description" role="group">
+          <title id="map-title">How Tugboat runs a chat</title>
+          <desc id="map-description">The web interface invokes Rust. Rust checks the launch and calls Brig. Brig runs the agent in the guest. Rust manages the terminal and saves records. The guest contacts the provider and can write the shared project folder.</desc>
+          <defs>
+            <marker id="route-tip" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path class="arrow" d="M0 0 L7 3.5 L0 7 Z"/>
+            </marker>
+          </defs>
+          <g class="route" marker-end="url(#route-tip)">
+            <path d="M213 280 H333"/><path d="M513 280 H633"/><path d="M813 280 H933"/>
+            <path d="M424 245 V118"/><path d="M424 315 V441"/>
+            <path d="M1025 245 V118"/><path d="M1025 315 V441"/>
+          </g>
+          <g class="route-name" text-anchor="middle">
+            <text x="274" y="267">invoke</text><text x="574" y="267">checked plan</text><text x="874" y="267">brig run</text>
+            <text x="424" y="187">PTY output</text><text x="424" y="379">persist state</text>
+            <text x="1025" y="187">model requests</text><text x="1025" y="379">read and write</text>
+          </g>
+          <g text-anchor="middle">
+            <a href="#desktop" aria-label="Web interface, read about desktop commands"><rect class="node" x="35" y="245" width="178" height="70" rx="5"/><text class="node-name" x="124" y="276">Web interface</text><text class="node-detail" x="124" y="297">TypeScript in Tauri</text></a>
+            <a href="#desktop" aria-label="Native commands, read about the Rust boundary"><rect class="node" x="335" y="245" width="178" height="70" rx="5"/><text class="node-name" x="424" y="276">Native commands</text><text class="node-detail" x="424" y="297">Rust on the Mac</text></a>
+            <a href="#launch" aria-label="Brig runtime, read about launching a chat"><rect class="node" x="635" y="245" width="178" height="70" rx="5"/><text class="node-name" x="724" y="276">Brig runtime</text><text class="node-detail" x="724" y="297">Brig and hull</text></a>
+            <a href="#launch" aria-label="Agent in guest, read about command admission"><rect class="node" x="935" y="245" width="180" height="70" rx="5"/><text class="node-name" x="1025" y="276">Agent in guest</text><text class="node-detail" x="1025" y="297">Codex or Claude Code</text></a>
+            <a href="#terminal" aria-label="Native terminal, read about terminal input and output"><rect class="node" x="335" y="46" width="178" height="70" rx="5"/><text class="node-name" x="424" y="77">Native terminal</text><text class="node-detail" x="424" y="98">AppKit and libghostty-vt</text></a>
+            <a href="#storage" aria-label="Tugboat records, read about durable records"><rect class="node" x="335" y="443" width="178" height="70" rx="5"/><text class="node-name" x="424" y="474">Tugboat records</text><text class="node-detail" x="424" y="495">SQLite and private files</text></a>
+            <a href="#accounts" aria-label="Model provider, read about account and network boundaries"><rect class="node" x="935" y="46" width="180" height="70" rx="5"/><text class="node-name" x="1025" y="77">Model provider</text><text class="node-detail" x="1025" y="98">OpenAI or Anthropic</text></a>
+            <a href="#ownership" aria-label="Project folder, read about shared files"><rect class="node" x="935" y="443" width="180" height="70" rx="5"/><text class="node-name" x="1025" y="474">Project folder</text><text class="node-detail" x="1025" y="495">Writable share on Mac</text></a>
+          </g>
+        </svg>
+        <ol class="map-equivalent">
+          <li>The <a href="#desktop">web interface</a> sends a request to a Rust command.</li>
+          <li>The <a href="#launch">native command</a> checks the plan and starts a Brig process.</li>
+          <li>Brig runs Codex or Claude Code in the selected guest.</li>
+          <li>The guest uses the writable <a href="#ownership">project folder</a> and contacts its <a href="#accounts">provider</a>.</li>
+          <li>Rust feeds the <a href="#terminal">native terminal</a> and saves <a href="#storage">Tugboat records</a>.</li>
+        </ol>
+        <figcaption>Chat launch on macOS. A pseudoterminal (PTY) connects the interactive process to the native terminal. The account sign-in flow uses a separate connection from the Mac.</figcaption>
+      </figure>
+      <p class="source"><a href="../src-tauri/src/main.rs">Native entry point</a> · <a href="../src-tauri/src/agent_sessions/mod.rs">Session dispatch</a> · <a href="../src-tauri/src/platform/brig/mod.rs">Brig interface</a></p>
+    </section>
+
+    <section id="ownership">
+      <h2>What belongs to whom</h2>
+      <p>One project can have a Codex environment and a Claude Code environment. One environment can have several chats. A live terminal has a shorter lifetime than either a chat or its environment.</p>
+      <div class="table-wrap" role="region" aria-labelledby="ownership-caption" tabindex="0">
+        <table>
+          <caption id="ownership-caption">Identity and lifetime by scope</caption>
+          <thead><tr><th scope="col">Scope</th><th scope="col">Identity and contents</th><th scope="col">What survives</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Application</th><td>Settings, interface preferences, one shared ChatGPT account and one shared Claude account. A records directory ID ties these records to a dataset.</td><td>Accounts and settings remain available across projects and environment removals.</td></tr>
+            <tr><th scope="row">Project</th><td>The registry tracks the project ID, folder identity, name and opening order. CPU, memory and image verification overrides belong to the project.</td><td>Both guests see writes to the selected folder. Stopping a guest leaves those edits on the Mac.</td></tr>
+            <tr><th scope="row">Environment</th><td>The project ID and agent kind determine the environment ID. Each environment has a profile, Brig reference, policy binding, network mode, guest home and preparation state.</td><td>Stopping the guest preserves its home and history. An explicit removal follows the target shown in the preview.</td></tr>
+            <tr><th scope="row">Chat</th><td>A native session ID identifies a chat within a project and environment. Verified parent links attach subagent work to a root conversation.</td><td>Saved usage can survive transcript loss. Resume also requires a usable source session.</td></tr>
+            <tr><th scope="row">Terminal</th><td>A runtime identifier selects a process and its native view. Guest processes carry an environment target. A local shell has host scope.</td><td>A completed output view can survive process exit until eviction, manual close, or app exit.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The registry resolves a project record into the selected environment view before each operation. Two chats with the same native session ID in different guest homes remain separate. A branch name, folder display name, or chat title can change without changing that identity.</p>
+      <p class="source"><a href="../src-tauri/src/projects/record.rs">Project record</a> · <a href="../src-tauri/src/projects/agent_environment.rs">Environment membership</a> · <a href="../src-tauri/src/projects/environment_id.rs">Environment identity</a> · <a href="../src-tauri/src/terminal/target.rs">Terminal scope</a></p>
+    </section>
+
+    <section id="desktop">
+      <h2>Desktop commands and events</h2>
+      <p>Tauri 2 hosts a local web interface and a Rust process. Vite builds the TypeScript and page assets. The web interface uses the document object model and Zustand stores for the active project, account summaries, terminal lists and dashboard state.</p>
+      <p>On startup, Rust resolves the records location and starts usage storage on a background thread. It creates a hidden window and starts monitors. The interface calls <code>frontend_ready</code> to show and focus the window. Controllers then load records, settings, account status and projects. A storage failure remains visible through the recovery controls.</p>
+      <p>The web interface calls named Rust commands through Tauri interprocess communication (IPC). Rust owns process creation, the registry, account credentials and writes to disk. It validates inputs at the command boundary. The main window restricts navigation to the app origin, with a loopback development origin, and denies new windows. Browser authorization runs outside it.</p>
+      <p>Commands return snapshots. Events can arrive before the command that requested an older snapshot finishes. The dashboard checks project ID, request revision and event sequence before applying a result. If a refresh fails, it can display saved data with an error. A project switch invalidates the old request.</p>
+      <div class="table-wrap" role="region" aria-labelledby="events-caption" tabindex="0">
+        <table>
+          <caption id="events-caption">Events that update the interface</caption>
+          <thead><tr><th scope="col">Notification</th><th scope="col">Producer</th><th scope="col">Reader response</th></tr></thead>
+          <tbody>
+            <tr><td><code>project-usage-updated</code></td><td>The history monitor merges observed environments and publishes a changed dashboard.</td><td>Accept a newer sequence for the project. Update open details when their selected records change.</td></tr>
+            <tr><td><code>records-changed</code></td><td>The records monitor compares file metadata and the records directory identity.</td><td>Reload affected projects, settings, provider summaries, or saved usage through the relevant command.</td></tr>
+            <tr><td><code>terminal-sessions-changed</code> and <code>terminal-exit</code></td><td>The terminal manager reports session changes and process completion.</td><td>Refresh the correct project's terminals. Match the terminal identifier before updating the active view.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source"><a href="../src/main.ts">Interface wiring</a> · <a href="../src/app/app-data.ts">App data</a> · <a href="../src/dashboard/dashboard-state.ts">Dashboard ordering</a> · <a href="../src-tauri/src/desktop/startup.rs">Window handoff</a> · <a href="../src-tauri/src/storage/records_watch.rs">Records monitor</a> · <a href="../src-tauri/capabilities/main.json">Window permissions</a></p>
+    </section>
+
+    <section id="launch">
+      <h2>From New Chat to a guest process</h2>
+      <ol class="steps">
+        <li><strong>Resolve the selection.</strong> The interface sends the project and environment identifiers. Rust reads the registry, checks the folder identity, and resolves effective settings for the selected agent.</li>
+        <li><strong>Prepare the binding.</strong> Preparation looks for a Brig session that matches the folder and agent. It can create a binding, adopt one matching session, or return candidates for a user choice. A detached policy or an incomplete removal needs its own recovery path.</li>
+        <li><strong>Check the execution plan.</strong> Rust reads the profile, policy, plan and inventory. It verifies the host folder, guest project path, home, and protected records directories. A fingerprint identifies the reviewed configuration. A changed fingerprint requires another review.</li>
+        <li><strong>Verify the guest.</strong> The app reuses a matching running environment or starts one. Preparation associates its terminal with an attempt. A late result must match the current attempt. A successful command exit still requires evidence from the guest.</li>
+        <li><strong>Admit the chat.</strong> Session code checks the environment, online mode, provider account, and required guest capabilities. Resume also checks the saved session. A matching live chat can return its existing terminal identifier.</li>
+        <li><strong>Run the command.</strong> The agent module builds an argument list. Rust starts the selected Brig executable through a PTY. Codex assigns its own new chat ID. Tugboat supplies a new UUID (universally unique identifier) for Claude Code. Resume uses the existing native ID.</li>
+      </ol>
+      <p>For example, a user can switch to Claude while Codex preparation is running. The selected agent can change immediately, but the outstanding Codex result still belongs to the Codex environment. Independent environment identities and attempt checks keep that result from enabling a Claude chat.</p>
+      <p class="source"><a href="../src-tauri/src/environment/preparation/selection.rs">Session selection</a> · <a href="../src-tauri/src/environment/mod.rs">Plan checks and completion</a> · <a href="../src-tauri/src/projects/attempt.rs">Preparation attempts</a> · <a href="../src-tauri/src/agent_sessions/launch.rs">Launch admission</a> · <a href="../src-tauri/src/agents/mod.rs">Agent commands</a></p>
+    </section>
+
+    <section id="terminal">
+      <h2>Terminal input and output</h2>
+      <p>The web interface reserves the terminal area and sends layout and focus requests. Rust attaches an AppKit view to the macOS window. The native view uses <code>libghostty-vt</code> to interpret terminal data. Keyboard input, text composition, selection and drawing use the native surface.</p>
+      <p>Rust gives each child process a controlling PTY. Incoming keystrokes enter a bounded queue so native input callbacks can return promptly. A full queue raises a terminal input error. The reader forwards child output to the native surface. A resize updates the PTY size so the child can redraw.</p>
+      <p>A local terminal starts a shell on the Mac in the project folder. Guest shells, agent chats, and guest Git or test operations go through Brig. Diagnostic actions such as Brig info and logs invoke the host CLI for the selected reference. A terminal view alone does not establish where a command ran.</p>
+      <p>The terminal registry admits up to 16 live processes and retains up to 32 finished views during one app session. Closing an output view releases scrollback. New Chat creates another conversation. Selecting a live chat restores its own surface and process.</p>
+      <p class="source"><a href="../src/terminal/terminal-layout.ts">Terminal layout</a> · <a href="../src-tauri/src/terminal/mod.rs">Session registry and callbacks</a> · <a href="../src-tauri/src/terminal/pty.rs">PTY and shutdown</a> · <a href="../src-tauri/native/TerminalView.m">AppKit surface</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Operation targets</a></p>
+    </section>
+
+    <section id="accounts">
+      <h2>Accounts and access boundaries</h2>
+      <p>Provider sign-in belongs to application Settings. ChatGPT uses a browser device code. Claude uses a temporary loopback callback and proof key for code exchange (PKCE). The Rust login worker owns the attempt, checks the provider response and saves the result. A cancelled attempt cannot publish a late result.</p>
+      <p>Tugboat keeps renewable sessions in private files beneath the verified records directory. A compatible Codex guest receives an access copy in the standard guest credential location. Managed Claude environments receive an access copy in memory. The Claude helper preserves other connector credentials. Only the private host records contain the shared refresh tokens.</p>
+      <p>The project share is writable. Private records stay outside directories exposed by the guest plan. Brig and hull apply the guest network policy. Offline mode blocks guest network access. Mac browser sign-in and provider-hosted tools have different network paths. A hosted search result cannot establish that a guest command reached the same host.</p>
+      <p>Codex normally uses the Brig boundary with its inner sandbox disabled. The optional workspace sandbox restricts writes and command network access. Codex approval remains <code>never</code> in either mode. Claude Code runs in manual permission mode. The selected profile and network policy still apply in both cases.</p>
+      <p class="source"><a href="../src-tauri/src/providers/provider_login/protocol.rs">Authorization protocols</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">Codex access copies</a> · <a href="../src-tauri/src/providers/shared_claude/guest.rs">Claude access copies</a> · <a href="../src-tauri/profiles/tugboat-claude.yaml">Managed Claude volumes</a> · <a href="../src-tauri/src/agents/codex.rs">Codex arguments</a> · <a href="../src-tauri/src/agents/claude.rs">Claude arguments</a></p>
+    </section>
+
+    <section id="history">
+      <h2>From transcript to usage</h2>
+      <p>Command output is transient. History readers use agent-owned files under verified guest homes. Codex rollouts and Claude transcripts have different formats and identity rules. The app can inspect persistent history while the guest is stopped.</p>
+      <ol class="flow" aria-label="Usage data flow">
+        <li><strong>Read sources</strong><span>Check the guest home, project membership and source cursor.</span></li>
+        <li><strong>Resolve identity</strong><span>Match requests and verify parent links within the source namespace.</span></li>
+        <li><strong>Commit facts</strong><span>Save changed usage and parser progress in one SQLite transaction.</span></li>
+        <li><strong>Project totals</strong><span>Read saved summaries for a dashboard or load a selected family's details.</span></li>
+      </ol>
+      <p>The history monitor checks observed environments about every two seconds. A parser cursor records the source position so an append can resume. Restarting a scan must preserve previous measurements and avoid counting the same physical request twice. SQLite keeps usage, source references, summaries, prices and corrections. Full message bodies remain in the agent files.</p>
+      <p>Codex can use the guest namespace, provider, origin thread ID and response ID as physical request identity. Claude uses stable message IDs and verifies parent evidence for child transcripts. Ordinary forks remain distinct roots. Unresolved relationships appear as read-only unlinked subagents. Aggregate views include verified descendants once.</p>
+      <p>Cost is an API equivalent based on the persisted token counts and dated rates. Unknown counts, missing prices and measured zero have different meanings. Historical prices and corrections stay attached to their requests. Claude coverage remains partial even when every discovered message has counts.</p>
+      <p class="source"><a href="../src-tauri/src/conversations/mod.rs">Monitor and dashboard commands</a> · <a href="../src-tauri/src/conversations/graph.rs">Conversation relationships</a> · <a href="../src-tauri/src/conversations/claude/subagents.rs">Claude parent verification</a> · <a href="../src-tauri/src/conversations/sql_scan.rs">Incremental scan</a> · <a href="../src-tauri/src/usage/mod.rs">Measurements and prices</a> · <a href="../src-tauri/src/usage_store/writes.rs">Transactional writes</a></p>
+    </section>
+
+    <section id="storage">
+      <h2>Durable records and recovery</h2>
+      <p>The default records folder is <code>~/Library/Application Support/Tugboat</code>. A small location pointer and lock in the default directory identify the active records folder. The directory marker identifies the dataset. The database records the same identity.</p>
+      <div class="table-wrap" role="region" aria-labelledby="records-caption" tabindex="0">
+        <table>
+          <caption id="records-caption">Data locations and recovery rules</caption>
+          <thead><tr><th scope="col">Location</th><th scope="col">Contents</th><th scope="col">Recovery rule</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Active records folder</th><td>Project registry, settings, interface preferences, managed profiles, diagnostic records, and private provider files.</td><td>Use the verified records location. File publication checks ownership and syncs the temporary record before replacement.</td></tr>
+            <tr><th scope="row"><code>usage.sqlite3</code></th><td>One database holds both agents' usage across projects, chat state, request facts, source cursors, saved prices and derived summaries.</td><td>After activation, SQLite is authoritative. A missing or damaged active database blocks usage writes. Preserve the database and any rollback journal.</td></tr>
+            <tr><th scope="row">Retained JSON ledgers and backups</th><td>Earlier usage records and migration evidence. The first SQLite activation verifies the import before publication.</td><td>Retain the original inputs. They can predate newer SQL writes. A legacy writer can lose post-migration work.</td></tr>
+            <tr><th scope="row">Guest homes and project folder</th><td>Agent-owned transcripts, persistent guest files, and the user's source tree.</td><td>A records move transfers Tugboat records. Brig continues to own its homes and the project keeps its original location.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>A records move begins as a pending operation. On a successful shutdown, writers stop, usage is flushed, and the database closes. Startup copies and verifies the dataset before committing the location pointer and cleaning the source. Locate can reconnect the same dataset at a different path. An incomplete copy cannot become the active dataset.</p>
+      <p>After an uncertain commit, the next access must reopen the verified database and establish its state before scanning again. A disconnected drive can look like an empty directory. Preserving the saved identity lets recovery distinguish those cases.</p>
+      <p class="source"><a href="../src-tauri/src/storage/data_location/mod.rs">Location transaction</a> · <a href="../src-tauri/src/storage/publication.rs">File publication</a> · <a href="../src-tauri/src/usage_store/importer/mod.rs">Legacy import</a> · <a href="../src-tauri/src/usage_store/connection.rs">Connection checks</a> · <a href="../src-tauri/src/usage_store/migrations/001_initial.sql">SQL schema</a></p>
+    </section>
+
+    <section id="lifecycle">
+      <h2>Stop, remove, and quit</h2>
+      <p><strong>Stop an environment.</strong> The operation takes an environment-scoped gate and targets that guest's processes. The other agent can keep working. Stopping preserves the registered project and persistent history.</p>
+      <p><strong>Forget an unavailable project.</strong> Once its project terminals have ended, the user can forget the library entry. Tugboat removes the registration and stops watching it. It preserves project files, Brig environments, guest homes, and recorded usage. A later registration can receive a different project ID.</p>
+      <p><strong>Remove an environment.</strong> A preview identifies the reference, guest home and policy. The user confirms that scope. Native code checks the target again and records completed steps. It preserves a replaced target or a policy that it cannot prove it owns. An interrupted removal resumes from the recorded step.</p>
+      <p><strong>Quit or restart.</strong> The desktop lifecycle asks for confirmation when a terminal process is active. On confirmation it drains terminal processes, waits for host commands, flushes provider work and usage, then closes storage. A failure prevents completion and returns an error. A project switch has none of these shutdown effects.</p>
+      <p class="source"><a href="../src-tauri/src/environment/gate.rs">Environment gate</a> · <a href="../src-tauri/src/projects/mod.rs">Project registry</a> · <a href="../src-tauri/src/projects/removal.rs">Removal checkpoints</a> · <a href="../src-tauri/src/projects/operations/removal_target.rs">Removal ownership</a> · <a href="../src-tauri/src/desktop/lifecycle/mod.rs">Shutdown order</a></p>
+    </section>
+
+    <section id="distribution">
+      <h2>Build and distribution</h2>
+      <p>The native target is Apple silicon with macOS 15 or later. Tauri bundles the web assets, native terminal code, fonts and host runtime. The build prepares pinned inputs for Ghostty, Brig, hull, the signed virtualization runners, verification tools and ext4 disk utilities. The bundled registry configuration supports public guest images.</p>
+      <p>An empty Brig CLI setting selects bundled Brig. An explicitly saved compatible path selects a custom Brig CLI. Runtime validation checks the supported version, required tools, configuration and hashes against the bundle manifest. A system report identifies the effective tool paths.</p>
+      <p>Pull requests run web checks and select additional macOS tests for native changes. The trunk workflow builds and publishes an ad hoc signed installer. A separate Developer ID release script signs and notarizes the app and disk image with Apple credentials. Packaging success and end-user Gatekeeper acceptance require different evidence.</p>
+      <p class="source"><a href="../src-tauri/tauri.conf.json">Tauri bundle map</a> · <a href="../src-tauri/src/platform/runtime/mod.rs">Runtime validation</a> · <a href="../config/brig-runtime.json">Pinned runtime inputs</a> · <a href="../.github/workflows/pull-request.yml">Pull request checks</a> · <a href="../.github/workflows/macos-release.yml">Trunk release</a> · <a href="../scripts/build-macos-release.sh">Developer ID release</a></p>
+    </section>
+  </main>
+  <footer><a href="index.html">Tugboat handbook</a> · <a href="developer-guide.html">Developer guide</a> · <a href="adr.html">Architecture decisions</a> · <a href="#main">Back to top</a></footer>
+</body>
+</html>

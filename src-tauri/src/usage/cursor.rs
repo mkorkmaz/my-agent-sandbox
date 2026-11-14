@@ -1,7 +1,8 @@
 use super::{
     correct_legacy_tier, price, request, AmountCorrection, RequestSource, RequestUsage, Tokens,
-    TurnUsage, PRICING_DATE,
+    TurnStatus, TurnUsage, PRICING_DATE,
 };
+use super::pricing_state::PriceQuote;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -10,6 +11,12 @@ use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
+mod framing;
+mod ownership;
+mod reconciliation;
+use framing::{ReadProgress, RecordFraming};
+use ownership::OwnershipPhase;
+use reconciliation::{CounterState, DeltaState};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 struct Exact {
@@ -37,11 +44,11 @@ struct Counter {
 pub struct Cursor {
     offset: u64,
     #[serde(default)]
-    skipping_large_line: bool,
+    skipping_large_line: RecordFraming,
     #[serde(default)]
     skipped_large_record: bool,
     #[serde(default)]
-    pub(super) pending_bytes: bool,
+    pending_bytes: ReadProgress,
     inode: u64,
     device: u64,
     previous: Option<Tokens>,
@@ -79,10 +86,7 @@ pub struct Cursor {
 }
 
 fn signature(usage: &Tokens, cumulative: &Tokens) -> String {
-    format!(
-        "{:x}",
-        Sha256::digest(serde_json::to_vec(&(usage, cumulative)).expect("token serialization"))
-    )
+    crate::hash::hex(Sha256::digest(serde_json::to_vec(&(usage, cumulative)).expect("token serialization")))
 }
 
 fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &str) {
@@ -114,8 +118,7 @@ fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &
                 .as_deref()
                 .is_some_and(|previous| previous != tier)
         {
-            record.cost_usd = None;
-            record.unpriced_reason = Some("Recorded request service tiers conflict".into());
+            record.record_quote(PriceQuote::Unknown(Some("Recorded request service tiers conflict".into())));
             continue;
         }
         if record.rates.as_ref().is_some_and(|rates| {
@@ -125,8 +128,7 @@ fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &
         {
             record.service_tier = Some(tier.into());
             record.tier_source = Some("request".into());
-            record.cost_usd = None;
-            record.unpriced_reason = Some("The recorded request tier price is unavailable".into());
+            record.record_quote(PriceQuote::Unknown(Some("The recorded request tier price is unavailable".into())));
             continue;
         }
         let earlier = record.rate_correction.clone();
@@ -264,21 +266,18 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
         }
         record.tokens = exact.usage.clone();
         record.partial = false;
-        record.cost_usd = None;
-        record.unpriced_reason = Some("A compatible saved historical rate is unavailable".into());
+        record.record_quote(PriceQuote::Unknown(Some("A compatible saved historical rate is unavailable".into())));
         if compatible
             && record.tokens.cached_is_known()
             && record.tokens.writes_are_known()
             && (record.tokens.cache_write == 0 || record.tokens.write_12h.is_some())
         {
-            record.cost_usd = record
+            let cost = record
                 .rates
                 .as_ref()
                 .and_then(|rates| price(&record.tokens, rates));
-            record.unpriced_reason = record
-                .cost_usd
-                .is_none()
-                .then(|| "A compatible saved historical rate is unavailable".into());
+            record.record_quote(PriceQuote::from(cost.ok_or_else(
+                || "A compatible saved historical rate is unavailable".into())));
         }
     }
     let mut source = exact.source.clone();
@@ -287,13 +286,51 @@ fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
         source.root_turn_id = previous.root_turn_id.clone().or(source.root_turn_id);
     }
     if source.model_provider != "openai" {
-        record.unpriced_reason = Some("Provider price is unavailable".into());
+        record.record_quote(PriceQuote::Unknown(Some("Provider price is unavailable".into())));
     }
     record.source = Some(source);
     Ok(())
 }
 
 impl Cursor {
+    /// Check the same source identity as the reader before loading stored turns.
+    pub(crate) fn is_current_file(
+        &self,
+        path: &Path,
+        namespace: &str,
+        owner: &str,
+    ) -> Result<bool, String> {
+        #[cfg(test)]
+        let _benchmark_phase = crate::conversations::sqlite_benchmark::Phase::parser();
+        let mut file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+            .map_err(|_| "Could not read session usage.")?;
+        let metadata = file.metadata().map_err(|error| error.to_string())?;
+        if !metadata.is_file() {
+            return Err("Session usage is not a regular file.".into());
+        }
+        if self.pending_bytes == ReadProgress::WaitingForBytes
+            || metadata.dev() != self.device
+            || metadata.ino() != self.inode
+            || metadata.len() != self.offset
+            || self.namespace.as_deref() != Some(namespace)
+            || self.expected_owner.as_deref() != Some(owner)
+        {
+            return Ok(false);
+        }
+        let mut header = Vec::new();
+        BufReader::new(&mut file)
+            .take(1_048_577)
+            .read_until(b'\n', &mut header)
+            .map_err(|error| error.to_string())?;
+        if header.len() > 1_048_576 {
+            return Err("Saved session metadata is too large".into());
+        }
+        let fingerprint = crate::hash::hex(Sha256::digest(header));
+        Ok(self.header_fingerprint.as_deref() == Some(&fingerprint))
+    }
     pub fn guest_namespace(&self) -> Option<&str> {
         self.namespace.as_deref()
     }
@@ -305,7 +342,7 @@ impl Cursor {
         true
     }
     pub fn has_unread_bytes(&self) -> bool {
-        self.pending_bytes
+        self.pending_bytes == ReadProgress::WaitingForBytes
     }
     pub fn skipped_large_record(&self) -> bool {
         self.skipped_large_record
@@ -313,7 +350,7 @@ impl Cursor {
     pub fn has_ownership_problem(&self) -> bool {
         self.ownership_problem.is_some()
             || self.provenance_problem
-            || (self.owner.is_some() && self.active_owner != self.owner)
+            || matches!(self.ownership_phase(), OwnershipPhase::CopiedAncestor | OwnershipPhase::Blocked)
     }
     pub fn revision_state(&self) -> Value {
         serde_json::json!({"offset":self.offset,"pendingBytes":self.pending_bytes,"inode":self.inode,"device":self.device,"namespace":self.namespace,"owner":self.owner,"activeOwner":self.active_owner,"version":self.version,"header":self.header_fingerprint,"ownershipProblem":self.ownership_problem,"provenanceProblem":self.provenance_problem,"turn":self.turn_id,"model":self.model,"tier":self.tier,"threadTier":self.thread_tier,"bindings":self.matched_counters.len(),"pendingExact":self.pending_exact.len(),"pendingCounters":self.pending_counters.len()})
@@ -322,7 +359,7 @@ impl Cursor {
         self.version.as_deref() == Some("0.167.0") && self.namespace.is_some()
     }
     fn lifecycle_allowed(&self) -> bool {
-        self.owner.is_none() || self.active_owner.is_some()
+        self.ownership_phase() != OwnershipPhase::Blocked
     }
     fn touch_turn(&self, id: &str, payload: &Value, turns: &mut BTreeMap<String, TurnUsage>) {
         if !self.lifecycle_allowed() {
@@ -330,7 +367,7 @@ impl Cursor {
         }
         let turn = turns.entry(id.into()).or_insert_with(|| TurnUsage {
             id: id.into(),
-            status: "in-progress".into(),
+            status: TurnStatus::InProgress,
             ..Default::default()
         });
         turn.origin_thread_id = self.active_owner.clone();
@@ -345,28 +382,7 @@ impl Cursor {
             self.ownership_problem = Some("Session owner metadata is invalid".into());
             return;
         };
-        if self.owner.is_none() {
-            self.owner = Some(id.clone());
-            self.active_owner = Some(id.clone());
-            self.version = text(&payload["cli_version"]);
-            self.fork_origin = valid_id(&payload["forked_from_id"]);
-            if self
-                .expected_owner
-                .as_ref()
-                .is_some_and(|expected| expected != &id)
-            {
-                self.active_owner = None;
-                self.ownership_problem = Some("Session owner changed while reading".into());
-                return;
-            }
-        } else if self.owner.as_ref() != Some(&id) {
-            if self.fork_origin.as_ref() != Some(&id) {
-                self.active_owner = None;
-                self.ownership_problem = Some("Copied metadata has no verified fork owner".into());
-                return;
-            }
-            self.active_owner = Some(id.clone());
-        }
+        if !self.accept_owner(&id, payload) { return; }
         if let Some(provider) = text(&payload["model_provider"]) {
             self.providers.insert(id, provider);
         }
@@ -478,7 +494,7 @@ impl Cursor {
             .unwrap_or_else(|| format!("unattributed-{}", exact.at));
         let turn = turns.entry(id.clone()).or_insert_with(|| TurnUsage {
             id,
-            status: "in-progress".into(),
+            status: TurnStatus::InProgress,
             origin_thread_id: Some(exact.source.origin_thread_id.clone()),
             root_turn_id: exact.source.root_turn_id.clone(),
             ..Default::default()
@@ -494,8 +510,7 @@ impl Cursor {
         recorded.tier_source = Some(exact.tier_source.clone());
         if exact.source.model_provider != "openai" {
             recorded.rates = None;
-            recorded.cost_usd = None;
-            recorded.unpriced_reason = Some("Provider price is unavailable".into());
+            recorded.record_quote(PriceQuote::Unknown(Some("Provider price is unavailable".into())));
         }
         recorded.source = Some(exact.source.clone());
         index.insert(&turn.id, turn.requests.len(), &recorded);
@@ -559,10 +574,8 @@ impl Cursor {
             tier: self.current_tier(payload).0,
             tier_source: self.current_tier(payload).1,
         };
-        if let Some((identity, previous_signature)) = self.matched_counters.get(&key) {
-            if previous_signature != &signature(&last, &current) {
-                return Err("Conflicting token notification for a known physical request".into());
-            }
+        let state = self.counter_state(&key, &counter)?;
+        if let CounterState::Replay(identity) = &state {
             if counter.tier_source == "request" {
                 if let Some(tier) = counter.tier.as_deref() {
                     request_tier(turns, identity, tier);
@@ -570,11 +583,7 @@ impl Cursor {
             }
             return Ok(());
         }
-        if let Some(position) = self
-            .pending_exact
-            .iter()
-            .position(|exact| matches_counter(exact, &counter))
-        {
+        if let CounterState::Exact(position) = state {
             index.attach_key(turns, &key, &self.pending_exact[position])?;
             let exact = self.pending_exact.remove(position);
             self.matched_counters.insert(
@@ -589,17 +598,7 @@ impl Cursor {
             self.previous = Some(current);
             return Ok(());
         }
-        let delta = self
-            .previous
-            .as_ref()
-            .map(|previous| current.difference(previous))
-            .unwrap_or_else(|| Some(current.clone()));
-        if delta
-            .as_ref()
-            .is_none_or(|tokens| tokens.input != 0 || tokens.output != 0)
-        {
-            let partial = delta.as_ref().is_none_or(|delta| delta != &last);
-            let tokens = delta.unwrap_or(last);
+        if let Some((tokens, partial)) = DeltaState::between(self.previous.as_ref(), &current, &last).measurement() {
             if tokens.cached + tokens.cache_write > tokens.input {
                 return Err("Invalid token delta".into());
             }
@@ -613,7 +612,7 @@ impl Cursor {
             self.touch_turn(&id, payload, turns);
             let turn = turns.entry(id.clone()).or_insert_with(|| TurnUsage {
                 id,
-                status: "in-progress".into(),
+                status: TurnStatus::InProgress,
                 origin_thread_id: (self.owner.is_some() && self.active_owner.is_none())
                     .then(|| "unverified".into()),
                 ..Default::default()
@@ -687,14 +686,12 @@ impl Cursor {
         let kind = payload["type"].as_str().unwrap_or_default();
         if kind == "thread_settings_applied" {
             if let Some(id) = valid_id(&payload["thread_id"]) {
-                if self.owner.as_ref() == Some(&id) {
-                    self.active_owner = Some(id.clone());
-                }
+                self.restore_owner(&id);
                 if let Some(provider) = text(&payload["thread_settings"]["model_provider_id"]) {
                     self.providers.insert(id, provider);
                 }
             }
-            if self.owner.is_none() || self.active_owner == self.owner {
+            if matches!(self.ownership_phase(), OwnershipPhase::Unclaimed | OwnershipPhase::Own) {
                 self.thread_tier = payload["thread_settings"]["service_tier"]
                     .as_str()
                     .map(str::to_owned);
@@ -714,12 +711,11 @@ impl Cursor {
             if self.lifecycle_allowed() {
                 if let Some(id) = payload["turn_id"].as_str().or(self.turn_id.as_deref()) {
                     self.touch_turn(id, payload, turns);
-                    turns.get_mut(id).unwrap().status = if kind == "task_complete" {
-                        "complete"
-                    } else {
-                        "interrupted"
-                    }
-                    .into();
+                    let completion = match kind {
+                        "task_complete" => TurnStatus::Complete,
+                        _ => TurnStatus::Interrupted,
+                    };
+                    turns.get_mut(id).unwrap().status.observe_completion(completion);
                 }
             }
             return Ok(());
@@ -746,6 +742,8 @@ pub fn sync_file_bound(
     cursor: &mut Cursor,
     turns: &mut BTreeMap<String, TurnUsage>,
 ) -> Result<bool, String> {
+    #[cfg(test)]
+    let _benchmark_phase = crate::conversations::sqlite_benchmark::Phase::parser();
     read_file(path, Some(namespace), Some(owner), cursor, turns)
 }
 fn read_file(
@@ -772,7 +770,7 @@ fn read_file(
     if first_line.len() > 1_048_576 {
         return Err("Saved session metadata is too large".into());
     }
-    let fingerprint = format!("{:x}", Sha256::digest(&first_line));
+    let fingerprint = crate::hash::hex(Sha256::digest(&first_line));
     if metadata.ino() != cursor.inode
         || metadata.dev() != cursor.device
         || metadata.len() < cursor.offset
@@ -793,10 +791,9 @@ fn read_file(
         .map_err(|error| error.to_string())?;
     let mut reader = BufReader::new(file.take(64 * 1024 * 1024));
     let mut changed = false;
-    let mut failure: Option<(Cursor, String)> = None;
     let mut index = None;
     loop {
-        if cursor.skipping_large_line {
+        if cursor.skipping_large_line == RecordFraming::SkipOversized {
             // Read to the delimiter without allocating the rest of an oversized line.
             let chunk = reader.fill_buf().map_err(|error| error.to_string())?;
             if chunk.is_empty() {
@@ -806,7 +803,7 @@ fn read_file(
             let consumed = newline.map_or(chunk.len(), |index| index + 1);
             reader.consume(consumed);
             cursor.offset += consumed as u64;
-            cursor.skipping_large_line = newline.is_none();
+            cursor.skipping_large_line = RecordFraming::from(newline.is_none());
             changed = true;
             continue;
         }
@@ -818,7 +815,7 @@ fn read_file(
             .map_err(|error| error.to_string())?;
         if line.len() > 16 * 1024 * 1024 {
             cursor.offset += line.len() as u64;
-            cursor.skipping_large_line = line.last() != Some(&b'\n');
+            cursor.skipping_large_line = RecordFraming::from(line.last() != Some(&b'\n'));
             cursor.skipped_large_record = true;
             changed = true;
             continue;
@@ -838,20 +835,12 @@ fn read_file(
                     index.get_or_insert_with(|| RequestIndex::new(turns)),
                 )
             });
-        if let Err(message) = consumed {
-            if failure.is_none() {
-                // Fallible record validation happens before pending notifications are consumed.
-                failure = Some((cursor.clone(), message));
-            }
-        }
+        // Keep the cursor and published turns at the same record boundary.
+        consumed?;
         cursor.offset += line.len() as u64;
         changed = true;
     }
-    if let Some((checkpoint, message)) = failure {
-        *cursor = checkpoint;
-        return Err(message);
-    }
-    let pending = cursor.offset < metadata.len();
+    let pending = ReadProgress::from(cursor.offset < metadata.len());
     changed |= pending != cursor.pending_bytes;
     cursor.pending_bytes = pending;
     Ok(changed)
@@ -1422,5 +1411,65 @@ mod tests {
             );
             std::fs::remove_dir_all(root).unwrap();
         }
+    }
+}
+
+
+#[cfg(test)]
+mod transition_review {
+    use super::*;
+    use serde_json::json;
+    fn read_events(name: &str, expected: &str, events: Vec<Value>) -> BTreeMap<String, TurnUsage> {
+        let file = std::env::temp_dir().join(format!("tugboat-turn-review-{}-{name}", std::process::id()));
+        let content: String = events.into_iter().map(|value| format!("{value}\n")).collect();
+        std::fs::write(&file, content).unwrap();
+        let mut turns = BTreeMap::new();
+        sync_file_bound(&file, "fixture", expected, &mut Cursor::default(), &mut turns).unwrap();
+        std::fs::remove_file(file).unwrap();
+        turns
+    }
+    #[test]
+    fn recheck_foreign_settings_cannot_release_blocked_ownership() {
+        let expected = "30000000-0000-4000-8000-000000000001";
+        let other = "30000000-0000-4000-8000-000000000002";
+        let turn = "40000000-0000-4000-8000-000000000001";
+        let events = vec![
+            json!({"type":"session_meta","payload":{"id":other,"cli_version":"0.167.0","model_provider":"openai"}}),
+            json!({"type":"event_msg","payload":{"type":"thread_settings_applied","thread_id":other}}),
+            json!({"type":"event_msg","payload":{"type":"task_started","turn_id":turn}}),
+        ];
+        assert!(read_events("owner",expected,events).is_empty());
+    }
+    #[test]
+    fn recheck_replayed_completion_cannot_reverse_a_terminal_turn() {
+        let owner = "30000000-0000-4000-8000-000000000001";
+        let turn = "40000000-0000-4000-8000-000000000001";
+        let mut events = vec![json!({"type":"session_meta","payload":{"id":owner,"cli_version":"0.167.0","model_provider":"openai"}})];
+        for event in ["task_started","task_complete","turn_aborted"] {
+            events.push(json!({"type":"event_msg","payload":{"type":event,"turn_id":turn}}));
+        }
+        assert_eq!(read_events("turn",owner,events)[turn].status, TurnStatus::Complete);
+    }
+}
+
+
+#[cfg(test)]
+mod review_replay {
+    use super::*;
+    use serde_json::json;
+    #[test]
+    fn recheck_a_rejected_line_does_not_publish_events_beyond_its_checkpoint() {
+        let owner = "30000000-0000-4000-8000-000000000001";
+        let turn = "40000000-0000-4000-8000-000000000001";
+        let file = std::env::temp_dir().join(format!("tugboat-checkpoint-review-{}", std::process::id()));
+        let header = json!({"type":"session_meta","payload":{"id":owner,"cli_version":"0.167.0"}});
+        let later = json!({"type":"event_msg","payload":{"type":"task_complete","turn_id":turn}});
+        std::fs::write(&file, format!("{header}\nunfinished fixture\n{later}\n")).unwrap();
+        let mut turns = BTreeMap::new(); let mut cursor = Cursor::default();
+        let read = sync_file_bound(&file, "fixture",owner,&mut cursor,&mut turns);
+        std::fs::remove_file(file).unwrap();
+        assert!(read.is_err());
+        assert_eq!(cursor.offset, header.to_string().len() as u64 + 1);
+        assert!(turns.is_empty());
     }
 }

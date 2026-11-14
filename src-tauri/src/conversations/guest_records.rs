@@ -4,6 +4,28 @@ use super::{guest_namespace, Ledger, SessionRecord};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
+enum OwnershipEvidence { Unknown, Single(String), Mixed }
+
+impl From<BTreeSet<String>> for OwnershipEvidence {
+    fn from(owners: BTreeSet<String>) -> Self {
+        match owners.len() {
+            0 => Self::Unknown,
+            1 => Self::Single(owners.into_iter().next().expect("one guest owner")),
+            _ => Self::Mixed,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum SlotState { Empty, Selected, Retained, AvailableVariant }
+
+fn slot_state(current: Option<&SessionRecord>, variants: Option<&BTreeMap<String, SessionRecord>>, guest: &str) -> SlotState {
+    if current.is_some_and(|record| record.guest_namespace.as_deref() == Some(guest)) { return SlotState::Selected; }
+    if variants.is_some_and(|variants| variants.contains_key(guest)) { return SlotState::AvailableVariant; }
+    if current.is_some() { return SlotState::Retained; }
+    SlotState::Empty
+}
+
 fn source_guest(path: &Path) -> Option<String> {
     if !path.is_absolute() || path.components().any(|part| part == Component::ParentDir) {
         return None;
@@ -41,10 +63,13 @@ impl Ledger {
                 )
                 .filter(|owner| !owner.is_empty())
                 .collect();
-            if owners.len() == 1 {
-                record.guest_namespace = owners.into_iter().next();
+            let evidence = OwnershipEvidence::from(owners);
+            if let OwnershipEvidence::Single(owner) = evidence {
+                record.guest_namespace = Some(owner);
                 changed = true;
-            } else if owners.len() > 1 {
+                continue;
+            }
+            if matches!(evidence, OwnershipEvidence::Mixed) {
                 let variants = self.variants.entry(id.clone()).or_default();
                 for (path, cursor) in std::mem::take(&mut record.cursors) {
                     if let Some(owner) = cursor
@@ -91,12 +116,8 @@ impl Ledger {
             }
         }
         for (id, variants) in &mut self.variants {
-            if self
-                .sessions
-                .get(id)
-                .and_then(|row| row.guest_namespace.as_deref())
-                == Some(guest)
-            {
+            let selection = slot_state(self.sessions.get(id), Some(variants), guest);
+            if selection == SlotState::Selected {
                 continue;
             }
             if let Some(previous) = self.sessions.remove(id) {
@@ -106,7 +127,8 @@ impl Ledger {
                 );
                 changed = true;
             }
-            if let Some(selected) = variants.remove(guest) {
+            if selection == SlotState::AvailableVariant {
+                let selected = variants.remove(guest).expect("selected guest variant");
                 self.sessions.insert(id.clone(), selected);
                 changed = true;
             }
@@ -115,11 +137,7 @@ impl Ledger {
     }
 
     pub(super) fn admit_guest(&mut self, id: &str, guest: &str) {
-        if self
-            .sessions
-            .get(id)
-            .is_some_and(|row| row.guest_namespace.as_deref() != Some(guest))
-        {
+        if slot_state(self.sessions.get(id), None, guest) == SlotState::Retained {
             let previous = self.sessions.remove(id).expect("existing row");
             self.variants.entry(id.to_owned()).or_default().insert(
                 previous.guest_namespace.clone().unwrap_or_default(),
@@ -131,4 +149,4 @@ impl Ledger {
     }
 }
 
-pub(super) type Variants = BTreeMap<String, BTreeMap<String, SessionRecord>>;
+pub(crate) type Variants = BTreeMap<String, BTreeMap<String, SessionRecord>>;

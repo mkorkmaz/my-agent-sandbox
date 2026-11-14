@@ -1,0 +1,124 @@
+name: Pull request checks
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  frontend:
+    name: Frontend tests and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      native: ${{ steps.scope.outputs.native }}
+      node: ${{ steps.config.outputs.node }}
+      rust: ${{ steps.config.outputs.rust }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read pinned toolchain versions
+        id: config
+        run: jq -r '"node=\(.frontend.node)", "rust=\(.rust.compiler)"' config/development-versions.json >> "$GITHUB_OUTPUT"
+
+      - name: Identify native changes
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git diff --name-only "$BASE_SHA" HEAD -- src-tauri config resources scripts tests/native tests/fixtures package.json package-lock.json .github/workflows > "$RUNNER_TEMP/native-changes"
+          if ! test -s "$RUNNER_TEMP/native-changes"; then
+            echo 'native=false' >> "$GITHUB_OUTPUT"
+            echo 'Native checks are not required for this change.'
+            exit 0
+          fi
+          echo 'native=true' >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.config.outputs.node }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  formatting:
+    name: Rust formatting for added lines
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Read pinned toolchain versions
+        id: config
+        run: jq -r '"node=\(.frontend.node)", "rust=\(.rust.compiler)"' config/development-versions.json >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ steps.config.outputs.node }}
+
+      - name: Install the pinned formatter
+        env:
+          TOOLCHAIN: ${{ steps.config.outputs.rust }}
+        run: |
+          rustup toolchain install "$TOOLCHAIN" --profile minimal --component rustfmt
+          rustup override set "$TOOLCHAIN"
+
+      - name: Verify formatter failure handling
+        run: node --test tests/native/rust-format.test.mjs
+
+      - name: Check added Rust lines
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: python3 scripts/check-rust-format.py "$BASE_SHA"
+
+  native:
+    name: Rust and native tests
+    needs: frontend
+    if: needs.frontend.outputs.native == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ needs.frontend.outputs.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Select the pinned Rust toolchain
+        env:
+          TOOLCHAIN: ${{ needs.frontend.outputs.rust }}
+        run: |
+          rustup toolchain install "$TOOLCHAIN" --profile minimal
+          rustup override set "$TOOLCHAIN"
+
+      - name: Verify native preparation modes
+        run: node --test tests/native/native-preparation.test.mjs tests/native/runtime-preparation.test.mjs
+
+      - name: Prepare the test runtime without explicit signing
+        run: npm run native:prepare -- --no-sign
+
+      - name: Run Rust and native checks
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          npm run test:terminal
+          npm run test:hull -- --no-sign
+          npm run test:brig -- --no-sign
+          node --test tests/native/disk-tools.test.mjs

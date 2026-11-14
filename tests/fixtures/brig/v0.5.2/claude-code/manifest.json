@@ -1,0 +1,17 @@
+{
+  "capturedAt": "2026-11-12T22:25:21.948Z",
+  "brigVersion": "v0.5.2",
+  "brigCommit": "1c4962a25a9e563beee9fce13eecbe7f51809780",
+  "apiVersion": "brig.sh/v1alpha1",
+  "agentKind": "claude-code",
+  "rootReplacement": "/fixture",
+  "profileSource": "src-tauri/profiles/tugboat-claude.yaml",
+  "profileSha256": "fe450eefc0907450e4bccaf31fcb889f859eb2b8eb77ff5ba9bd37930781f3df",
+  "cases": [
+    "profile",
+    "ready",
+    "refused",
+    "missing-runtime"
+  ],
+  "planScope": "Real Brig CLI with a temporary runtime executable, profile, policy, home, and state. No VM or account operation."
+}

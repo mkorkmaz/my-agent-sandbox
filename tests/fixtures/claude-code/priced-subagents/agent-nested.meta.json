@@ -1,0 +1,5 @@
+{
+  "toolUseId": "toolu_nested",
+  "parentAgentId": "alpha",
+  "spawnDepth": 2
+}

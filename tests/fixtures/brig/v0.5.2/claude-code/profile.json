@@ -1,0 +1,14 @@
+{
+  "command": [
+    "/opt/homebrew/bin/brig",
+    "agent",
+    "show",
+    "tugboat-claude",
+    "--json"
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "errorCode": null,
+  "stdout": "{\n  \"name\": \"tugboat-claude\",\n  \"desc\": \"Claude Code managed by Tugboat\",\n  \"binary\": \"claude\",\n  \"image\": \"ghcr.io/brig-sh/claude-code-stock:root\",\n  \"guestHome\": \"/root\",\n  \"env\": [\n    {\n      \"name\": \"IS_SANDBOX\",\n      \"value\": \"1\"\n    },\n    {\n      \"name\": \"CLAUDE_CONFIG_DIR\",\n      \"value\": \"/brig/claude\"\n    }\n  ],\n  \"deny\": [\n    \"ANTHROPIC_API_KEY\",\n    \"ANTHROPIC_AUTH_TOKEN\",\n    \"GH_TOKEN\"\n  ],\n  \"volumes\": [\n    {\n      \"kind\": \"tmpfs\",\n      \"path\": \".claude\",\n      \"size\": \"512m\",\n      \"at\": \"/brig/claude\"\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/.claude.json\",\n      \"file\": true\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/settings.json\",\n      \"file\": true\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/CLAUDE.md\",\n      \"file\": true\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/sessions\"\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/projects\"\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/plugins\"\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/skills\"\n    },\n    {\n      \"kind\": \"hostmount\",\n      \"path\": \".claude/history.jsonl\",\n      \"file\": true\n    }\n  ],\n  \"headless\": true,\n  \"kind\": \"agent\",\n  \"mem\": 4096,\n  \"cpus\": 4,\n  \"hypervisor\": \"hvi\",\n  \"network\": \"isolated\",\n  \"genericBoot\": true,\n  \"staleCredentialFiles\": [\n    \".claude/.credentials.json\"\n  ],\n  \"onboarding\": {\n    \"file\": \".claude/.claude.json\",\n    \"seed\": {\n      \"hasCompletedOnboarding\": true,\n      \"hasTrustDialogAccepted\": true\n    },\n    \"trustKey\": [\n      \"projects\",\n      \"hasTrustDialogAccepted\"\n    ]\n  },\n  \"hostConfigDir\": \"~/.claude\",\n  \"projectPaths\": [\n    \"skills\",\n    \"plugins\"\n  ]\n}\n",
+  "stderr": ""
+}

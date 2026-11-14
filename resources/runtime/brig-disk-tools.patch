@@ -1,0 +1,68 @@
+--- a/internal/runtime/rootfsmode.go
++++ b/internal/runtime/rootfsmode.go
+@@ -101,16 +101,27 @@
+ 	return OverlayRoot{Why: "brig builds one on hull and on nerdctl with urunc only"}
+ }
+ 
+-// hullMke2fs is the mke2fs hull formats the overlay disks with. hull runs this
+-// path and no other (cmd/hull/blockrootfs.go), so it is the one checked. A var
+-// for tests.
+-var hullMke2fs = "/opt/homebrew/opt/e2fsprogs/sbin/mke2fs"
++// Tugboat ships mke2fs beside brig and its patched hull. Resolve the actual
++// executable so a symlinked CLI still checks the matching bundled tool.
++// Keep a variable for the existing rootfs decision tests.
++var hullMke2fs = bundledMke2fs()
++
++func bundledMke2fs() string {
++	executable, err := os.Executable()
++	if err != nil {
++		return ""
++	}
++	if resolved, err := filepath.EvalSymlinks(executable); err == nil {
++		executable = resolved
++	}
++	return filepath.Join(filepath.Dir(executable), "mke2fs")
++}
+ 
+ // hullOverlayRoot is whether hull can build an overlay root here: it can when
+ // its mke2fs is there to run.
+ func hullOverlayRoot() OverlayRoot {
+ 	if !isExecutable(hullMke2fs) {
+-		return OverlayRoot{Why: "install e2fsprogs (brew install e2fsprogs): hull formats the disks with " + hullMke2fs}
++		return OverlayRoot{Why: "the bundled mke2fs is unavailable at " + hullMke2fs + "; reinstall Tugboat"}
+ 	}
+ 	return OverlayRoot{Available: true}
+ }
+--- a/internal/buildinfo/buildinfo.go
++++ b/internal/buildinfo/buildinfo.go
+@@ -57,6 +57,8 @@
+ 	if info.Commit == "" {
+ 		info = info.withGit(gitCommit, gitCommitTime, gitDescribe, gitModified == "true")
+ 	}
++	// Tugboat keeps the compatible release version and reports Modified.
++	info.Version = strings.TrimSuffix(info.Version, "+dirty")
+ 	return info
+ }
+ 
+--- a/internal/runtime/hull_test.go
++++ b/internal/runtime/hull_test.go
+@@ -101,7 +101,7 @@
+ 	explicit := generic
+ 	explicit.RootfsMode = RootfsModeOverlayBlock
+ 	if _, _, err := runArgs(explicit, "hvi", "shared", "", "", nil, nil); err == nil ||
+-		!strings.Contains(err.Error(), "brew install e2fsprogs") {
++		!strings.Contains(err.Error(), "reinstall Tugboat") {
+ 		t.Errorf("BRIG_ROOTFS_MODE=overlay-block with no mke2fs: want a refusal naming e2fsprogs, got %v", err)
+ 	}
+ 
+--- a/internal/runtime/rootfsmode_test.go
++++ b/internal/runtime/rootfsmode_test.go
+@@ -71,7 +71,7 @@
+ 
+ // hull runs one mke2fs, so that file is the whole of what it needs.
+ func TestHullOverlayRoot(t *testing.T) {
+-	if got := hullOverlayRoot(); got.Available || !strings.Contains(got.Why, "brew install e2fsprogs") {
++	if got := hullOverlayRoot(); got.Available || !strings.Contains(got.Why, "reinstall Tugboat") {
+ 		t.Errorf("no mke2fs: %+v, want unavailable with the fix", got)
+ 	}
+ 	overlayHost(t)

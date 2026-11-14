@@ -42,24 +42,16 @@ jobs:
           rustup toolchain install "$TOOLCHAIN" --profile minimal
           rustup override set "$TOOLCHAIN"
 
-      - name: Install Brig for the policy integration test
-        env:
-          HOMEBREW_NO_AUTO_UPDATE: '1'
-        run: |
-          brew tap brig-sh/brig
-          tap=$(brew --repository brig-sh/brig)
-          # This revision packages Brig v0.5.2 with hull v0.1.0.
-          git -C "$tap" fetch --depth=1 origin b32587664ee001a9e052accdc4b1a78560715927
-          git -C "$tap" checkout --detach FETCH_HEAD
-          brew trust brig-sh/brig
-          brew install --cask brig-sh/brig/brig
+      - name: Prepare the pinned bundled runtime
+        run: npm run native:prepare
 
       - name: Run Rust, native terminal and hull tests
         run: |
-          npm run native:prepare
           cargo test --manifest-path src-tauri/Cargo.toml --locked
           npm run test:terminal
           npm run test:hull
+          npm run test:brig
+          node --test tests/native/disk-tools.test.mjs
 
       - name: Build the release installer
         run: npm run tauri -- build --ci --target aarch64-apple-darwin --bundles app,dmg -- --locked
@@ -73,6 +65,7 @@ jobs:
           test "$(plutil -extract CFBundleShortVersionString raw "$bundle/macos/Tugboat.app/Contents/Info.plist")" = "$VERSION"
           installer="Tugboat_${VERSION}_aarch64.dmg"
           hdiutil verify "$bundle/dmg/$installer"
+          node scripts/release/verify-bundled-runtime.mjs "$bundle/dmg/$installer"
           echo "installer=$installer" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

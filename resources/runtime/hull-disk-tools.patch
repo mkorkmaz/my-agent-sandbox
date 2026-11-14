@@ -1,0 +1,99 @@
+--- a/cmd/hull/blockrootfs.go
++++ b/cmd/hull/blockrootfs.go
+@@ -29,11 +29,6 @@
+ 	"strings"
+ 
+ 	"github.com/brig-sh/hull/pkg/ociclient"
+-)
+-
+-const (
+-	mke2fsBin  = "/opt/homebrew/opt/e2fsprogs/sbin/mke2fs"
+-	debugfsBin = "/opt/homebrew/opt/e2fsprogs/sbin/debugfs"
+ )
+ 
+ // blockInject is a per-instance file placed into the image after it is built.
+@@ -91,6 +86,10 @@
+ // mkfsFromDir runs mke2fs to write an ext4 image of rootfsDir at diskPath.
+ // extra goes before the device argument, for options only some callers want.
+ func mkfsFromDir(ctx context.Context, diskPath, rootfsDir string, sizeMB int, extra ...string) error {
++	mke2fsBin, err := diskTool("mke2fs")
++	if err != nil {
++		return err
++	}
+ 	args := []string{"-t", "ext4", "-d", rootfsDir, "-L", "rootfs", "-m", "0", "-q"}
+ 	args = append(args, extra...)
+ 	args = append(args, diskPath, fmt.Sprintf("%dM", sizeMB))
+@@ -105,6 +104,10 @@
+ // debugfs leaves stale. Its scratch files go in a new directory under
+ // stageParent, or under os.TempDir() when stageParent is empty.
+ func applyBlockFixups(ctx context.Context, diskPath, rootfsDir string, injects []blockInject, stageParent string) error {
++	debugfsBin, err := diskTool("debugfs")
++	if err != nil {
++		return err
++	}
+ 	// The injected files need to exist on the host for debugfs to copy them in.
+ 	// Three small files beside the image, not a second copy of the rootfs.
+ 	stage, err := os.MkdirTemp(stageParent, "block-inject-")
+@@ -181,10 +184,14 @@
+ // e2fsck recomputes the summaries. It costs a few tens of milliseconds here,
+ // against an image that has never been mounted.
+ func repairBlockImage(ctx context.Context, diskPath string) error {
++	e2fsckBin, err := diskTool("e2fsck")
++	if err != nil {
++		return err
++	}
+ 	// -f forces a full check even though the filesystem looks clean, which it
+ 	// does: nothing has mounted it. -y answers the questions, all of which are
+ 	// "recount this".
+-	cmd := exec.CommandContext(ctx, "/opt/homebrew/opt/e2fsprogs/sbin/e2fsck", "-f", "-y", diskPath)
++	cmd := exec.CommandContext(ctx, e2fsckBin, "-f", "-y", diskPath)
+ 	out, err := cmd.CombinedOutput()
+ 	if err := ctx.Err(); err != nil {
+ 		return err
+--- a/cmd/hull/rootfsupper.go
++++ b/cmd/hull/rootfsupper.go
+@@ -81,6 +81,10 @@
+ 			return disk, nil
+ 		} else if !errors.Is(err, os.ErrNotExist) {
+ 			return "", fmt.Errorf("inspect overlay upper disk: %w", err)
++		}
++		mke2fsBin, err := diskTool("mke2fs")
++		if err != nil {
++			return "", err
+ 		}
+ 		staging := disk + ".tmp"
+ 		_ = os.Remove(staging)
+--- /dev/null
++++ b/cmd/hull/desktop_disktools.go
+@@ -0,0 +1,31 @@
++//go:build darwin
++
++package main
++
++import (
++	"fmt"
++	"os"
++	"path/filepath"
++)
++
++// diskTool resolves the private disk tools next to hull. A missing tool is an
++// incomplete application bundle and must never select a system replacement.
++func diskTool(name string) (string, error) {
++	executable, err := os.Executable()
++	if err != nil {
++		return "", fmt.Errorf("locate hull disk tools: %w", err)
++	}
++	return diskToolPath(executable, name)
++}
++
++func diskToolPath(executable, name string) (string, error) {
++	path := filepath.Join(filepath.Dir(executable), name)
++	information, err := os.Stat(path)
++	if err != nil {
++		return "", fmt.Errorf("bundled disk tool %s is unavailable: %w", name, err)
++	}
++	if !information.Mode().IsRegular() || information.Mode().Perm()&0111 == 0 {
++		return "", fmt.Errorf("bundled disk tool %s is not executable: %s", name, path)
++	}
++	return path, nil
++}

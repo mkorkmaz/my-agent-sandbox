@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="only light">
+  <meta name="description" content="Tugboat architecture decisions, their reasons, their consequences, and the source files that implement them.">
+  <title>Architecture decisions · Tugboat handbook</title>
+  <link rel="stylesheet" href="handbook.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to decisions</a>
+  <header class="masthead">
+    <nav class="global-nav" aria-label="Handbook">
+      <a class="brand" href="index.html">Tugboat handbook</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="developer-guide.html">Developer</a>
+      <a href="user-guide.html">User</a>
+      <a href="adr.html" aria-current="page">Decisions</a>
+      <a href="agent-guide.html">Agent</a>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <h1>Architecture decisions</h1>
+    <p class="lead">The project folder belongs to the user. Brig runs the agents. Tugboat connects these systems and owns the records that let a user return to a chat.</p>
+    <p>This architecture decision record (ADR) covers the Tugboat 0.3.0 source reviewed on 14 November 2026. Each numbered decision describes behavior implemented in this checkout. A reason marked “inferred” explains the construction seen in code. A recorded reason comes from a project document, implementation comment, or test.</p>
+
+    <nav class="contents" aria-label="Decision groups">
+      <ul>
+        <li><a href="#desktop">Desktop and runtime</a></li>
+        <li><a href="#projects">Projects and environments</a></li>
+        <li><a href="#accounts">Provider accounts</a></li>
+        <li><a href="#history">Conversations and usage</a></li>
+        <li><a href="#records">Records and recovery</a></li>
+        <li><a href="#delivery">Build and distribution</a></li>
+      </ul>
+    </nav>
+
+    <section id="desktop" aria-labelledby="desktop-heading">
+      <h2 id="desktop-heading">Desktop and runtime</h2>
+
+      <article id="adr-001">
+        <h3>ADR-001 · Use a Tauri window with a native command boundary</h3>
+        <p>Vite builds the TypeScript interface for a Tauri 2 webview on Apple silicon Macs with macOS 15 or later. Rust registers named commands for project, account, storage, and terminal operations. Native events tell the interface when state changes.</p>
+        <dl>
+          <dt>Reason (inferred)</dt>
+          <dd>The interface can show the same project and session in several views. One native owner can verify a request against the current records and Brig state.</dd>
+          <dt>Consequence</dt>
+          <dd>A new command needs a Rust handler and matching frontend arguments. The main window restricts navigation and denies new webview windows. The configured capability grants event listening and removal of listeners. Provider sign-in opens the system browser.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../src-tauri/src/main.rs">Command registration and window navigation</a> · <a href="../src-tauri/tauri.conf.json">Window and content security policy</a> · <a href="../src-tauri/capabilities/main.json">Main window capability</a> · <a href="../src/app/app-data.ts">Frontend state store</a></p>
+      </article>
+
+      <article id="adr-002">
+        <h3>ADR-002 · Give each terminal a native surface and a process</h3>
+        <p>Rust starts the process on a pseudo-terminal (PTY). An AppKit view uses libghostty-vt for terminal emulation. The webview requests placement, focus, visibility, and closure by terminal ID. Switching chats brings the selected surface back with its scrollback.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Chats need interactive text input, approval prompts, keyboard signals, and the ability to continue while the user views another chat.</dd>
+          <dt>Consequence</dt>
+          <dd>Process exit and surface disposal are separate events. Diagnostic output can remain visible after the process exits. The app limits live processes to 16 and retained finished views to 32. Terminal changes can affect the PTY, the native view on the main thread, and the TypeScript layout controller.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../PRODUCT.md">Product behavior</a> · <a href="../src-tauri/src/terminal/mod.rs">Terminal registry and limits</a> · <a href="../src-tauri/src/terminal/pty.rs">PTY lifecycle</a> · <a href="../src-tauri/native/TerminalView.m">AppKit surface</a> · <a href="../src/terminal/terminal-layout.ts">Layout queue</a></p>
+      </article>
+
+      <article id="adr-003">
+        <h3>ADR-003 · Ship a pinned Brig runtime with the app</h3>
+        <p>An empty Brig path selects the bundled executable. Tugboat includes Brig, hull, the virtual machine runners, cosign, and the required ext4 disk tools. Build scripts check pinned inputs. A manifest records the packaged files and their hashes. The Mac check validates the runtime and checks the Brig version.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The packaged runtime can prepare public guest images on a Mac without Homebrew. Patches make the disk tools available inside the app and support shared folder paths that contain spaces.</dd>
+          <dt>Consequence</dt>
+          <dd>A saved absolute path can select a compatible Brig executable. An invalid override gives an error. A release still needs the other bundled tools. The first guest start can need internet access for images and boot assets. The bundled registry configuration keeps public image pulls separate from the host Docker credential store.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Runtime requirements</a> · <a href="../config/brig-runtime.json">Release input pins</a> · <a href="../scripts/runtime/prepare-bundled-runtime.mjs">Runtime assembly</a> · <a href="../src-tauri/src/platform/runtime/mod.rs">Manifest verification</a> · <a href="../src-tauri/src/platform/host.rs">CLI selection and checks</a> · <a href="../resources/runtime/registry/config.json">Registry configuration</a></p>
+      </article>
+    </section>
+
+    <section id="projects" aria-labelledby="projects-heading">
+      <h2 id="projects-heading">Projects and environments</h2>
+
+      <article id="adr-004">
+        <h3>ADR-004 · Register a folder once and identify each agent environment separately</h3>
+        <p>A project record keeps a stable ID and folder identity. The registry checks the volume, inode, and creation time when matching a folder. It derives an environment ID from the project ID and agent kind. A project supports one Codex environment and one Claude Code environment.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The user can work on the same folder with either agent. Each agent needs its own guest home, policy, lifecycle, and chat history. Disk remounts must preserve the connection to the original project.</dd>
+          <dt>Consequence</dt>
+          <dd>CPU count, memory, and image verification are project settings. Network mode, policy, and preparation state belong to each environment. Changing shared resources invalidates preparation for the other environment. A different folder at the saved path fails the identity check. Two agents can use the same native chat ID in distinct environments.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../PRODUCT.md">Project requirements</a> · <a href="../src-tauri/src/projects/mod.rs">Folder identity and registry</a> · <a href="../src-tauri/src/projects/record.rs">Shared resources</a> · <a href="../src-tauri/src/projects/agent_environment.rs">Environment ownership</a> · <a href="../src-tauri/src/projects/environment_id.rs">Environment identity</a></p>
+      </article>
+
+      <article id="adr-005">
+        <h3>ADR-005 · Verify the Brig execution plan before starting work</h3>
+        <p>Rust resolves the saved project and environment. It compares the current Brig policy to the saved fingerprint, a hash of its contents. It validates the execution plan and derives a second fingerprint from the project, environment, agent kind, profile, and executable plan fields.</p>
+        <dl>
+          <dt>Reason (inferred)</dt>
+          <dd>A policy, folder, or running guest can change after the interface shows a preview. A process launched from an old preview could act on a different target.</dd>
+          <dt>Consequence</dt>
+          <dd>A valid plan identifies the expected writable project share, hull/hvi runtime, profile, session, network mode, resource limits, and image verification setting. It must satisfy the checks on credentials, host skills, published ports, and private record paths. A changed fingerprint requires a new preview. Guest operations use the verified environment. <strong>Open local terminal</strong> explicitly starts a Mac shell in the host project folder.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../src-tauri/src/environment/mod.rs">Checked environment and plan fingerprint</a> · <a href="../src-tauri/src/platform/brig/mod.rs">Brig plan validation</a> · <a href="../src-tauri/src/agent_sessions/launch.rs">Session launch checks</a> · <a href="../src-tauri/src/terminal/mod.rs">Local shell command</a></p>
+      </article>
+
+      <article id="adr-006">
+        <h3>ADR-006 · Apply the network policy to a specific Brig environment</h3>
+        <p>New settings use isolated networking and agent-specific host lists. The user can select offline mode. The app requires a bound policy that denies other outbound traffic by default. Changing application defaults affects new policies. Editing an existing policy requires the stopped environment and the current policy fingerprint.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Different agents need different service hosts. The project owner can review the actual policy and its binding independently of the application defaults.</dd>
+          <dt>Consequence</dt>
+          <dd>The editor limits changes to supported, owned policy documents and bindings. Guest host rules apply to resolved addresses. Two services can share an address, so a boundary test can report an inconclusive result. Provider sign-in on the Mac and provider-hosted tools have separate network paths.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Network behavior</a> · <a href="../src-tauri/src/desktop/settings/mod.rs">Agent defaults</a> · <a href="../src-tauri/src/projects/project_policy/mod.rs">Policy edits</a> · <a href="../src-tauri/src/projects/project_policy/state.rs">Ownership rules</a> · <a href="../src-tauri/src/environment/boundaries.rs">Boundary checks</a></p>
+      </article>
+
+      <article id="adr-007">
+        <h3>ADR-007 · Keep agent permission modes in each agent adapter</h3>
+        <p>Both agents run inside Brig. New and resumed Codex chats default to <code>--sandbox danger-full-access --ask-for-approval never</code>. The alternative uses <code>workspace-write</code> with command network access disabled and the same approval setting. Claude Code uses <code>--permission-mode manual</code>.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Brig supplies the outer file and network boundary. Codex supports a second workspace restriction. Claude supplies its own interactive permission flow.</dd>
+          <dt>Consequence</dt>
+          <dd>The default permits Codex to act throughout its guest and to write the shared host project folder. Claude can ask the user to approve or deny an action. The launch path checks the supported capabilities of the selected guest program. Boundary checks report observations independently of the selected permission mode.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Guest access settings</a> · <a href="../src-tauri/src/agents/codex.rs">Codex arguments</a> · <a href="../src-tauri/src/agents/claude.rs">Claude arguments</a> · <a href="../src-tauri/src/agent_sessions/claude.rs">Claude capability check</a> · <a href="../tests/providers/agent-session-boundary.test.mjs">Agent boundary contract</a></p>
+      </article>
+
+      <article id="adr-008">
+        <h3>ADR-008 · Retain ownership and progress through environment removal</h3>
+        <p>Preparation can adopt a matching Brig session. Multiple matches require an explicit choice. The app records ownership of the session, binding, and policy separately. Removal takes a preview for one environment or for all environments in the project. It checks the fingerprint and the typed confirmation against the current target.</p>
+        <dl>
+          <dt>Reason (inferred)</dt>
+          <dd>A user can manage Brig outside Tugboat. A removal request spans several external operations. An interruption can leave some steps complete.</dd>
+          <dt>Consequence</dt>
+          <dd>Removal saves its progress through optional guest sign-out, environment removal, binding cleanup, policy cleanup, and record removal. A retry checks the live target again. Shared or externally changed policies survive cleanup. <strong>Forget</strong> removes the project registration and retains its project files, guest resources, and saved usage. A confirmed environment removal can remove its guest home.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../src-tauri/src/environment/preparation/selection.rs">Adoption choices</a> · <a href="../src-tauri/src/projects/operations/removal_target.rs">Preview scope</a> · <a href="../src-tauri/src/projects/removal.rs">Removal checkpoints</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Cleanup and recovery</a> · <a href="../src-tauri/src/projects/mod.rs">Forget operation</a></p>
+      </article>
+    </section>
+
+    <section id="accounts" aria-labelledby="accounts-heading">
+      <h2 id="accounts-heading">Provider accounts</h2>
+
+      <article id="adr-009">
+        <h3>ADR-009 · Keep one renewable host account per provider</h3>
+        <p>Tugboat stores renewable credentials in private files under the active records folder. ChatGPT uses <code>chatgpt/session.json</code>. Claude uses <code>claude/session.json</code>. Each eligible environment receives access credentials for its own provider. The host retains the refresh token.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The user can sign in once across projects while each environment keeps its own configuration, policy, history, and lifecycle.</dd>
+          <dt>Consequence</dt>
+          <dd>Shared Codex sign-in requires the standard guest credential directory. New chats disable the shared Codex daemon to avoid retaining earlier credentials. Managed Claude guests receive an access copy in memory through the guest helper. The helper preserves independent connector records. Project removal preserves the host accounts. Shared sign-out checks active sessions for the affected provider.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Shared account behavior</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">Codex guest eligibility</a> · <a href="../src-tauri/src/providers/shared_chatgpt/credentials.rs">Codex access copy</a> · <a href="../src-tauri/profiles/tugboat-claude.yaml">Claude memory and persistent mounts</a> · <a href="../src-tauri/src/providers/shared_claude/guest_credentials.py">Claude guest update</a></p>
+      </article>
+
+      <article id="adr-010">
+        <h3>ADR-010 · Run browser authorization from the Mac</h3>
+        <p>The account command starts a native sign-in attempt for the selected provider. ChatGPT uses device authorization. Claude uses Proof Key for Code Exchange (PKCE) and a temporary loopback callback. Rust opens the provider page, verifies the response, exchanges credentials, and saves the account.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Settings must let a user connect before adding a project or starting a guest. The authorization attempt has its own lifetime, including cancellation.</dd>
+          <dt>Consequence</dt>
+          <dd>The webview receives the phase, browser address, optional device code, and message. Rust owns secret protocol values and checks the attempt ID before accepting a late result. The user can cancel until saving begins. A connected guest still uses its environment policy for model requests.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../PRODUCT.md">Provider settings</a> · <a href="../src-tauri/src/providers/provider_login/protocol.rs">Provider protocols</a> · <a href="../src-tauri/src/providers/provider_login/callback.rs">Loopback callback</a> · <a href="../src-tauri/src/providers/provider_login/state.rs">Attempt state and public status</a> · <a href="../src-tauri/src/providers/provider_login/worker.rs">Attempt ownership checks</a></p>
+      </article>
+    </section>
+
+    <section id="history" aria-labelledby="history-heading">
+      <h2 id="history-heading">Conversations and usage</h2>
+
+      <article id="adr-011">
+        <h3>ADR-011 · Resume from agent transcripts and group verified descendants under the root chat</h3>
+        <p>Codex owns its rollout files. Claude owns its persistent transcripts. Readers associate the native session and working directory with the verified environment. A conversation graph links a subagent to its parent when the records support that link. Normal forks remain separate chats.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The session list must show each root once and include its nested agents. A title or a shared project path alone cannot establish a parent.</dd>
+          <dt>Consequence</dt>
+          <dd>A root can resume when the required source and environment checks pass. Claude new chats receive an app-generated session ID. Codex generates its own ID. An unresolved child goes to read-only recovery. Archive and Trash change the root's saved state. They preserve native transcripts, child records, and project usage.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../PRODUCT.md">Root and subagent behavior</a> · <a href="../src-tauri/src/conversations/graph.rs">Relationship checks</a> · <a href="../src-tauri/src/conversations/claude/subagents.rs">Claude parent evidence</a> · <a href="../src-tauri/src/agent_sessions/resume.rs">Claude resume check</a> · <a href="../src-tauri/src/conversations/sql_backend.rs">Saved state and details</a></p>
+      </article>
+
+      <article id="adr-012">
+        <h3>ADR-012 · Count recorded work by source identity and carry missing data into totals</h3>
+        <p>For a Codex request with source evidence, the identity includes the verified guest namespace, provider, origin thread ID, and response ID. Claude merges repeated message observations using stable identifiers. Family totals include verified descendants. Saved evidence distinguishes unknown consumption from a measured zero.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Forks can copy past Codex events. A Claude transcript can contain several observations of one response. An incomplete transcript can omit a request or a child.</dd>
+          <dt>Consequence</dt>
+          <dd>Equal token counts or equal native session IDs in separate environments cannot establish duplicate work. Saved usage can remain available after a transcript disappears. Claude coverage remains partial and the reader cannot attribute its usage to individual user prompts. A source coverage label describes the available local evidence.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Usage contract</a> · <a href="../src-tauri/src/usage/mod.rs">Physical request key and totals</a> · <a href="../src-tauri/src/usage/cursor/ownership.rs">Copied Codex history</a> · <a href="../src-tauri/src/conversations/claude/usage.rs">Claude measurement and merge</a> · <a href="../src-tauri/src/conversations/usage_details.rs">Family details</a></p>
+      </article>
+
+      <article id="adr-013">
+        <h3>ADR-013 · Save dated rates, assumptions, and corrections with each priced request</h3>
+        <p>The usage layer calculates a token cost estimate from recorded counts and the applicable provider rates. It keeps the date, rates, and pricing evidence with the request. Different cache lifetimes, service tiers, and provider rules can produce different estimates.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The user needs a reproducible estimate even after a catalogue update or loss of the source transcript. The evidence must show which rates were known and which values the calculation assumed.</dd>
+          <dt>Consequence</dt>
+          <dd>New catalogue rates apply when pricing eligible requests. Historical repricing and count corrections require evidence. Saved Claude counts can receive prices offline. Invalid pricing inputs stay unpriced. Project totals can contain a known subtotal and additional unpriced work. The estimate excludes subscription charges, account discounts, tool charges, and taxes.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Cost estimate scope</a> · <a href="../src-tauri/src/usage/mod.rs">Rate snapshots and corrections</a> · <a href="../src-tauri/src/usage/anthropic.rs">Claude tariffs</a> · <a href="../src-tauri/src/usage/pricing_state.rs">Price evidence</a> · <a href="../src-tauri/src/usage_store/writes.rs">Offline pricing transaction</a></p>
+      </article>
+    </section>
+
+    <section id="records" aria-labelledby="records-heading">
+      <h2 id="records-heading">Records and recovery</h2>
+
+      <article id="adr-014">
+        <h3>ADR-014 · Store usage facts for both agents in one database per records folder</h3>
+        <p>The active <code>usage.sqlite3</code> holds environment keys, session records, turns, requests, historical corrections, and parser positions. It stores per-session summaries for dashboard reads. Configuration, account records, profiles, location metadata, and native transcripts retain their own formats and owners.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Adding one request or changing one chat state used to require a whole ledger rewrite. Session and request rows allow smaller reads and writes. One transaction can commit both a measurement and the parser position that produced it.</dd>
+          <dt>Consequence</dt>
+          <dd>Runtime access uses a shared database handle. The store checks the dataset identity and its file binding. It enables foreign keys, a rollback journal, and extra synchronization. Each durable write has a synchronization cost, even for a small append. If a commit result is uncertain, the next access must verify the database before processing resumes.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../src-tauri/src/usage_store/migrations/001_initial.sql">Database schema</a> · <a href="../src-tauri/src/usage_store/runtime.rs">Shared database handle</a> · <a href="../src-tauri/src/usage_store/connection.rs">Identity and recovery checks</a> · <a href="../src-tauri/src/usage_store/writes.rs">Transactions</a> · <a href="../src-tauri/src/conversations/sql_scan.rs">Scoped scanning</a></p>
+      </article>
+
+      <article id="adr-015">
+        <h3>ADR-015 · Activate the SQLite writer only after verifying the legacy import</h3>
+        <p>SQLite schema 1, legacy JSON ledger schemas 1 and 2, and the records directory marker have separate version numbers. On migration, Tugboat inventories sources, retains required immutable backups, and imports into a private staging database. It checks parity and source hashes, publishes the database, then advances the directory marker to version 2.</p>
+        <dl>
+          <dt>Reason (inferred)</dt>
+          <dd>Restarting between publication steps must preserve a recoverable dataset. Enabling the new writer before validation could accept incomplete facts or lose a later update.</dd>
+          <dt>Consequence</dt>
+          <dd>After activation, SQLite owns new writes. Original JSON files can be older than the database. An absent, damaged, or mismatched active database blocks usage access. Recovery requires the verified active dataset or a matching SQLite backup. A marker change or a legacy ledger alone cannot recover later SQL writes.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../src-tauri/src/usage_store/importer/mod.rs">Activation order</a> · <a href="../src-tauri/src/usage_store/importer/inventory.rs">Input inventory and backups</a> · <a href="../src-tauri/src/usage_store/importer/tests.rs">Interrupted imports</a> · <a href="../src-tauri/src/usage_store/mod.rs">SQLite version</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Directory marker</a></p>
+      </article>
+
+      <article id="adr-016">
+        <h3>ADR-016 · Move records as a verified dataset on restart</h3>
+        <p>Tugboat resolves the active records folder before opening usage storage. The default folder under <code>~/Library/Application Support/Tugboat</code> holds the location pointer and its lock. A move records the intended destination first. On restart it copies the closed dataset, verifies it, marks the target complete, commits the pointer, and cleans the old location.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>A removable disk can disappear at any stage. Settings, project identities, provider accounts, usage, and backups must continue to refer to the same dataset.</dd>
+          <dt>Consequence</dt>
+          <dd>An incomplete target cannot become active. A missing disk leaves recovery available. Locate checks the dataset ID. SQLite checks include integrity, foreign keys, and matching copy hashes. Private records must stay outside project shares and guest homes. Moving records leaves Brig guest homes and their transcripts in place.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../README.md">Records location contract</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Move and locate transactions</a> · <a href="../src-tauri/src/storage/data_location/state.rs">Move states</a> · <a href="../src-tauri/src/usage_store/move_support.rs">Closed database verification</a> · <a href="../src-tauri/src/storage/publication.rs">Record publication</a></p>
+      </article>
+
+      <article id="adr-017">
+        <h3>ADR-017 · Give asynchronous workflows explicit states and a defined owner</h3>
+        <p>Native code owns environment operations, sign-in attempts, storage state, and shutdown. The interface tracks which request and project own a pending screen update. For example, a dashboard reply can arrive after the user has selected another project. The request revision lets the controller reject that reply.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>A workflow can fail, finish late, or receive a second request while work is still pending. Its current state determines which transition can succeed.</dd>
+          <dt>Consequence</dt>
+          <dd>Shutdown requests confirmation when a process is running. After approval, the app drains processes, waits for account writes, records final usage, and closes storage before exit or restart. A failed final scan or database close interrupts shutdown. Implementations must handle the partial effects, including a process that already exited.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../AGENTS.md">Repository workflow rules</a> · <a href="../src/dashboard/dashboard-state.ts">Dashboard updates</a> · <a href="../src/ui/request-state.ts">Request revisions</a> · <a href="../src-tauri/src/environment/gate.rs">Environment operation ownership</a> · <a href="../src-tauri/src/desktop/lifecycle/mod.rs">Shutdown ordering</a> · <a href="../src-tauri/src/desktop/lifecycle/state.rs">Exit permission</a></p>
+      </article>
+    </section>
+
+    <section id="delivery" aria-labelledby="delivery-heading">
+      <h2 id="delivery-heading">Build and distribution</h2>
+
+      <article id="adr-018">
+        <h3>ADR-018 · Separate pull request checks, installer publication, and Apple distribution verification</h3>
+        <p>Pull request jobs have read-only repository permissions. They run the web checks on Linux. Changes to native dependencies or source trigger macOS checks. A separate workflow for pushes to <code>trunk</code> builds the Apple silicon disk image (DMG), checks the packaged runtime, and publishes it with a build-specific tag.</p>
+        <dl>
+          <dt>Reason (inferred)</dt>
+          <dd>Frontend tests can run without a Mac. Native terminal, filesystem, virtual machine, and packaging behavior need macOS tools. Publishing an installer requires separate write access.</dd>
+          <dt>Consequence</dt>
+          <dd>The current trunk workflow builds with an ad hoc signing identity. Its package checks establish the version, disk image, and bundled runtime. Developer ID distribution uses the separate signing and notarization script. The release verifier checks Apple tickets and Gatekeeper on a mounted installer. Upstream runner signatures have their own verification step.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../.github/workflows/pull-request.yml">Pull request checks</a> · <a href="../.github/workflows/macos-release.yml">Trunk publication</a> · <a href="../src-tauri/tauri.conf.json">Bundle settings</a> · <a href="../scripts/build-macos-release.sh">Developer ID release script</a> · <a href="../scripts/release/verify-macos-release.mjs">Apple distribution checks</a> · <a href="../scripts/runtime/runtime-bundle.mjs">Runner checks</a></p>
+      </article>
+    </section>
+
+    <p class="note">When a change replaces a decision, keep its ID and link to the replacement. Record the changed behavior, the reason, and the source that implements it.</p>
+  </main>
+  <footer><a href="index.html">Tugboat handbook</a> · <a href="#main">Back to decisions</a></footer>
+</body>
+</html>

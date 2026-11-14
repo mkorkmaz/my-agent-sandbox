@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="only light">
+  <title>Developer guide · Tugboat handbook</title>
+  <link rel="stylesheet" href="handbook.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to developer guide</a>
+  <header class="masthead">
+    <nav class="global-nav" aria-label="Handbook">
+      <a class="brand" href="index.html">Tugboat handbook</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="developer-guide.html" aria-current="page">Developer</a>
+      <a href="user-guide.html">User</a>
+      <a href="adr.html">Decisions</a>
+      <a href="agent-guide.html">Agent</a>
+    </nav>
+  </header>
+  <main id="main">
+    <h1>Developer guide</h1>
+    <p class="lead">A project can contain a Codex chat and a Claude chat with the same native session identifier. Each chat must reopen in its own guest. Start with the action, its owner, and the identifier that selects its target.</p>
+    <nav class="contents" aria-label="Developer guide contents">
+      <ul>
+        <li><a href="#setup">Set up a checkout</a></li>
+        <li><a href="#ownership">Find the owning module</a></li>
+        <li><a href="#interface">Interface and command contracts</a></li>
+        <li><a href="#desktop">Desktop lifecycle and settings</a></li>
+        <li><a href="#projects">Projects, policies, and preparation</a></li>
+        <li><a href="#operations">Project operations and removal</a></li>
+        <li><a href="#platform">Brig, hull, and the host runtime</a></li>
+        <li><a href="#agents">Agent launch and provider accounts</a></li>
+        <li><a href="#terminal">Native terminal</a></li>
+        <li><a href="#history">Conversation history and dashboards</a></li>
+        <li><a href="#usage">Usage parsing and prices</a></li>
+        <li><a href="#storage">Storage, migration, and moves</a></li>
+        <li><a href="#examples">Two worked feature changes</a></li>
+        <li><a href="#verification">Choose checks and review the change</a></li>
+      </ul>
+    </nav>
+
+    <section id="setup">
+      <h2>Set up a checkout</h2>
+      <p>The native target is Apple silicon with macOS 15 or later. Install Xcode and its command line tools, Rust with Cargo, and Node.js with npm. Use the recorded versions in <code>config/development-versions.json</code> to reproduce a build. The supported Node.js ranges are in <code>package.json</code>. Keep the npm and Cargo lockfiles with changes to their manifests.</p>
+      <p>From the repository root, install the locked web dependencies and build the interface. The build checks TypeScript before Vite writes the web assets into <code>dist/</code>.</p>
+      <pre><code>npm ci
+npm run build</code></pre>
+      <p>For interface work, <code>npm run dev</code> serves Vite on <code>127.0.0.1:1420</code>. The fixture harness supplies native commands and events to interface tests. For interactive desktop development, <code>npm run tauri -- dev</code> prepares the native runtime and starts Tugboat. Opening the desktop app runs its normal startup against the selected records directory, including any necessary import. Use a disposable macOS account or isolated test setup for migration work.</p>
+      <p>The first native preparation can download and build pinned dependencies. Tauri's standard hooks use the default preparation mode, which can sign local helpers. The pull-request workflow uses a separate mode for native tests. Use the commands in <a href="#verification">Choose checks</a> when testing under a signing restriction.</p>
+      <p class="source"><a href="../package.json">Package scripts</a> · <a href="../config/development-versions.json">Recorded toolchain</a> · <a href="../src-tauri/tauri.conf.json">Tauri build hooks</a> · <a href="../src-tauri/build.rs">Native build inputs</a></p>
+    </section>
+
+    <section id="ownership">
+      <h2>Find the owning module</h2>
+      <p>Follow one action from its visible control to its lasting effect. For example, search both sides of <code>start_project_operation</code>. The TypeScript call supplies a reviewed environment. The Rust handler classifies the operation, checks the target, and starts a process through the terminal module.</p>
+      <pre><code>rg -n 'start_project_operation' src src-tauri/src tests</code></pre>
+      <div class="table-wrap" role="region" aria-labelledby="module-table-caption" tabindex="0">
+        <table>
+          <caption id="module-table-caption">Where to start a change</caption>
+          <thead><tr><th scope="col">Change</th><th scope="col">First owner</th><th scope="col">Adjacent contract to inspect</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Window, menus, startup, quit</th><td><code>src-tauri/src/desktop/</code></td><td>Window registration and event listeners in the two entry points.</td></tr>
+            <tr><th scope="row">Selection, navigation, loading</th><td><code>src/main.ts</code>, <code>src/app/</code>, <code>src/ui/</code></td><td>The active project, its environment, and the request revision.</td></tr>
+            <tr><th scope="row">Settings, library, and sidebar</th><td><code>src/settings/</code>, <code>src/projects/</code>, <code>src/sidebar/</code></td><td>Native settings or registry serialization and the records watcher.</td></tr>
+            <tr><th scope="row">Policy or guest startup</th><td><code>src-tauri/src/projects/</code>, <code>src-tauri/src/environment/</code></td><td>Brig plan validation, ownership, and the saved preparation attempt.</td></tr>
+            <tr><th scope="row">Brig compatibility or tool lookup</th><td><code>src-tauri/src/platform/</code>, <code>scripts/runtime/</code></td><td>Runtime manifests, pinned inputs, packaged files, and fixtures.</td></tr>
+            <tr><th scope="row">Chat command, account, or resume</th><td><code>src-tauri/src/agents/</code>, <code>agent_sessions/</code>, <code>providers/</code> under the same Rust source root</td><td>Agent-specific options, the account generation, and a terminal scoped to the environment.</td></tr>
+            <tr><th scope="row">Input, drawing, or process exit</th><td><code>src-tauri/src/terminal/</code>, <code>src-tauri/native/</code></td><td>The native view, process lifetime, and <code>src/terminal/</code>.</td></tr>
+            <tr><th scope="row">Session table or usage details</th><td><code>src/dashboard/</code>, <code>src/usage/</code>, <code>src-tauri/src/conversations/</code></td><td>Recorded and live snapshots, session family membership, and freshness.</td></tr>
+            <tr><th scope="row">Token counts, prices, or saved facts</th><td><code>src-tauri/src/usage/</code>, <code>src-tauri/src/usage_store/</code></td><td>Parser progress, transaction boundaries, query results, and import compatibility.</td></tr>
+            <tr><th scope="row">Records directory or dataset recovery</th><td><code>src-tauri/src/storage/</code></td><td>Location pointer, directory marker, writer shutdown, and database verification.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Use the project identifier for the registered folder. Use <code>environmentId</code> for the agent environment. Use the environment and the native <code>sessionId</code> together for a saved chat. A numeric terminal <code>identifier</code> selects a process or its retained view within this app run. A plan fingerprint identifies the execution conditions displayed to the user. It can change while all four identifiers remain valid.</p>
+      <p class="source"><a href="../src/main.ts">Interface entry point</a> · <a href="../src-tauri/src/main.rs">Native entry point</a> · <a href="../src/projects/projects.ts">Interface identities</a> · <a href="../src-tauri/src/projects/environment_id.rs">Environment identity</a></p>
+    </section>
+
+    <section id="interface">
+      <h2>Interface and command contracts</h2>
+      <p>The window contains static HTML and TypeScript controllers. <code>src/main.ts</code> wires selection, preparation, accounts, history, and terminal navigation. For a feature with an existing controller, put behavior beside that controller. Keep the entry point responsible for passing its context and callbacks. The shared Zustand store in <code>app-data.ts</code> holds the selected project, accounts, terminal lists, and other display values.</p>
+      <p>At an asynchronous boundary, capture the project and environment before starting work. Use <code>sameProject</code> to check the identifier, environment, and project epoch when the result arrives. Use <code>sameProjectView</code> for a result that belongs to one opening of Project Settings. A revision from <code>RequestState</code> distinguishes an older request for the same screen. A late response can otherwise put the first project's policy text in the second project's editor.</p>
+      <p>Use the controller's existing state transitions. For forms, <code>FormState</code> retains loaded values after a failed save and invalidates pending work on reset. For dialogs, <code>showDialog</code> manages the active modal and restores keyboard focus. The sidebar queues preference writes so a slow restore cannot undo a recent resize. Render titles, paths, and diagnostic text with <code>textContent</code>. Keep control labels and keyboard behavior consistent with the design guide.</p>
+      <p class="source"><a href="../src/app/app-data.ts">Shared state</a> · <a href="../src/ui/form-state.ts">Form transitions</a> · <a href="../src/ui/dialogs.ts">Dialog stack</a> · <a href="../src/sidebar/sidebar-state.ts">Sidebar state</a> · <a href="../DESIGN.md">Interface rules</a></p>
+      <h3>Change a native command</h3>
+      <p>Tauri carries inter-process communication between the web view and Rust. The interface calls <code>invoke</code> with a command name and named arguments. Rust registers commands in <code>tauri::generate_handler!</code>. Extend an existing command when the new action fits its contract. For a new command, implement the handler in the owning module and register it in the entry point.</p>
+      <p>Decode external values into the appropriate Rust type, then resolve ownership from native records. Preserve the established <code>camelCase</code> fields and serialized enum values. Keep time-consuming file and process work off the window thread with the existing blocking-task pattern. Return the result needed by the controller. A TypeScript annotation on <code>invoke&lt;T&gt;</code> describes the expected response. The Rust handler still has to validate incoming identifiers, arguments, and target state.</p>
+      <p>For an event, inspect the emitter and the listener together. A <code>terminal-exit</code> event identifies a terminal and its project. Dashboard updates carry a sequence. Use those fields to ignore a late update and reconcile with a snapshot after a subscription or view change. Exercise the sequence with delayed promises in the interface harness. Keep the window permission set limited to the operations the UI needs.</p>
+      <p class="source"><a href="../src-tauri/src/main.rs">Command registrations</a> · <a href="../src-tauri/capabilities/main.json">Window permissions</a> · <a href="../src/terminal/terminal-launch.ts">Typed launch requests</a> · <a href="../tests/frontend/frontend-harness.mjs">Interface test harness</a></p>
+    </section>
+
+    <section id="desktop">
+      <h2>Desktop lifecycle and settings</h2>
+      <p>Rust resolves the records location before it starts the usage worker. It then creates the window. The web view invokes <code>frontend_ready</code> to show and focus it. Starting the worker and completing database activation are distinct events. Code that needs usage records obtains the verified store from the runtime. Keep unrelated interface startup work independent of a slow import.</p>
+      <p>For a new menu action, add the native item and its action identifier in <code>desktop/menu.rs</code>. Wire the corresponding <code>menu-action</code> listener in TypeScript. Update <code>update_menu_state</code> when availability depends on a selection or process. Expose the same behavior through an accessible control where the product design calls for one. Check keyboard activation in each applicable view.</p>
+      <p>Quit, window close, and a records move that needs a restart share the shutdown path. The lifecycle cancels provider login, drains terminal processes, waits for host commands, flushes provider work, scans final usage, and closes the database before allowing exit. If you add a background writer, include its final write or cancellation before the relevant store closes. Simulate a failed final write. The user must still be able to recover and retry.</p>
+      <p class="source"><a href="../src-tauri/src/desktop/startup.rs">Window handoff</a> · <a href="../src/app/startup-state.ts">Startup steps in the web view</a> · <a href="../src-tauri/src/desktop/menu.rs">Menu actions</a> · <a href="../src-tauri/src/desktop/lifecycle/mod.rs">Shutdown and its tests</a></p>
+      <h3>Choose the scope of a preference</h3>
+      <p>Application defaults live in <code>settings.json</code>. The profile and allowed hosts have separate Codex and Claude values. Project overrides go through the project registry. CPU count, memory, and image verification apply across that project's environments. Network mode belongs to one environment. A resource change can invalidate preparation for both agents. The native save path checks running processes and actual Brig state for the affected environments.</p>
+      <p>For an execution preference, follow its value from the form to native validation, persisted settings, effective project settings, and the checked plan. For an interface preference such as sidebar width, follow <code>interface.json</code> and the preference save queue. Add a decoding fixture for an existing installation. Check missing fields, invalid values, and how defaults apply when a project already has an override. The settings save command writes the chosen settings before it attempts to apply Brig telemetry. Preserve its separate report of the recorded Brig state.</p>
+      <p class="source"><a href="../src/settings/settings.ts">Settings form</a> · <a href="../src-tauri/src/desktop/settings/mod.rs">Defaults and validation</a> · <a href="../src-tauri/src/desktop/settings/migration.rs">Legacy decoding</a> · <a href="../src-tauri/src/projects/record.rs">Shared project resources</a> · <a href="../src/sidebar/sidebar.ts">Interface preferences</a></p>
+    </section>
+
+    <section id="projects">
+      <h2>Projects, policies, and preparation</h2>
+      <p>A stored <code>ProjectRecord</code> owns a folder identity and an <code>Environments</code> collection. The public <code>Project</code> value represents a selected environment with its project's shared fields. Add an environment-specific attribute to the persisted environment and its resolved view. Keep the one-environment-per-agent constraint. If two agents update the same project, the second update must retain the first agent's environment.</p>
+      <p>Registration checks the selected folder and its write access. Folder identity includes filesystem evidence such as inode and volume identity. A different folder can later occupy the same path. Availability checks preserve the registry entry for a missing volume. When changing the rescan, test a missing folder, the original volume returning, and a replacement at the same name. Verify recent ordering and keyboard focus survive a background refresh.</p>
+      <p class="source"><a href="../src-tauri/src/projects/mod.rs">Registry and folder checks</a> · <a href="../src-tauri/src/projects/agent_environment.rs">Collection invariants</a> · <a href="../src-tauri/src/projects/migration.rs">Project migration</a> · <a href="../src/projects/project-rescan.ts">Library rescan state</a></p>
+      <h3>Trace a setup failure</h3>
+      <ol class="steps">
+        <li><strong>Resolve the session.</strong> <code>prepare_project</code> selects a new session reference or adopts a matching Brig session. It prepares the policy and binding. With several valid candidates, preparation returns a choice. Recheck a supplied choice against the current candidates.</li>
+        <li><strong>Read the plan.</strong> <code>checked_environment</code> resolves the environment from the registry. It checks folder identity, setup stage, current policy, profile, Brig plan, and the separation of private records from exported shares. The interface receives a fingerprint for these settings.</li>
+        <li><strong>Start the guest.</strong> <code>prepare_environment</code> uses the reviewed fingerprint. It records the attempt token and terminal identifier. The operation gate rejects conflicting work for the same environment.</li>
+        <li><strong>Complete the matching attempt.</strong> Completion checks the current attempt, running guest, agent version, and plan. A completed attempt records either the verified state or an error. A stale completion from a previous attempt cannot mark the new one ready.</li>
+      </ol>
+      <p>When changing a stage, check its serialized spelling in Rust and TypeScript. Follow its uses in preview, prepare, launch, and removal. A new intermediate stage needs a defined response to restart or retry. Check a changed plan between preview and launch, a terminal that exits before the interface reads its snapshot, and an older exit after retry.</p>
+      <p class="source"><a href="../src-tauri/src/environment/preparation/mod.rs">Preparation and candidate selection</a> · <a href="../src-tauri/src/environment/mod.rs">Checked plan and execution</a> · <a href="../src-tauri/src/projects/stage.rs">Persisted stages</a> · <a href="../src-tauri/src/projects/attempt.rs">Attempt identity</a> · <a href="../src-tauri/src/environment/plan_tests.rs">Plan tests</a></p>
+      <h3>Maintain a policy or boundary check</h3>
+      <p>Policy document ownership and binding ownership are separate. A document can be external or shared, even if Tugboat owns the binding. Route save, accept, attach, and detach through the policy state and editor. Recheck the current document before writing. Invalidate preparation after an edit. Exercise an external binding and a competing edit with the old fingerprint.</p>
+      <p>The boundary report records the environment and the fingerprint used for its probes. The probes check the guest kernel, writable share, outside-file visibility, and network behavior. Keep the outcomes <em>pass</em>, <em>fail</em>, and <em>inconclusive</em> distinct. Preserve files whose ownership changed during a probe. A changed plan, failed cleanup, or unreachable comparison destination affects what the result can establish. A boundary report is diagnostic evidence for that run.</p>
+      <p class="source"><a href="../src-tauri/src/projects/project_policy/state.rs">Policy ownership and transitions</a> · <a href="../src-tauri/src/projects/project_policy/editor.rs">Policy document checks</a> · <a href="../src-tauri/src/environment/boundaries.rs">Probes and cleanup</a> · <a href="../src/projects/boundaries.ts">Boundary report display</a></p>
+    </section>
+
+    <section id="operations">
+      <h2>Project operations and removal</h2>
+      <p><code>Operation</code> owns the set of Git, test, and diagnostic actions. Its <code>needs_guest</code> decision determines whether the operation needs a verified running guest and a current plan fingerprint. Git and project tests run in the selected guest. Doctor, info, policy checks, and logs call Brig on the Mac for the selected target. For the test button, native code detects a supported manifest and chooses a fixed command. The user's repository still determines what its test script executes.</p>
+      <p>For a new action, choose its execution location first. Build an argument vector with the existing Brig adapter. A fixed shell fragment inside the guest can use its project environment variable. Keep path or label values out of generated shell text. Name the terminal purpose so the sidebar and stop logic can identify the process. The worked Git example covers the full route.</p>
+      <p>Stop, forget, and remove have different effects. Stop verifies the Brig reference, records the stopping stage, ends the selected environment's guest processes, and rechecks the target before the stop command. Forget removes the registration of an unavailable project and stops its monitoring. Removal uses a preview, its fingerprint, the confirmation text, and saved progress. A single-environment removal and an all-environment removal have different target sets.</p>
+      <p>For cleanup changes, inspect <code>Removal::next_step</code>. The ordered steps cover optional sign-out, environment removal, binding cleanup, policy handling, and record removal. Each completed external effect has to agree with the recorded progress when recovery resumes. Preserve external or shared policy documents. Exercise failure between steps, a change after the preview, an unaffected sibling environment, and the last environment in a project. Check that project source files survive each path.</p>
+      <p class="source"><a href="../src/projects/operations.ts">Operation controls</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Operation and stop handlers</a> · <a href="../src-tauri/src/projects/operations/removal_target.rs">Removal scope</a> · <a href="../src-tauri/src/projects/removal.rs">Checkpoint order</a> · <a href="../src-tauri/src/projects/operations/environment_tests.rs">Environment operation tests</a></p>
+    </section>
+
+    <section id="platform">
+      <h2>Brig, hull, and the host runtime</h2>
+      <p>Brig manages sandbox sessions. The packaged runtime uses hull with the <code>hvi</code> backend. <code>platform/runtime</code> resolves the runtime directory and checks the manifest and file digests. Host inspection reports the effective tools. An empty Brig CLI path selects the bundled executable. A user-specified Brig path still needs a compatible version. Keep the package manifest and runtime resolution in step when changing a helper.</p>
+      <p>Use <code>platform/command.rs</code> for bounded host subprocesses. It clears the inherited environment, installs an explicit set of variables, and tracks cancellation, timeout, exit status, and excess output. The Brig environment supplies the bundled helper paths and a private registry configuration for public images. Inspect the result status before parsing output. When reading Brig JSON, check the API version, result kind, and required data through the existing adapter.</p>
+      <p>The Brig plan check verifies the profile, session, writable share, limits, network posture, image verification, and bound policy. It rejects forwarded host credentials, host skills, and published ports. Extending the plan affects both plan validation and what the user can review. Add ready and refused fixtures with the same schema version. Check an otherwise successful response with an invalid field. A successful process exit alone says nothing about the target or the shape of the payload.</p>
+      <p class="source"><a href="../src-tauri/src/platform/runtime/mod.rs">Runtime lookup and verification</a> · <a href="../src-tauri/src/platform/command.rs">Host process runner</a> · <a href="../src-tauri/src/platform/host.rs">Host inspection and response envelope</a> · <a href="../src-tauri/src/platform/brig/mod.rs">Brig commands and plan validation</a> · <a href="../tests/acceptance/brig-contract.test.mjs">Brig response fixtures</a></p>
+      <h3>Update a runtime component</h3>
+      <p>Identify the pin and its consumer. The Ghostty library and Zig pins are in the development version record. The Brig and hull compatibility inputs describe their source builds and patches. The bundled runtime manifest pins release inputs. The disk-tool configuration covers ext4 utilities. Update the relevant digest, package source, compatibility fixtures, and license inputs together. Keep signature verification for upstream runners and source checks in the preparation path.</p>
+      <p>Build products and generated notices go under <code>.build/</code>. Change the inputs or collector that produces them. Port a runtime patch against the pinned source, then run its narrow test. The path tests include spaces and the Darwin socket path limit. The packaging check should also open the bundled runtime using the app's own path, so a developer's command search path cannot hide a missing helper.</p>
+      <p class="source"><a href="../config/brig-runtime.json">Bundled runtime pins</a> · <a href="../config/brig-compat.json">Brig source build</a> · <a href="../config/hull-compat.json">Hull source build</a> · <a href="../config/disk-tools.json">Disk tools</a> · <a href="../scripts/runtime/prepare-bundled-runtime.mjs">Preparation</a> · <a href="../scripts/licenses/collect-licenses.mjs">License collection</a></p>
+    </section>
+
+    <section id="agents">
+      <h2>Agent launch and provider accounts</h2>
+      <p>The <code>agents</code> module defines the supported agents, session identifier type, version checks, and command arguments. <code>agent_sessions</code> decides whether a launch is permitted. <code>providers</code> owns shared accounts. Keep a new command-line option in the agent's command builder. Keep checks that need a running environment or shared account in the launch path. This allows the argument tests to run without an account.</p>
+      <div class="table-wrap" role="region" aria-labelledby="agent-contracts-caption" tabindex="0">
+        <table>
+          <caption id="agent-contracts-caption">Contracts that differ between the two agents</caption>
+          <thead><tr><th scope="col">Contract</th><th scope="col">Codex</th><th scope="col">Claude Code</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">New session</th><td>The guest agent assigns the session identifier. Terminal title and history evidence can identify the running chat.</td><td>Tugboat generates a UUID and passes it with <code>--session-id</code>.</td></tr>
+            <tr><th scope="row">Resume</th><td>Check the saved main session and its project membership. Use the native resume command.</td><td>Check the regular transcript, its identifier, the main-chat header, and the guest project path. Pass the same UUID to <code>--resume</code>.</td></tr>
+            <tr><th scope="row">Execution boundary</th><td>Default chat arguments select <code>danger-full-access</code> inside Brig and approval <code>never</code>. The explicit workspace option selects <code>workspace-write</code> and disables that sandbox's network access.</td><td>The guest uses Brig and <code>--permission-mode manual</code>. The launcher checks that the guest implements the required options.</td></tr>
+            <tr><th scope="row">Shared sign-in</th><td>Device authorization. Tugboat renews the private ChatGPT record and manages guest access copies. Codex chats use <code>--no-daemon</code>.</td><td>Browser authorization with a local callback. Tugboat publishes an access copy in the managed guest's memory-backed configuration directory.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>New Chat and Resume check the selected environment, plan fingerprint, network, account, and required guest capabilities. A resume request can return the already running terminal for the same environment and native session. A guest shell follows its own admission path. The legacy login action at the project command boundary directs the caller to Settings. When changing launch admission, test a stopped guest, a signed-out provider, an unsupported guest option, and two environments with the same native chat identifier.</p>
+      <p class="source"><a href="../src-tauri/src/agents/mod.rs">Agent definitions</a> · <a href="../src-tauri/src/agents/codex.rs">Codex arguments</a> · <a href="../src-tauri/src/agents/claude.rs">Claude arguments</a> · <a href="../src-tauri/src/agent_sessions/launch.rs">Launch admission</a> · <a href="../src-tauri/src/agent_sessions/resume.rs">Claude resume ownership</a></p>
+      <h3>Change account behavior</h3>
+      <p><code>provider_login</code> manages a separate attempt for each provider. Its worker moves through preparation, browser authorization, exchange, and save. The attempt identity prevents an old worker from publishing a cancelled result. Cancellation is possible before saving begins. The interface receives a status revision, a message, and any information required to complete the browser step.</p>
+      <p>Keep the renewable record private to the verified records directory. A managed guest receives only the access material required by its provider. For ChatGPT, preserve binding identity, the account generation, and the receipt used to recognize a managed copy. For Claude, the guest helper updates the account entry while retaining independent connector credentials. When a refresh result is uncertain, preserve the provider's reconnect behavior. Replaying a refresh token after rotation can invalidate the saved session.</p>
+      <p>Use synthetic credentials for tests. Cover a late callback after cancellation, a write failure after a successful exchange, a missing records volume, and an existing guest file with unrelated keys. Review returned errors, status events, and logs for tokens or account contents. If a change depends on the real browser protocol, record the protocol version and the separate integration check it requires.</p>
+      <p class="source"><a href="../src-tauri/src/providers/provider_login/state.rs">Login attempt transitions</a> · <a href="../src/providers/provider-sign-in.ts">Interface sign-in flow</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">ChatGPT access copies</a> · <a href="../src-tauri/src/providers/shared_claude/guest_credentials.py">Claude access copies</a> · <a href="../tests/providers/provider-guest.test.mjs">Synthetic guest credential tests</a></p>
+      <h3>Scope an additional agent</h3>
+      <p>A third agent would change several contracts. The current <code>AgentKind</code> enum, definitions, environment collection limit, and SQLite <code>agent_kind</code> constraints cover two agents. Trace how the new agent assigns session identifiers, verifies profile and version, reports permissions, resumes a chat, and stores native history. Decide which credentials belong in its guest. A new provider also needs an account lifecycle and shutdown behavior. A new logo or command builder alone would leave the persisted registry and database unable to represent that agent.</p>
+      <p>For a staged implementation, begin with an isolated command-builder test and a captured plan. Exercise environment identity and lifecycle next. Then connect the interface and saved history using fixtures. Preserve explicit unknown usage when the agent lacks a verified measurement source. Before enabling the agent, exercise a mixed project with existing Codex and Claude records and a restart between creation and resume.</p>
+      <p class="source"><a href="../src-tauri/src/agents/tests.rs">Agent contracts</a> · <a href="../src-tauri/src/projects/agent_environment.rs">Environment collection limit</a> · <a href="../src-tauri/src/usage_store/migrations/001_initial.sql">Persisted agent values</a> · <a href="../src-tauri/profiles/tugboat-claude.yaml">An existing managed profile</a></p>
+    </section>
+
+    <section id="terminal">
+      <h2>Native terminal</h2>
+      <p>A pseudo-terminal (PTY) connects an interactive process to the terminal view. Rust opens the PTY and manages process groups, input, resize, output, and exit. A macOS AppKit view uses the Ghostty terminal library to interpret bytes and draw cells. TypeScript supplies the visible rectangle and focus. For a text composition issue, begin in <code>TerminalInput.m</code>. For a missing glyph, inspect <code>TerminalDrawing.m</code> and the font setup. For an orphaned process after close, begin in <code>terminal/pty.rs</code>.</p>
+      <p>A native view and a guest process have distinct lifetimes. Terminal startup reserves an identifier before it attaches the view and spawns the child. Closing the reservation blocks a late attachment. The process manager shares a start/stop gate for the equivalent race at process creation. Deliver native view work on the main thread. Preserve the bounded input queue and the output reader's acknowledgement when changing throughput.</p>
+      <p>Hiding a view keeps its process available. After a child exits, the registry can retain its output. The current limits are 16 live processes and 32 completed views. Keep completed output outside the live capacity count. Use the environment target for guest commands. The local terminal opens a host shell in the registered folder. A stop intended for one guest must preserve the local shell and the other agent's guest.</p>
+      <p>For a layout change, use <code>TerminalLayoutQueue</code> to coalesce requests. Recalculate when the sidebar or dialogs change the available rectangle. For a close race, the adapter ignores an expected “Terminal closed.” only for the affected target. Exercise output after a view switch, focus after close, and an input method that commits several characters. Use native composition tests for AppKit behavior and the interface fixture for navigation.</p>
+      <p class="source"><a href="../src-tauri/src/terminal/mod.rs">Terminal registry and callbacks</a> · <a href="../src-tauri/src/terminal/pty.rs">Process groups</a> · <a href="../src-tauri/src/terminal/surface.rs">View lifetime</a> · <a href="../src-tauri/native/TerminalDrawing.m">Drawing</a> · <a href="../src-tauri/native/TerminalInput.m">Input</a> · <a href="../tests/native/composition.m">Native composition tests</a> · <a href="../tests/frontend/terminal-flow.test.mjs">Navigation and close races</a></p>
+    </section>
+
+    <section id="history">
+      <h2>Conversation history and dashboards</h2>
+      <p>The <code>conversations</code> module reads agent-owned files from the checked environment. Codex rollouts and Claude transcripts use different formats. Each adapter produces source evidence about the session, guest namespace, project path, parent, availability, and usage. A native identifier can recur in another guest. Keep each observation scoped to the project and environment through the store, event, and interface cache.</p>
+      <p>The history graph resolves root and descendant relationships. A normal fork remains a separate chat. A recognized subagent contributes to its root's family total. Missing, inconsistent, or unsupported relationship evidence has an explicit status. Preserve the session's own measured usage in that case. A root chat action checks its family for running processes. Archive, delete, and restore change the saved display state and preserve the native transcript and recorded project total.</p>
+      <p>There are three read paths for the project dashboard. <code>saved_project_dashboard</code> loads saved usage before a guest check. <code>recorded_project_dashboard</code> refreshes from SQLite and can keep availability that an earlier live observation verified. <code>project_dashboard</code> checks environments and synchronizes source history. The monitor sends <code>project-usage-updated</code> for changed observations. In the interface, <code>DashboardState</code> orders events and requests and retains usable data on a failed refresh.</p>
+      <p>For a new row field, decide whether its source is a verified observation or a saved fact. Define its display when the volume or guest is unavailable. Propagate it through the summary, detail query, and frontend types only where the feature requires it. A detail cache uses project, environment, and session identity, plus a revision to detect changed content. Test an old snapshot arriving after a new event and two guests with the same native session ID.</p>
+      <p class="source"><a href="../src-tauri/src/conversations/mod.rs">Dashboard commands and history monitor</a> · <a href="../src-tauri/src/conversations/membership.rs">Project membership</a> · <a href="../src-tauri/src/conversations/graph.rs">Session families</a> · <a href="../src-tauri/src/conversations/environment_history.rs">Merged project snapshots</a> · <a href="../src/dashboard/dashboard-state.ts">Response ordering</a> · <a href="../src/usage/usage-details-state.ts">Detail cache identity</a></p>
+    </section>
+
+    <section id="usage">
+      <h2>Usage parsing and prices</h2>
+      <p>Codex parsing tracks a cursor for each rollout source. The cursor records the file identity, header fingerprint, byte offset, and reconciliation state needed to resume counting. An incomplete last line can receive more bytes later. Replacing or truncating the file can require a replay. Match an exact request to its source and previous observations before increasing a count. Store progress with the facts it explains.</p>
+      <p>Claude usage comes from assistant messages in main and subagent transcripts. Repeated stream entries can refer to one response. The reader uses the provider message ID and source evidence to reconcile them. The input total includes ordinary input, cache reads, and cache creation. Claude's cache duration fields and Codex's cache duration fields have different meanings. Keep provider-specific values in the owning parser.</p>
+      <p><code>usage</code> summarizes requests and prices them against dated provider tables. A measured zero, an unmeasured turn, and an unpriced request give different results. Preserve those distinctions through storage and rendering. A new rate needs an exact model match, applicable billing conditions, the source date, and tests at relevant thresholds. A supported correction uses the saved price snapshot and retains the previous evidence. Catalog changes must preserve the cost already recorded for an earlier request.</p>
+      <p>For a calculation change, compare own-session and family totals. Then compare the mixed-agent project total, including archived and deleted chats. For a cache percentage, divide the summed cache reads by the summed inputs when both are known. For example, counts of 10/20 and 10/80 give a total of 20/100, or 20%. Averaging the two percentages would give 31.25%. A missing count requires an unknown indicator. The UI calls the recorded price an API equivalent.</p>
+      <p class="source"><a href="../src-tauri/src/usage/cursor.rs">Codex cursor and request reconciliation</a> · <a href="../src-tauri/src/conversations/claude/usage.rs">Claude message ingestion</a> · <a href="../src-tauri/src/usage/mod.rs">Counts and pricing</a> · <a href="../src-tauri/src/usage/anthropic.rs">Anthropic rates and corrections</a> · <a href="../src/usage/usage-format.ts">Display rules</a> · <a href="../src-tauri/src/conversations/environment_history_tests/costs.rs">Cost coverage tests</a></p>
+    </section>
+
+    <section id="storage">
+      <h2>Storage, migration, and moves</h2>
+      <p>Resolve records through <code>storage::data_location</code>. The default records directory is <code>~/Library/Application Support/Tugboat</code>. A location pointer selects the active dataset. Its marker and database identity let the app detect a missing or replaced folder. Project source, guest homes, and native transcripts have separate owners. A stored path alone does not establish that a file still belongs to this dataset.</p>
+      <div class="table-wrap" role="region" aria-labelledby="persistence-table-caption" tabindex="0">
+        <table>
+          <caption id="persistence-table-caption">Persistence routes by type of change</caption>
+          <thead><tr><th scope="col">Data</th><th scope="col">Writer and compatibility work</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Settings, project registry, interface preferences</th><td>Use the owning Rust settings or projects command. Lock the record before a read-modify-write. The storage publication helper writes a private temporary file, syncs it, renames it, and syncs the directory. The settings and project migrations retain immutable backups for supported upgrades.</td></tr>
+            <tr><th scope="row">Session display state, measured usage, parser progress</th><td>Use the dataset-bound <code>usage_store::Runtime</code>. Store scoped facts through its shared connection. Include related header, turn, request, cursor, and summary changes in the same transaction.</td></tr>
+            <tr><th scope="row">Renewable provider accounts and bindings</th><td>Use the provider's private store and its verified records handle. Include account writes in the provider's shutdown flush. Exercise retry at the point where a provider reply has arrived but the local write failed.</td></tr>
+            <tr><th scope="row">A new top-level records file</th><td>Confirm the correct owner and its location. If it moves with the dataset, include it in the records move inventory. Add a topic to <code>records_watch</code> only if an open interface needs a change notification. The watcher compares file metadata.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="source"><a href="../src-tauri/src/storage/mod.rs">File locks and publication</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Record inventory and location transactions</a> · <a href="../src-tauri/src/storage/records_watch.rs">Change notifications</a> · <a href="../src-tauri/src/usage_store/runtime.rs">Shared usage connection</a></p>
+      <h3>Change the SQLite read or write path</h3>
+      <p>The database has a unique environment row per project and environment. A session group adds its native session identifier. A record slot can represent the selected record or another saved guest variant. The variant's map key and the record's own guest namespace can differ in imported data. Preserve both values. Requests have an ordinal within a turn. Keep the original order when reconstructing details or corrections.</p>
+      <p>Choose the narrowest existing read that answers the caller. A dashboard can use metadata and stored summaries. A detail view can load the slots for the selected family. A scanner starts with headers and loads full records only when it needs them. If source bytes appear after the initial scan, defer the read until the saved turns are available. Advancing a cursor without loading its prior facts can silently drop usage.</p>
+      <p><code>save_partial_environment</code> differentiates a loaded record from a header-only update. A partial write must preserve the facts of omitted sessions. Maintain that distinction when adding a summary field. Add an interrupted append test that fails between recording a request and recording its cursor. On the next scan, expect the last committed totals followed by one application of the new fact. Check a quiet second scan for unnecessary reads and writes.</p>
+      <p class="source"><a href="../src-tauri/src/usage_store/migrations/001_initial.sql">Schema and keys</a> · <a href="../src-tauri/src/usage_store/queries.rs">Scoped reads</a> · <a href="../src-tauri/src/usage_store/writes.rs">Transactional writes</a> · <a href="../src-tauri/src/conversations/sql_scan.rs">Scan selection</a> · <a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/append.rs">Append and rollback tests</a></p>
+      <h3>Preserve existing datasets</h3>
+      <p>The current SQL schema version is 1. Version 2 on <code>.tugboat-data.json</code> means SQLite activation completed for this records directory. Legacy JSON usage ledgers have their own versions. For a new database field, plan the upgrade for an already active database as well as a new install. Changing the initial schema alone would leave existing installations with the old table layout.</p>
+      <p>During initial import, the importer inventories the original ledgers, creates the required backups, and builds <code>usage.sqlite3.importing</code>. It verifies the import receipts and field parity against the sources. It publishes the canonical database before changing the directory marker. An activated dataset requires its original verified database. Retained ledgers are historical inputs and can be older than the most recent usage. Reopening after a failure must preserve newer facts and report a missing or damaged database.</p>
+      <p>For a records move, the current writer must finish and close. The move logic recovers a hot rollback journal through SQLite, copies the closed database, checks identity and integrity, and verifies the copies. The pointer changes only after validation. “Locate” reconnects the same dataset at another path. Exercise failure before publication, a changed source, an interrupted copy, and a foreign dataset at the proposed location. Use temporary directories and generated data.</p>
+      <p class="source"><a href="../src-tauri/src/usage_store/importer/mod.rs">Activation order</a> · <a href="../src-tauri/src/usage_store/connection.rs">Dataset identity and journal mode</a> · <a href="../src-tauri/src/usage_store/move_support.rs">Closed database move and verification</a> · <a href="../src-tauri/src/storage/data_location/sqlite_tests.rs">Move tests</a> · <a href="../src-tauri/src/usage_store/importer/tests.rs">Import recovery tests</a></p>
+    </section>
+
+    <section id="examples">
+      <h2>Two worked feature changes</h2>
+      <article id="guest-action">
+        <h3>Add a “Recent commits” guest action</h3>
+        <p>Suppose the requested feature shows the latest ten Git commits in a terminal for the selected agent environment. Both guest agents should be able to use it. The output should remain accessible when the command ends. The existing staged-diff action already exercises the controller, command dispatcher, and terminal registry.</p>
+        <ol class="steps">
+          <li>Find the <code>git-staged-diff</code> control in the root <code>index.html</code>. Add a sibling control with a clear label and identifier. In <code>src/projects/operations.ts</code>, add its mapping to an operation such as <code>git-recent-commits</code>. Pass the captured project, environment, and current fingerprint to the existing <code>OpenTerminal</code> callback.</li>
+          <li>Add the operation to the TypeScript <code>ProjectOperation</code> union. Add the matching Rust <code>Operation</code> variant and terminal purpose. Mark the new operation as requiring the guest. This reuses native checks for a current plan and a running environment.</li>
+          <li>Build the fixed guest Git command in <code>projects/operations/mod.rs</code>. Follow the existing <code>$BRIG_PROJECT</code> handling for a checkout with spaces. Give an empty repository an intelligible result. Return an execution error when the command fails for another reason.</li>
+          <li>Add the caption to <code>terminalNames</code> and the purpose to Rust's <code>runs_in_guest</code>. This lets Stop end that guest process. Check the sidebar after completion and the existing auxiliary-terminal concurrency rules.</li>
+          <li>Use a temporary Git repository with known commits to check output and order. Add an interface fixture for the selected Claude environment in a project that also has Codex. Assert the exact command arguments sent by the UI, the retained output caption, and the response to a stale fingerprint.</li>
+        </ol>
+        <p>The change reuses the existing <code>start_project_operation</code> registration and terminal history. Its public change is the added operation value.</p>
+        <p class="source"><a href="../index.html">Project controls</a> · <a href="../src/projects/operations.ts">Control mapping</a> · <a href="../src/terminal/terminal-launch.ts">Launch union</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Guest operations and Git tests</a> · <a href="../src-tauri/src/terminal/mod.rs">Guest process classification</a></p>
+      </article>
+      <article id="usage-measure">
+        <h3>Show how many requests have a price</h3>
+        <p>Suppose a maintainer wants the usage dialog to show “3 of 4 recorded requests priced.” A small dollar subtotal can then be understood when one request has no known price. First check whether old records already contain the evidence this display needs.</p>
+        <ol class="steps">
+          <li>Inspect <code>Summary.requests</code> and <code>Summary.unpriced_requests</code> in Rust. The summarizer counts recorded requests and increments the second field when the cost is absent. A measured zero-dollar request still has a price.</li>
+          <li>Choose the scope of the label. For a whole root chat and its descendants, take <code>combinedUsage</code> from <code>ConversationUsageDetails</code>. For a single agent's row, take that agent's <code>ownUsage</code>. Summing family and child values would count children twice.</li>
+          <li>Format the label in <code>src/usage/usage-format.ts</code> from <code>requests - unpricedRequests</code> and <code>requests</code>. Render it in <code>usage-details.ts</code>. For no recorded requests, use “No recorded requests.” Preserve the existing unknown indicator for a turn without any usage event.</li>
+          <li>Use a fixture with four requests, including an unpriced request and a priced zero. Expect three priced requests. Open the same saved details after reopening the dialog. Check that the label uses the current family if the user switched roots during a pending read.</li>
+        </ol>
+        <p>Both counts already round-trip through stored summaries. The example works with saved data using the existing response. If a future measure requires new evidence from a transcript, define the unit, source, and meaning of an absent field first. Then update the provider parser, store codec, summary calculation, and display. Rebuild old summaries only when their retained facts establish that measure.</p>
+        <p class="source"><a href="../src-tauri/src/usage/mod.rs">Request counts</a> · <a href="../src-tauri/src/conversations/usage_details.rs">Family detail scopes</a> · <a href="../src/usage/usage-types.ts">Frontend data contract</a> · <a href="../src/usage/usage-details.ts">Detail rendering</a> · <a href="../tests/frontend/frontend-flow.test.mjs">Interface scenarios</a></p>
+      </article>
+    </section>
+
+    <section id="verification">
+      <h2>Choose checks and review the change</h2>
+      <p>Use the smallest test that observes the changed behavior through its real caller. Expand coverage to the next boundary when a change crosses it. The commands below run from the repository root. For a bug that can be reproduced automatically, add a regression case alongside the owning suite.</p>
+      <div class="table-wrap" role="region" aria-labelledby="checks-table-caption" tabindex="0">
+        <table>
+          <caption id="checks-table-caption">Local checks by change</caption>
+          <thead><tr><th scope="col">Change</th><th scope="col">Command or entry point</th><th scope="col">What the check can establish</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Interface state, labels, navigation</th><td><code>node --experimental-vm-modules --test tests/frontend/*.test.mjs</code><br><code>npm run build</code></td><td>Fixture interactions, asynchronous ordering, launch types, and the production web build. Use the desktop app to check native focus or actual drawing.</td></tr>
+            <tr><th scope="row">Brig response or provider contract</th><td><code>node --test tests/acceptance/brig-contract.test.mjs tests/providers/*.test.mjs</code></td><td>Responses from captured fixtures and synthetic credential handling. Inspect the fixture version when changing a protocol.</td></tr>
+            <tr><th scope="row">Rust behavior</th><td><code>cargo test --manifest-path src-tauri/Cargo.toml --locked</code></td><td>Tests in the native modules after native preparation on macOS. Append a test-name filter to run a single module or regression first.</td></tr>
+            <tr><th scope="row">Native input, terminal engine, runtime patches</th><td><code>npm run test:terminal</code><br><code>npm run test:hull -- --no-sign</code><br><code>npm run test:brig -- --no-sign</code></td><td>Ghostty and AppKit composition, and Go checks for the pinned patches. Use the subset that owns the change.</td></tr>
+            <tr><th scope="row">Change to Rust source formatting</th><td><code>python3 scripts/check-rust-format.py &lt;base-commit&gt;</code></td><td>Added lines in the committed difference from the supplied base. The pull-request workflow uses its base commit and pinned formatter.</td></tr>
+            <tr><th scope="row">Usage persistence and performance</th><td>Run the relevant <code>usage_store</code> or <code>sqlite_usage_tests</code> Rust tests. Use the SQLite acceptance and benchmark scripts for changes to import, append, recovery, or large reads.</td><td>Generated sources can exercise rollback, replay, closed-file moves, read counts, and old/new output parity. Record fixture size and cache conditions for performance results.</td></tr>
+            <tr><th scope="row">Packaged runtime</th><td><code>node scripts/release/verify-bundled-runtime.mjs /absolute/path/Tugboat.app</code></td><td>Checks the specified artifact, helper hashes, deployment targets, runner signatures, and licenses. Real guest startup is a separate integration test.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The general Node suite is <code>npm test</code>. On macOS it includes a release test that explicitly signs a temporary copy of an executable. For an explicit no-sign test run, use the documented test-name exclusion below. Use <code>npm run native:prepare -- --no-sign</code> when preparing the native dependencies for that test mode. Vendor signature verification still runs, and compilers can add an ad hoc signature at link time.</p>
+      <pre><code>node --experimental-vm-modules --test \
+  --test-skip-pattern='^codesign evaluates the Developer ID requirement against an ad hoc signature$' \
+  tests/*/*.test.mjs</code></pre>
+      <p>Pull requests run frontend tests and the web build on Linux. A change that touches native inputs triggers native checks on a Mac. A separate job checks formatting. A push to <code>trunk</code> runs the release workflow, which builds an ad hoc signed package and can publish its disk image. The Developer ID release script uses release credentials and notarization. Choose that script only for the corresponding release task.</p>
+      <p>For a true guest integration check, <code>npm run test:bundled-runtime -- /absolute/path/Tugboat.app</code> starts temporary guests and can download images. For a frozen storage comparison, first locate the old source manifest and binaries described in the repository's SQLite verification instructions. Some acceptance cases need an old binary or a disposable macOS volume. Report a skipped case with its missing input. A fixture test proves only the behavior exercised with that fixture.</p>
+      <p>Finish a review by tracing the changed action from its entry point again. Check which project and environment it targets, which prior records it must read, and how a failure reaches the user. Update the user guide if the visible steps change. Record a new architectural decision when the change alters an ownership boundary or a lasting contract.</p>
+      <p class="source"><a href="../.github/workflows/pull-request.yml">Pull-request checks</a> · <a href="../.github/workflows/macos-release.yml">Trunk packaging</a> · <a href="../scripts/build-macos-release.sh">Developer ID release</a> · <a href="../tests/release/macos-release.test.mjs">Signing test</a> · <a href="../scripts/check-sqlite-usage-acceptance.py">SQLite acceptance runner</a> · <a href="../scripts/benchmark-sqlite-usage.py">SQLite benchmarks</a> · <a href="../README.md">Build and verification instructions</a></p>
+    </section>
+  </main>
+  <footer>
+    <a href="#main">Back to developer guide</a> · <a href="architecture.html">Explore the architecture</a> · <a href="adr.html">Review the decisions</a>
+  </footer>
+</body>
+</html>

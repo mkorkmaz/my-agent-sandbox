@@ -112,7 +112,7 @@ static bool appendFormatted(void *context, const uint8_t *bytes, size_t length) 
             [self drawCellText:cursorText at:rectangle.origin color:terminalColor(colors.background) style:cursorStyle];
         }
     }
-    if (markedText.length) {
+    if (self.hasMarkedText) {
         NSRect rectangle = self.cursorRectangle;
         [terminalColor(colors.background) setFill]; NSRectFill(NSMakeRect(rectangle.origin.x, rectangle.origin.y, MAX(cellWidth, markedText.size.width), cellHeight));
         [markedText.string drawAtPoint:rectangle.origin withAttributes:@{NSFontAttributeName:font, NSForegroundColorAttributeName:terminalColor(colors.foreground), NSUnderlineStyleAttributeName:@(NSUnderlineStyleSingle)}];

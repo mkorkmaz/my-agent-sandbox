@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "node": {
+    "version": "26.13.1",
+    "url": "https://nodejs.org/dist/v26.13.1/node-v26.13.1-darwin-arm64.tar.gz",
+    "sha256": "aec2514ea1ceb2ba52455e9ec65986f6749a06dd759e5db2a72e6889668c9735",
+    "checksumsUrl": "https://nodejs.org/dist/v26.13.1/SHASUMS256.txt"
+  }
+}

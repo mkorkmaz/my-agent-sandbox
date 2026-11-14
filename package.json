@@ -1,7 +1,7 @@
 {
   "name": "tugboat",
   "description": "Agent Sandbox",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -9,21 +9,25 @@
   },
   "scripts": {
     "icon:build": "swift scripts/app-icon.swift .build/app-icon --update-bundle-assets",
-    "native:prepare": "node scripts/prepare-ghostty.mjs && node scripts/prepare-hull.mjs",
-    "test:terminal": "node scripts/test-terminal-engine.mjs",
-    "test:hull": "node scripts/prepare-hull.mjs --test",
+    "native:prepare": "node scripts/runtime/prepare-ghostty.mjs && node scripts/runtime/prepare-bundled-runtime.mjs",
+    "licenses:bundle": "node scripts/licenses/collect-licenses.mjs",
+    "test:terminal": "node scripts/runtime/test-terminal-engine.mjs",
+    "test:hull": "node scripts/runtime/prepare-hull.mjs --test",
+    "test:brig": "node scripts/runtime/prepare-brig.mjs --test",
+    "test:bundled-runtime": "node scripts/acceptance/check-bundled-runtime.mjs",
     "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "test": "node --experimental-vm-modules --test tests/*.test.mjs"
+    "test": "node --experimental-vm-modules --test tests/*/*.test.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.12.4"
+    "@tauri-apps/api": "2.12.4",
+    "zustand": "5.0.15"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.4",
-    "jsdom": "30.0.1",
+    "jsdom": "31.0.1",
     "typescript": "7.0.2",
-    "vite": "8.3.7"
+    "vite": "8.3.8"
   }
 }

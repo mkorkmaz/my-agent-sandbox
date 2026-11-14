@@ -1,7 +1,0 @@
-alloc-stdlib 0.3.0
-Authors: Daniel Reiter Horn <danielrh@dropbox.com>
-License declaration: BSD-3-Clause
-https://github.com/dropbox/rust-alloc-no-stdlib
-Exact source: https://static.crates.io/crates/alloc-stdlib/alloc-stdlib-0.3.0.crate
-Source revision: 0a81fd6928ea3b33c8cd484aa4575d50ffb98012
-Upstream source is unmodified.

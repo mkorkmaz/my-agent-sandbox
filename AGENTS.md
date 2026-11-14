@@ -10,6 +10,11 @@ Behavioral guidelines to reduce common LLM coding mistakes, derived from [Andrej
 
 Use task scope and observable risk to select the required guidance and checks.
 
+## Required reading at the start of every task
+
+Read the [Tugboat agent guide](docs/agent-guide.html) in full before planning, editing, or running project commands.
+Apply it together with this file. Use its module and test references to identify the boundaries and checks that apply to the task.
+
 ## 0. Be understandable
 
 **When explaining complex content, make good use of visualization.**
@@ -84,7 +89,6 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 6. Coding Style
 
-- Follow the Doctrine Coding Standard, which extends PSR-12.
 - Unless otherwise specified, use `camelCase` for all names.
 - Use `PascalCase` for class and namespace names.
 - Use `snake_case` for database, schema, table, column, and index names.
@@ -135,7 +139,31 @@ Defend at trust boundaries. Do not scatter redundant checks throughout trusted i
 - Test dependency timeouts, malformed responses, transaction rollbacks, and retry exhaustion where those behaviors exist.
 - Add a regression test for every fixed defect that can be reproduced automatically.
 
-## 8. Language
+## 8. Make implicit state machines explicit
+
+If a workflow's current state and permitted operations are determined by
+interdependent boolean flags, null checks, or conditions scattered across
+the code, treat it as an implicit state machine.
+
+- Before modifying the workflow, identify its existing states, the events
+  that trigger transitions, transition conditions, and the invariants
+  that must hold. Design new behavior against this model.
+- Represent mutually exclusive states with an enum, discriminated union,
+  or an equivalent construct supported by the language. Do not store
+  additional flags that can be derived from the current state.
+- Route state changes through a shared transition function, reducer,
+  or existing state management mechanism that enforces allowed
+  transitions. Explicitly define how invalid transitions are handled.
+- Where applicable, account for errors, cancellation, retries, and late
+  asynchronous results, including their effects on state. Test the
+  critical transitions affected by the change and the handling of
+  invalid transitions.
+- Keep refactoring scoped to the workflow being changed. Independent
+  boolean fields do not, by themselves, indicate an implicit state
+  machine. Do not introduce unnecessary abstractions or a new state
+  machine dependency for simple workflows.
+
+## 9. Language
 
 Use ASD-STE100 Simplified Technical English for all English agent responses.
 

@@ -1,0 +1,803 @@
+{
+  "fixtureProvenance": "Synthetic priced Claude family, captured from the native Rust importer on 2026-11-13. Guest namespaces and opaque revisions are sanitized.",
+  "dashboard": {
+    "usageAvailable": true,
+    "conversations": [
+      {
+        "id": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "environmentId": "23be1f80adb8d107056774e94586675b",
+        "agentKind": "claude-code",
+        "usageAvailable": true,
+        "title": "Synthetic root task.",
+        "updatedAt": 1794528000000,
+        "state": "active",
+        "available": true,
+        "usage": {
+          "input": 125,
+          "cached": 20,
+          "cacheWrite": 5,
+          "output": 10,
+          "reasoning": 0,
+          "total": 135,
+          "costUsd": 0.001397,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "warning": null,
+        "lineage": {
+          "kind": "primary",
+          "parentSessionId": null,
+          "agentPath": null,
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "root",
+        "rootSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "subagentCount": 3,
+        "familyUsage": {
+          "input": 100876,
+          "cached": 200,
+          "cacheWrite": 50,
+          "output": 100,
+          "reasoning": 0,
+          "total": 100976,
+          "costUsd": 0.05994053750000001,
+          "unpricedRequests": 0,
+          "requests": 4,
+          "completedTurns": 4,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "usageRevision": "native-priced-fixture"
+      },
+      {
+        "id": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+        "environmentId": "23be1f80adb8d107056774e94586675b",
+        "agentKind": "claude-code",
+        "usageAvailable": true,
+        "title": "Synthetic alpha task.",
+        "updatedAt": 1794528000000,
+        "state": "active",
+        "available": true,
+        "usage": {
+          "input": 250,
+          "cached": 40,
+          "cacheWrite": 10,
+          "output": 20,
+          "reasoning": 0,
+          "total": 270,
+          "costUsd": 0.000319,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "warning": null,
+        "lineage": {
+          "kind": "subagent",
+          "parentSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "agentPath": "/alpha",
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "resolved",
+        "rootSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "subagentCount": 1,
+        "familyUsage": {
+          "input": 100251,
+          "cached": 100,
+          "cacheWrite": 25,
+          "output": 50,
+          "reasoning": 0,
+          "total": 100301,
+          "costUsd": 0.055378537500000005,
+          "unpricedRequests": 0,
+          "requests": 2,
+          "completedTurns": 2,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "usageRevision": "native-priced-fixture"
+      },
+      {
+        "id": "ef606f17-ebc4-86b7-7aed-93b137538668",
+        "environmentId": "23be1f80adb8d107056774e94586675b",
+        "agentKind": "claude-code",
+        "usageAvailable": true,
+        "title": "Synthetic nested task.",
+        "updatedAt": 1794528000000,
+        "state": "active",
+        "available": true,
+        "usage": {
+          "input": 100001,
+          "cached": 60,
+          "cacheWrite": 15,
+          "output": 30,
+          "reasoning": 0,
+          "total": 100031,
+          "costUsd": 0.055059537500000005,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "warning": null,
+        "lineage": {
+          "kind": "subagent",
+          "parentSessionId": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+          "agentPath": "/nested",
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "resolved",
+        "rootSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "subagentCount": 0,
+        "familyUsage": {
+          "input": 100001,
+          "cached": 60,
+          "cacheWrite": 15,
+          "output": 30,
+          "reasoning": 0,
+          "total": 100031,
+          "costUsd": 0.055059537500000005,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "usageRevision": "native-priced-fixture"
+      },
+      {
+        "id": "ffa6da5b-e419-65f8-e575-2d0ebf6eaa56",
+        "environmentId": "23be1f80adb8d107056774e94586675b",
+        "agentKind": "claude-code",
+        "usageAvailable": true,
+        "title": "Synthetic beta task.",
+        "updatedAt": 1794528000000,
+        "state": "active",
+        "available": true,
+        "usage": {
+          "input": 500,
+          "cached": 80,
+          "cacheWrite": 20,
+          "output": 40,
+          "reasoning": 0,
+          "total": 540,
+          "costUsd": 0.003165,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "warning": null,
+        "lineage": {
+          "kind": "subagent",
+          "parentSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "agentPath": "/beta",
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "resolved",
+        "rootSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "subagentCount": 0,
+        "familyUsage": {
+          "input": 500,
+          "cached": 80,
+          "cacheWrite": 20,
+          "output": 40,
+          "reasoning": 0,
+          "total": 540,
+          "costUsd": 0.003165,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "usageRevision": "native-priced-fixture"
+      }
+    ],
+    "usage": {
+      "input": 100876,
+      "cached": 200,
+      "cacheWrite": 50,
+      "output": 100,
+      "reasoning": 0,
+      "total": 100976,
+      "costUsd": 0.05994053750000001,
+      "unpricedRequests": 0,
+      "requests": 4,
+      "completedTurns": 4,
+      "assumedTierRequests": 0,
+      "missingCacheRequests": 0,
+      "missingCachedRequests": 0,
+      "missingCacheWriteRequests": 0,
+      "unmeasuredTurns": 0
+    },
+    "pricingDate": "2026-11-10",
+    "anthropicPricingDate": "2026-11-13",
+    "warnings": [],
+    "coverage": "partial"
+  },
+  "details": {
+    "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+    "rootSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+    "ownUsage": {
+      "input": 125,
+      "cached": 20,
+      "cacheWrite": 5,
+      "output": 10,
+      "reasoning": 0,
+      "total": 135,
+      "costUsd": 0.001397,
+      "unpricedRequests": 0,
+      "requests": 1,
+      "completedTurns": 1,
+      "assumedTierRequests": 0,
+      "missingCacheRequests": 0,
+      "missingCachedRequests": 0,
+      "missingCacheWriteRequests": 0,
+      "unmeasuredTurns": 0
+    },
+    "descendantsUsage": {
+      "input": 100751,
+      "cached": 180,
+      "cacheWrite": 45,
+      "output": 90,
+      "reasoning": 0,
+      "total": 100841,
+      "costUsd": 0.058543537500000006,
+      "unpricedRequests": 0,
+      "requests": 3,
+      "completedTurns": 3,
+      "assumedTierRequests": 0,
+      "missingCacheRequests": 0,
+      "missingCachedRequests": 0,
+      "missingCacheWriteRequests": 0,
+      "unmeasuredTurns": 0
+    },
+    "combinedUsage": {
+      "input": 100876,
+      "cached": 200,
+      "cacheWrite": 50,
+      "output": 100,
+      "reasoning": 0,
+      "total": 100976,
+      "costUsd": 0.05994053750000001,
+      "unpricedRequests": 0,
+      "requests": 4,
+      "completedTurns": 4,
+      "assumedTierRequests": 0,
+      "missingCacheRequests": 0,
+      "missingCachedRequests": 0,
+      "missingCacheWriteRequests": 0,
+      "unmeasuredTurns": 0
+    },
+    "coverage": "partial",
+    "warnings": [
+      "Claude usage includes recorded main-session and discovered subagent messages. Missing transcripts, unverified relationships, and unrecorded work limit coverage. User prompt attribution is unavailable."
+    ],
+    "agents": [
+      {
+        "agentKind": "claude-code",
+        "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "title": "Synthetic root task.",
+        "available": true,
+        "lineage": {
+          "kind": "primary",
+          "parentSessionId": null,
+          "agentPath": null,
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "root",
+        "ownUsage": {
+          "input": 125,
+          "cached": 20,
+          "cacheWrite": 5,
+          "output": 10,
+          "reasoning": 0,
+          "total": 135,
+          "costUsd": 0.001397,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "turns": [
+          {
+            "id": "msg_family_root",
+            "status": "complete",
+            "requests": [
+              {
+                "key": "anthropic:msg_family_root",
+                "at": "2026-11-13T00:00:00Z",
+                "model": "claude-opus-5-5",
+                "tokens": {
+                  "input": 125,
+                  "cached": 20,
+                  "cacheWrite": 5,
+                  "output": 10,
+                  "reasoning": 0,
+                  "write12h": null,
+                  "cacheKnown": true,
+                  "cachedKnown": true,
+                  "cacheWriteKnown": true
+                },
+                "rates": {
+                  "date": "2026-11-13",
+                  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                  "input": 8.8,
+                  "cached": 0.44000000000000006,
+                  "write30m": 0.0,
+                  "write12h": 0.0,
+                  "output": 44.0,
+                  "tier": "standard",
+                  "tierAssumed": false,
+                  "longContext": false,
+                  "anthropic": {
+                    "model": "claude-opus-5-5",
+                    "write5m": 11.0,
+                    "write1h": 17.6,
+                    "speed": "fast",
+                    "inferenceGeo": "us",
+                    "multiplier": 2.2,
+                    "fastMultiplier": 2.0,
+                    "usMultiplier": 1.1,
+                    "batchMultiplier": 0.5,
+                    "assumptions": []
+                  }
+                },
+                "costUsd": 0.001397,
+                "partial": false,
+                "unpricedReason": null,
+                "serviceTier": "standard",
+                "tierSource": "anthropic-usage",
+                "rateCorrection": null,
+                "source": {
+                  "guestNamespace": "fixture-claude-price-guest",
+                  "modelProvider": "anthropic",
+                  "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+                  "originTurnId": "msg_family_root",
+                  "rootTurnId": null,
+                  "responseId": "msg_family_root"
+                },
+                "amountCorrection": null,
+                "anthropic": {
+                  "cacheCreation": {
+                    "ephemeral5mInputTokens": 3,
+                    "ephemeral1hInputTokens": 2
+                  },
+                  "speed": "fast",
+                  "serviceTier": "standard",
+                  "inferenceGeo": "us",
+                  "invalidFields": []
+                }
+              }
+            ],
+            "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+            "rootTurnId": null,
+            "parentTurnId": null
+          }
+        ]
+      },
+      {
+        "agentKind": "claude-code",
+        "sessionId": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+        "title": "Synthetic alpha task.",
+        "available": true,
+        "lineage": {
+          "kind": "subagent",
+          "parentSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "agentPath": "/alpha",
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "resolved",
+        "ownUsage": {
+          "input": 250,
+          "cached": 40,
+          "cacheWrite": 10,
+          "output": 20,
+          "reasoning": 0,
+          "total": 270,
+          "costUsd": 0.000319,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "turns": [
+          {
+            "id": "msg_family_alpha",
+            "status": "complete",
+            "requests": [
+              {
+                "key": "anthropic:msg_family_alpha",
+                "at": "2026-11-13T00:00:00Z",
+                "model": "claude-sonnet-5-5",
+                "tokens": {
+                  "input": 250,
+                  "cached": 40,
+                  "cacheWrite": 10,
+                  "output": 20,
+                  "reasoning": 0,
+                  "write12h": null,
+                  "cacheKnown": true,
+                  "cachedKnown": true,
+                  "cacheWriteKnown": true
+                },
+                "rates": {
+                  "date": "2026-11-13",
+                  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                  "input": 1.0,
+                  "cached": 0.05,
+                  "write30m": 0.0,
+                  "write12h": 0.0,
+                  "output": 5.0,
+                  "tier": "batch",
+                  "tierAssumed": false,
+                  "longContext": false,
+                  "anthropic": {
+                    "model": "claude-sonnet-5-5",
+                    "write5m": 1.25,
+                    "write1h": 2.0,
+                    "speed": "standard",
+                    "inferenceGeo": "global",
+                    "multiplier": 0.5,
+                    "fastMultiplier": null,
+                    "usMultiplier": 1.1,
+                    "batchMultiplier": 0.5,
+                    "assumptions": []
+                  }
+                },
+                "costUsd": 0.000319,
+                "partial": false,
+                "unpricedReason": null,
+                "serviceTier": "batch",
+                "tierSource": "anthropic-usage",
+                "rateCorrection": null,
+                "source": {
+                  "guestNamespace": "fixture-claude-price-guest",
+                  "modelProvider": "anthropic",
+                  "originThreadId": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+                  "originTurnId": "msg_family_alpha",
+                  "rootTurnId": null,
+                  "responseId": "msg_family_alpha"
+                },
+                "amountCorrection": null,
+                "anthropic": {
+                  "cacheCreation": {
+                    "ephemeral5mInputTokens": 4,
+                    "ephemeral1hInputTokens": 6
+                  },
+                  "speed": "standard",
+                  "serviceTier": "batch",
+                  "inferenceGeo": "global",
+                  "invalidFields": []
+                }
+              }
+            ],
+            "originThreadId": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+            "rootTurnId": null,
+            "parentTurnId": null
+          }
+        ]
+      },
+      {
+        "agentKind": "claude-code",
+        "sessionId": "ef606f17-ebc4-86b7-7aed-93b137538668",
+        "title": "Synthetic nested task.",
+        "available": true,
+        "lineage": {
+          "kind": "subagent",
+          "parentSessionId": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+          "agentPath": "/nested",
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "resolved",
+        "ownUsage": {
+          "input": 100001,
+          "cached": 60,
+          "cacheWrite": 15,
+          "output": 30,
+          "reasoning": 0,
+          "total": 100031,
+          "costUsd": 0.055059537500000005,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "turns": [
+          {
+            "id": "msg_family_nested",
+            "status": "complete",
+            "requests": [
+              {
+                "key": "anthropic:msg_family_nested",
+                "at": "2026-11-13T00:00:00Z",
+                "model": "claude-haiku-5-5",
+                "tokens": {
+                  "input": 100001,
+                  "cached": 60,
+                  "cacheWrite": 15,
+                  "output": 30,
+                  "reasoning": 0,
+                  "write12h": null,
+                  "cacheKnown": true,
+                  "cachedKnown": true,
+                  "cacheWriteKnown": true
+                },
+                "rates": {
+                  "date": "2026-11-13",
+                  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                  "input": 0.55,
+                  "cached": 0.05500000000000001,
+                  "write30m": 0.0,
+                  "write12h": 0.0,
+                  "output": 2.75,
+                  "tier": "standard",
+                  "tierAssumed": false,
+                  "longContext": true,
+                  "anthropic": {
+                    "model": "claude-haiku-5-5",
+                    "write5m": 0.6875,
+                    "write1h": 1.1,
+                    "speed": "standard",
+                    "inferenceGeo": "us",
+                    "multiplier": 1.1,
+                    "fastMultiplier": null,
+                    "usMultiplier": 1.1,
+                    "batchMultiplier": 0.5,
+                    "assumptions": []
+                  }
+                },
+                "costUsd": 0.055059537500000005,
+                "partial": false,
+                "unpricedReason": null,
+                "serviceTier": "standard",
+                "tierSource": "anthropic-usage",
+                "rateCorrection": null,
+                "source": {
+                  "guestNamespace": "fixture-claude-price-guest",
+                  "modelProvider": "anthropic",
+                  "originThreadId": "ef606f17-ebc4-86b7-7aed-93b137538668",
+                  "originTurnId": "msg_family_nested",
+                  "rootTurnId": null,
+                  "responseId": "msg_family_nested"
+                },
+                "amountCorrection": null,
+                "anthropic": {
+                  "cacheCreation": {
+                    "ephemeral5mInputTokens": 5,
+                    "ephemeral1hInputTokens": 10
+                  },
+                  "speed": "standard",
+                  "serviceTier": "standard",
+                  "inferenceGeo": "us",
+                  "invalidFields": []
+                }
+              }
+            ],
+            "originThreadId": "ef606f17-ebc4-86b7-7aed-93b137538668",
+            "rootTurnId": null,
+            "parentTurnId": null
+          }
+        ]
+      },
+      {
+        "agentKind": "claude-code",
+        "sessionId": "ffa6da5b-e419-65f8-e575-2d0ebf6eaa56",
+        "title": "Synthetic beta task.",
+        "available": true,
+        "lineage": {
+          "kind": "subagent",
+          "parentSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "agentPath": "/beta",
+          "nickname": null,
+          "sourceVersion": "2.1.318",
+          "lineageVersion": 1
+        },
+        "relationStatus": "resolved",
+        "ownUsage": {
+          "input": 500,
+          "cached": 80,
+          "cacheWrite": 20,
+          "output": 40,
+          "reasoning": 0,
+          "total": 540,
+          "costUsd": 0.003165,
+          "unpricedRequests": 0,
+          "requests": 1,
+          "completedTurns": 1,
+          "assumedTierRequests": 0,
+          "missingCacheRequests": 0,
+          "missingCachedRequests": 0,
+          "missingCacheWriteRequests": 0,
+          "unmeasuredTurns": 0
+        },
+        "coverage": "partial",
+        "turns": [
+          {
+            "id": "msg_family_beta",
+            "status": "complete",
+            "requests": [
+              {
+                "key": "anthropic:msg_family_beta",
+                "at": "2026-11-13T00:00:00Z",
+                "model": "claude-opus-4-6",
+                "tokens": {
+                  "input": 500,
+                  "cached": 80,
+                  "cacheWrite": 20,
+                  "output": 40,
+                  "reasoning": 0,
+                  "write12h": null,
+                  "cacheKnown": true,
+                  "cachedKnown": true,
+                  "cacheWriteKnown": true
+                },
+                "rates": {
+                  "date": "2026-11-13",
+                  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                  "input": 5.0,
+                  "cached": 0.5,
+                  "write30m": 0.0,
+                  "write12h": 0.0,
+                  "output": 25.0,
+                  "tier": "standard",
+                  "tierAssumed": false,
+                  "longContext": false,
+                  "anthropic": {
+                    "model": "claude-opus-4-6",
+                    "write5m": 6.25,
+                    "write1h": 10.0,
+                    "speed": "standard",
+                    "inferenceGeo": "global",
+                    "multiplier": 1.0,
+                    "fastMultiplier": null,
+                    "usMultiplier": 1.1,
+                    "batchMultiplier": 0.5,
+                    "assumptions": []
+                  }
+                },
+                "costUsd": 0.003165,
+                "partial": false,
+                "unpricedReason": null,
+                "serviceTier": "standard",
+                "tierSource": "anthropic-usage",
+                "rateCorrection": null,
+                "source": {
+                  "guestNamespace": "fixture-claude-price-guest",
+                  "modelProvider": "anthropic",
+                  "originThreadId": "ffa6da5b-e419-65f8-e575-2d0ebf6eaa56",
+                  "originTurnId": "msg_family_beta",
+                  "rootTurnId": null,
+                  "responseId": "msg_family_beta"
+                },
+                "amountCorrection": null,
+                "anthropic": {
+                  "cacheCreation": {
+                    "ephemeral5mInputTokens": 20,
+                    "ephemeral1hInputTokens": 0
+                  },
+                  "speed": "standard",
+                  "serviceTier": "standard",
+                  "inferenceGeo": "global",
+                  "invalidFields": []
+                }
+              }
+            ],
+            "originThreadId": "ffa6da5b-e419-65f8-e575-2d0ebf6eaa56",
+            "rootTurnId": null,
+            "parentTurnId": null
+          }
+        ]
+      }
+    ],
+    "userPromptCount": null,
+    "agentTurnCount": 4,
+    "prompts": [],
+    "unassigned": {
+      "usage": {
+        "input": 100876,
+        "cached": 200,
+        "cacheWrite": 50,
+        "output": 100,
+        "reasoning": 0,
+        "total": 100976,
+        "costUsd": 0.05994053750000001,
+        "unpricedRequests": 0,
+        "requests": 4,
+        "completedTurns": 4,
+        "assumedTierRequests": 0,
+        "missingCacheRequests": 0,
+        "missingCachedRequests": 0,
+        "missingCacheWriteRequests": 0,
+        "unmeasuredTurns": 0
+      },
+      "requestRefs": [
+        {
+          "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "turnId": "msg_family_root",
+          "requestKey": "anthropic:msg_family_root"
+        },
+        {
+          "sessionId": "64b52e9c-59bc-cbf7-2ab3-19e8c9f719b3",
+          "turnId": "msg_family_alpha",
+          "requestKey": "anthropic:msg_family_alpha"
+        },
+        {
+          "sessionId": "ef606f17-ebc4-86b7-7aed-93b137538668",
+          "turnId": "msg_family_nested",
+          "requestKey": "anthropic:msg_family_nested"
+        },
+        {
+          "sessionId": "ffa6da5b-e419-65f8-e575-2d0ebf6eaa56",
+          "turnId": "msg_family_beta",
+          "requestKey": "anthropic:msg_family_beta"
+        }
+      ],
+      "unmeasuredTurnRefs": []
+    }
+  }
+}

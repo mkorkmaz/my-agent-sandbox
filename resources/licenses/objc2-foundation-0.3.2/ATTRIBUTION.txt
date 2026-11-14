@@ -1,7 +1,0 @@
-objc2-foundation 0.3.2
-Authors: 
-License declaration: MIT
-https://github.com/madsmtm/objc2
-Exact source: https://static.crates.io/crates/objc2-foundation/objc2-foundation-0.3.2.crate
-Source revision: 7b1abfd750a2cacaea71d6a56ecfb83cb7de560b
-Upstream source is unmodified.

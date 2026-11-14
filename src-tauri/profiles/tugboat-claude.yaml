@@ -1,0 +1,55 @@
+# Derived from Brig v0.5.2's claude-code profile. Host credential sources are absent.
+name: tugboat-claude
+desc: Claude Code managed by Tugboat
+kind: agent
+binary: claude
+image: ghcr.io/brig-sh/claude-code-stock:root
+guestHome: /root
+hypervisor: hvi
+network: isolated
+genericBoot: true
+headless: true
+mem: 4096
+cpus: 4
+secrets: []
+files: []
+env:
+  - name: IS_SANDBOX
+    value: "1"
+  - name: CLAUDE_CONFIG_DIR
+    value: /brig/claude
+deny: [ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, GH_TOKEN]
+volumes:
+  - kind: tmpfs
+    path: .claude
+    at: /brig/claude
+    size: 512m
+  - kind: hostmount
+    path: .claude/.claude.json
+    file: true
+  - kind: hostmount
+    path: .claude/settings.json
+    file: true
+  - kind: hostmount
+    path: .claude/CLAUDE.md
+    file: true
+  - kind: hostmount
+    path: .claude/sessions
+  - kind: hostmount
+    path: .claude/projects
+  - kind: hostmount
+    path: .claude/plugins
+  - kind: hostmount
+    path: .claude/skills
+  - kind: hostmount
+    path: .claude/history.jsonl
+    file: true
+staleCredentialFiles: [.claude/.credentials.json]
+onboarding:
+  file: .claude/.claude.json
+  seed:
+    hasCompletedOnboarding: true
+    hasTrustDialogAccepted: true
+  trustKey: [projects, hasTrustDialogAccepted]
+hostConfigDir: ~/.claude
+projectPaths: [skills, plugins]

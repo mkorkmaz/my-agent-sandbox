@@ -6,6 +6,17 @@
 
 NSFont *brigTerminalFont(NSString *preferredName, NSURL *fallbackURL);
 
+typedef NS_ENUM(NSUInteger, BrigCompositionState) {
+    BrigCompositionIdle,
+    BrigCompositionMarked,
+};
+
+typedef NS_ENUM(NSUInteger, BrigSelectionState) {
+    BrigSelectionIdle,
+    BrigSelectionAnchored,
+    BrigSelectionDragging,
+};
+
 @interface BrigTerminalView : NSView {
 @public
     GhosttyTerminal terminal;
@@ -25,9 +36,11 @@ NSFont *brigTerminalFont(NSString *preferredName, NSURL *fallbackURL);
     uint16_t pixelWidth;
     uint16_t pixelHeight;
     NSMutableAttributedString *markedText;
+    BrigCompositionState compositionState;
     NSRange markedSelection;
     GhosttyFormatter formatter;
     GhosttyTrackedGridRef selectionAnchor;
+    BrigSelectionState selectionState;
     NSCache<NSString *, id> *glyphCache;
     NSTimer *cursorTimer;
     NSTimer *dragTimer;
@@ -43,4 +56,5 @@ NSFont *brigTerminalFont(NSString *preferredName, NSURL *fallbackURL);
 @end
 @interface BrigTerminalView (Input) <NSTextInputClient>
 - (void)sendData:(NSData *)data;
+- (void)endSelectionDrag;
 @end

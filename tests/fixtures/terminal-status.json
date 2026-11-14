@@ -1,0 +1,46 @@
+{
+  "codex-new-chat": {
+    "identifier": 1,
+    "projectId": "project-a",
+    "environmentId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "agentKind": "codex",
+    "purpose": "codex",
+    "running": true,
+    "exitCode": null,
+    "conversationId": null,
+    "busy": false
+  },
+  "codex-resume": {
+    "identifier": 2,
+    "projectId": "project-a",
+    "environmentId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "agentKind": "codex",
+    "purpose": "resume",
+    "running": true,
+    "exitCode": null,
+    "conversationId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+    "busy": false
+  },
+  "claude-new-chat": {
+    "identifier": 1,
+    "projectId": "project-a",
+    "environmentId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "agentKind": "claude-code",
+    "purpose": "claude",
+    "running": true,
+    "exitCode": null,
+    "conversationId": "00000000-0000-4000-8000-000000000001",
+    "busy": false
+  },
+  "claude-resume": {
+    "identifier": 2,
+    "projectId": "project-a",
+    "environmentId": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "agentKind": "claude-code",
+    "purpose": "claude-resume",
+    "running": true,
+    "exitCode": null,
+    "conversationId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+    "busy": false
+  }
+}

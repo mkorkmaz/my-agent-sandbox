@@ -1,0 +1,18 @@
+{
+  "command": [
+    "/opt/homebrew/bin/brig",
+    "--json",
+    "plan",
+    "--network",
+    "isolated",
+    "--home",
+    "/fixture/guest-claude",
+    "tugboat-claude@bd01-claude",
+    "/fixture/örnek proje"
+  ],
+  "exitCode": 0,
+  "signal": null,
+  "errorCode": null,
+  "stdout": "{\n  \"apiVersion\": \"brig.sh/v1alpha1\",\n  \"kind\": \"Plan\",\n  \"data\": {\n    \"session\": \"bd01-claude\",\n    \"profile\": \"tugboat-claude\",\n    \"sandbox\": \"brig-tugboat-claude-bd01-claude\",\n    \"refused\": {\n      \"reason\": \"a policy applies to this sandbox, and hull on vz cannot enforce the egress policy: vz takes its network from vmnet, which brig does not filter. brig enforces a policy at the user-mode network gateway that only the hvi backend uses. Run it on hvi (BRIG_HYPERVISOR=hvi), or detach the policy. brig will not boot a sandbox under a policy nothing enforces\"\n    },\n    \"runtime\": {\n      \"kind\": \"hull\",\n      \"bin\": \"/fixture/bin/hull\",\n      \"available\": true,\n      \"backend\": \"vz\"\n    },\n    \"isolation\": \"microVM (hull, vz backend, rootfs overlay-block)\",\n    \"home\": {\n      \"host\": \"/fixture/guest-claude-bd01-claude\",\n      \"guest\": \"/root\",\n      \"mode\": \"read-write\"\n    },\n    \"project\": {\n      \"host\": \"/fixture/örnek proje\",\n      \"guest\": \"/work/örnek proje\",\n      \"mode\": \"read-write\"\n    },\n    \"skills\": [],\n    \"image\": {\n      \"ref\": \"ghcr.io/brig-sh/claude-code-stock:root\",\n      \"pull\": \"missing\"\n    },\n    \"verify\": {\n      \"mode\": \"require\",\n      \"policy\": \"brig\"\n    },\n    \"network\": \"unknown (no recorded posture; /fixture/bin/hull inspect brig-tugboat-claude-bd01-claude: exit status 1); isolated from its next boot\",\n    \"posture\": \"isolated\",\n    \"ports\": [],\n    \"policies\": [\n      \"bd01-claude\"\n    ],\n    \"noPolicy\": false,\n    \"egress\": {\n      \"default\": \"deny\",\n      \"allow\": [\n        {\n          \"host\": \"api.anthropic.com\"\n        },\n        {\n          \"host\": \"claude.ai\"\n        },\n        {\n          \"host\": \"platform.claude.com\"\n        }\n      ],\n      \"deny\": []\n    },\n    \"credentials\": [],\n    \"limits\": {\n      \"mem\": 4096,\n      \"cpus\": 4\n    },\n    \"digest\": \"sha256:c8f6e6a934e64f69609d9c893107fba620527227ea4de94d317edf08f164010f\"\n  }\n}\n",
+  "stderr": ""
+}

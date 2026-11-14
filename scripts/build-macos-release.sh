@@ -46,14 +46,8 @@ security list-keychains -d user -s "$keychain" ${original_keychains[@]+"${origin
 # Tauri uses the imported identity from the search list and the notary key file.
 unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_API_KEY_CONTENT
 npm run native:prepare
-codesign --force --timestamp --options runtime --keychain "$keychain" --sign "$APPLE_SIGNING_IDENTITY" .build/hull-compat/bin/hull
 node --input-type=module - "$work/config.json" <<'JS'
 import fs from 'node:fs';
-import { createHash } from 'node:crypto';
-const manifestPath = '.build/hull-compat/bin/build.json';
-const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-manifest.binarySha256 = createHash('sha256').update(fs.readFileSync('.build/hull-compat/bin/hull')).digest('hex');
-fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 fs.writeFileSync(process.argv[2], JSON.stringify({ bundle: { macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY, hardenedRuntime: true } } }));
 JS
 npm run tauri -- build --ci --target aarch64-apple-darwin --bundles app,dmg --config "$work/config.json" -- --locked

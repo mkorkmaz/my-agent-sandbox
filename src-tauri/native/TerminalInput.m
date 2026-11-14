@@ -77,9 +77,10 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
 }
 - (void)mouseDown:(NSEvent *)event {
     [self.window makeFirstResponder:self];
-    ghostty_tracked_grid_ref_free(selectionAnchor); selectionAnchor = NULL;
+    [self endSelectionDrag];
     GhosttyPoint point = [self pointForPosition:[self convertPoint:event.locationInWindow fromView:nil]];
     ghostty_terminal_grid_ref_track(terminal, point, &selectionAnchor);
+    selectionState = selectionAnchor ? BrigSelectionAnchored : BrigSelectionIdle;
     ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
     if (event.clickCount == 2) {
         GhosttyTerminalSelectWordOptions options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
@@ -89,7 +90,7 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
     [self setNeedsDisplay:YES];
 }
 - (void)updateDraggedSelection {
-    if (!selectionAnchor) return;
+    if (selectionState == BrigSelectionIdle) return;
     int delta = dragPoint.y < BrigTerminalPaddingY ? -1 : (dragPoint.y > NSMaxY(self.bounds) - BrigTerminalPaddingY ? 1 : 0);
     if (delta) { GhosttyTerminalScrollViewport scroll = {.tag = GHOSTTY_TERMINAL_SCROLL_VIEWPORT_DELTA, .value = {.delta = delta}}; ghostty_terminal_scroll_viewport(terminal, scroll); }
     GhosttySelection selection = {0};
@@ -100,20 +101,27 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
     [self setNeedsDisplay:YES];
 }
 - (void)mouseDragged:(NSEvent *)event {
+    if (selectionState == BrigSelectionIdle) return;
+    selectionState = BrigSelectionDragging;
     dragPoint = [self convertPoint:event.locationInWindow fromView:nil];
     [self updateDraggedSelection];
     if (dragTimer) return;
     __weak BrigTerminalView *weakView = self;
     dragTimer = [NSTimer scheduledTimerWithTimeInterval:0.08 repeats:YES block:^(NSTimer *timer) {
         BrigTerminalView *view = weakView;
-        if (!view || view.hidden) { [timer invalidate]; return; }
+        if (!view) { [timer invalidate]; return; }
+        if (view.hidden) { [view endSelectionDrag]; return; }
         [view updateDraggedSelection];
     }];
 }
 - (void)mouseUp:(NSEvent *)event {
     (void)event;
+    [self endSelectionDrag];
+}
+- (void)endSelectionDrag {
     [dragTimer invalidate]; dragTimer = nil;
     ghostty_tracked_grid_ref_free(selectionAnchor); selectionAnchor = NULL;
+    selectionState = BrigSelectionIdle;
 }
 - (void)scrollWheel:(NSEvent *)event {
     scrollRemainder += event.hasPreciseScrollingDeltas ? -event.scrollingDeltaY / cellHeight : -event.scrollingDeltaY;
@@ -238,22 +246,28 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
 - (void)insertText:(id)value replacementRange:(NSRange)range {
     (void)range;
     NSString *string = [value isKindOfClass:NSAttributedString.class] ? [value string] : value;
-    [markedText setAttributedString:[[NSAttributedString alloc] initWithString:@""]];
+    [self unmarkText];
     [self sendData:[string dataUsingEncoding:NSUTF8StringEncoding]];
 }
 - (void)setMarkedText:(id)value selectedRange:(NSRange)selection replacementRange:(NSRange)range {
     (void)range;
     NSAttributedString *text = [value isKindOfClass:NSAttributedString.class] ? value : [[NSAttributedString alloc] initWithString:value];
     [markedText setAttributedString:text]; markedSelection = selection;
+    compositionState = text.length ? BrigCompositionMarked : BrigCompositionIdle;
     [self setNeedsDisplay:YES];
 }
-- (void)unmarkText { [markedText setAttributedString:[[NSAttributedString alloc] initWithString:@""]]; [self setNeedsDisplay:YES]; }
-- (BOOL)hasMarkedText { return markedText.length > 0; }
+- (void)unmarkText {
+    [markedText setAttributedString:[[NSAttributedString alloc] initWithString:@""]];
+    markedSelection = NSMakeRange(NSNotFound, 0);
+    compositionState = BrigCompositionIdle;
+    [self setNeedsDisplay:YES];
+}
+- (BOOL)hasMarkedText { return compositionState == BrigCompositionMarked; }
 - (NSRange)markedRange { return self.hasMarkedText ? NSMakeRange(0, markedText.length) : NSMakeRange(NSNotFound, 0); }
 - (NSRange)selectedRange { return self.hasMarkedText ? markedSelection : NSMakeRange(NSNotFound, 0); }
 - (NSArray *)validAttributesForMarkedText { return @[NSUnderlineStyleAttributeName, NSMarkedClauseSegmentAttributeName]; }
 - (NSAttributedString *)attributedSubstringForProposedRange:(NSRange)range actualRange:(NSRangePointer)actual {
-    if (!markedText.length || range.location == NSNotFound) return nil;
+    if (!self.hasMarkedText || range.location == NSNotFound) return nil;
     NSRange intersection = NSIntersectionRange(range, NSMakeRange(0, markedText.length));
     if (actual) *actual = intersection;
     return [markedText attributedSubstringFromRange:intersection];

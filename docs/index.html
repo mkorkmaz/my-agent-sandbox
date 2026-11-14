@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="only light">
+  <meta name="description" content="Tugboat documentation for users, developers, and coding agents, with architecture and decision records.">
+  <title>Tugboat handbook</title>
+  <link rel="stylesheet" href="handbook.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to guides</a>
+  <header class="masthead">
+    <nav class="global-nav" aria-label="Handbook">
+      <a class="brand" href="index.html" aria-current="page">Tugboat handbook</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="developer-guide.html">Developer</a>
+      <a href="user-guide.html">User</a>
+      <a href="adr.html">Decisions</a>
+      <a href="agent-guide.html">Agent</a>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <h1>Tugboat handbook</h1>
+    <p class="lead">Use Codex and Claude Code on a local project. Follow a chat into its guest environment, or find the source and tests for a change to Tugboat.</p>
+    <ul class="guide-list" aria-label="Handbook documents">
+      <li><a href="user-guide.html">User guide</a><p>Set up your first chat, switch agents, review changes and recover from a problem. For an existing issue, start with <a href="user-guide.html#troubleshooting">troubleshooting by symptom</a>.</p></li>
+      <li><a href="architecture.html">Application architecture</a><p>Follow a chat from the Mac into a Brig guest. Trace the terminal, provider account, project files and usage records on the <a href="architecture.html#runtime">runtime map</a>.</p></li>
+      <li><a href="developer-guide.html">Developer guide</a><p>Find the module that owns a behavior. Use its maintenance instructions, failure cases and tests. Follow two <a href="developer-guide.html#examples">worked feature changes</a>.</p></li>
+      <li><a href="adr.html">Architecture decisions</a><p>Read the decisions behind isolation, session identity, provider accounts, storage and delivery. Each decision includes its consequence and links to the implementation.</p></li>
+      <li><a href="agent-guide.html">Agent guide</a><p>Read this before working on the repository. It explains how to scope a change, preserve boundaries, verify results and follow the <a href="../AGENTS.md">repository instructions</a>.</p></li>
+    </ul>
+  </main>
+  <footer>Tugboat 0.3.0 · Documentation checked against the working tree on <time datetime="2026-11-14">14 November 2026</time>.</footer>
+</body>
+</html>

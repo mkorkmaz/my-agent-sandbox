@@ -1,0 +1,526 @@
+{
+  "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+  "rootSessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+  "ownUsage": {
+    "input": 82539,
+    "cached": 76065,
+    "cacheWrite": 6458,
+    "output": 409,
+    "reasoning": 0,
+    "total": 82948,
+    "costUsd": 0.055747000000000005,
+    "unpricedRequests": 0,
+    "requests": 5,
+    "completedTurns": 5,
+    "assumedTierRequests": 5,
+    "missingCacheRequests": 0,
+    "missingCachedRequests": 0,
+    "missingCacheWriteRequests": 0,
+    "unmeasuredTurns": 0
+  },
+  "descendantsUsage": {
+    "input": 0,
+    "cached": 0,
+    "cacheWrite": 0,
+    "output": 0,
+    "reasoning": 0,
+    "total": 0,
+    "costUsd": 0.0,
+    "unpricedRequests": 0,
+    "requests": 0,
+    "completedTurns": 0,
+    "assumedTierRequests": 0,
+    "missingCacheRequests": 0,
+    "missingCachedRequests": 0,
+    "missingCacheWriteRequests": 0,
+    "unmeasuredTurns": 0
+  },
+  "combinedUsage": {
+    "input": 82539,
+    "cached": 76065,
+    "cacheWrite": 6458,
+    "output": 409,
+    "reasoning": 0,
+    "total": 82948,
+    "costUsd": 0.055747000000000005,
+    "unpricedRequests": 0,
+    "requests": 5,
+    "completedTurns": 5,
+    "assumedTierRequests": 5,
+    "missingCacheRequests": 0,
+    "missingCachedRequests": 0,
+    "missingCacheWriteRequests": 0,
+    "unmeasuredTurns": 0
+  },
+  "coverage": "partial",
+  "warnings": [
+    "Claude usage includes recorded main-session and discovered subagent messages. Missing transcripts, unverified relationships, and unrecorded work limit coverage. User prompt attribution is unavailable."
+  ],
+  "agents": [
+    {
+      "agentKind": "claude-code",
+      "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+      "title": "Acceptance test. Remember the code TUGBOAT_CLAUDE_MEMORY_1a5bc5b5 in this conversation. Use Bash to run exactly this command: python3 -c 'from pathlib import Pa",
+      "available": true,
+      "lineage": {
+        "kind": "primary",
+        "parentSessionId": null,
+        "agentPath": null,
+        "nickname": null,
+        "sourceVersion": "2.1.318",
+        "lineageVersion": 1
+      },
+      "relationStatus": "root",
+      "ownUsage": {
+        "input": 82539,
+        "cached": 76065,
+        "cacheWrite": 6458,
+        "output": 409,
+        "reasoning": 0,
+        "total": 82948,
+        "costUsd": 0.055747000000000005,
+        "unpricedRequests": 0,
+        "requests": 5,
+        "completedTurns": 5,
+        "assumedTierRequests": 5,
+        "missingCacheRequests": 0,
+        "missingCachedRequests": 0,
+        "missingCacheWriteRequests": 0,
+        "unmeasuredTurns": 0
+      },
+      "coverage": "partial",
+      "turns": [
+        {
+          "id": "msg_011CgyaSjr434dTGc9JnEC7w",
+          "status": "complete",
+          "requests": [
+            {
+              "key": "anthropic:msg_011CgyaSjr434dTGc9JnEC7w",
+              "at": "2026-11-12T19:21:44.690Z",
+              "model": "claude-opus-5-5",
+              "tokens": {
+                "input": 16247,
+                "cached": 10335,
+                "cacheWrite": 5910,
+                "output": 133,
+                "reasoning": 0,
+                "write12h": null,
+                "cacheKnown": true,
+                "cachedKnown": true,
+                "cacheWriteKnown": true
+              },
+              "rates": {
+                "date": "2026-11-13",
+                "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                "input": 4.0,
+                "cached": 0.2,
+                "write30m": 0.0,
+                "write12h": 0.0,
+                "output": 20.0,
+                "tier": "standard",
+                "tierAssumed": true,
+                "longContext": false,
+                "anthropic": {
+                  "model": "claude-opus-5-5",
+                  "write5m": 5.0,
+                  "write1h": 8.0,
+                  "speed": "standard",
+                  "inferenceGeo": "global",
+                  "multiplier": 1.0,
+                  "fastMultiplier": 2.0,
+                  "usMultiplier": 1.1,
+                  "batchMultiplier": 0.5,
+                  "assumptions": [
+                    "Standard speed assumed.",
+                    "Standard service tier assumed.",
+                    "Global inference assumed.",
+                    "5-minute cache writes assumed; lifetime split is not recorded."
+                  ]
+                }
+              },
+              "costUsd": 0.034285,
+              "partial": false,
+              "unpricedReason": null,
+              "serviceTier": null,
+              "tierSource": "assumed",
+              "rateCorrection": null,
+              "source": {
+                "guestNamespace": "fixture-claude-price-guest",
+                "modelProvider": "anthropic",
+                "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+                "originTurnId": "msg_011CgyaSjr434dTGc9JnEC7w",
+                "rootTurnId": null,
+                "responseId": "msg_011CgyaSjr434dTGc9JnEC7w"
+              },
+              "amountCorrection": null,
+              "anthropic": {
+                "cacheCreation": null,
+                "speed": null,
+                "serviceTier": null,
+                "inferenceGeo": null,
+                "invalidFields": []
+              }
+            }
+          ],
+          "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "rootTurnId": null,
+          "parentTurnId": null
+        },
+        {
+          "id": "msg_011CgyaUeqUZoxNAvnTfeNHb",
+          "status": "complete",
+          "requests": [
+            {
+              "key": "anthropic:msg_011CgyaUeqUZoxNAvnTfeNHb",
+              "at": "2026-11-12T19:22:09.727Z",
+              "model": "claude-opus-5-5",
+              "tokens": {
+                "input": 16395,
+                "cached": 16245,
+                "cacheWrite": 148,
+                "output": 24,
+                "reasoning": 0,
+                "write12h": null,
+                "cacheKnown": true,
+                "cachedKnown": true,
+                "cacheWriteKnown": true
+              },
+              "rates": {
+                "date": "2026-11-13",
+                "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                "input": 4.0,
+                "cached": 0.2,
+                "write30m": 0.0,
+                "write12h": 0.0,
+                "output": 20.0,
+                "tier": "standard",
+                "tierAssumed": true,
+                "longContext": false,
+                "anthropic": {
+                  "model": "claude-opus-5-5",
+                  "write5m": 5.0,
+                  "write1h": 8.0,
+                  "speed": "standard",
+                  "inferenceGeo": "global",
+                  "multiplier": 1.0,
+                  "fastMultiplier": 2.0,
+                  "usMultiplier": 1.1,
+                  "batchMultiplier": 0.5,
+                  "assumptions": [
+                    "Standard speed assumed.",
+                    "Standard service tier assumed.",
+                    "Global inference assumed.",
+                    "5-minute cache writes assumed; lifetime split is not recorded."
+                  ]
+                }
+              },
+              "costUsd": 0.004477,
+              "partial": false,
+              "unpricedReason": null,
+              "serviceTier": null,
+              "tierSource": "assumed",
+              "rateCorrection": null,
+              "source": {
+                "guestNamespace": "fixture-claude-price-guest",
+                "modelProvider": "anthropic",
+                "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+                "originTurnId": "msg_011CgyaUeqUZoxNAvnTfeNHb",
+                "rootTurnId": null,
+                "responseId": "msg_011CgyaUeqUZoxNAvnTfeNHb"
+              },
+              "amountCorrection": null,
+              "anthropic": {
+                "cacheCreation": null,
+                "speed": null,
+                "serviceTier": null,
+                "inferenceGeo": null,
+                "invalidFields": []
+              }
+            }
+          ],
+          "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "rootTurnId": null,
+          "parentTurnId": null
+        },
+        {
+          "id": "msg_011CgyaaMPfH2wkdeMTFfmas",
+          "status": "complete",
+          "requests": [
+            {
+              "key": "anthropic:msg_011CgyaaMPfH2wkdeMTFfmas",
+              "at": "2026-11-12T19:23:27.879Z",
+              "model": "claude-opus-5-5",
+              "tokens": {
+                "input": 16490,
+                "cached": 16393,
+                "cacheWrite": 93,
+                "output": 61,
+                "reasoning": 0,
+                "write12h": null,
+                "cacheKnown": true,
+                "cachedKnown": true,
+                "cacheWriteKnown": true
+              },
+              "rates": {
+                "date": "2026-11-13",
+                "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                "input": 4.0,
+                "cached": 0.2,
+                "write30m": 0.0,
+                "write12h": 0.0,
+                "output": 20.0,
+                "tier": "standard",
+                "tierAssumed": true,
+                "longContext": false,
+                "anthropic": {
+                  "model": "claude-opus-5-5",
+                  "write5m": 5.0,
+                  "write1h": 8.0,
+                  "speed": "standard",
+                  "inferenceGeo": "global",
+                  "multiplier": 1.0,
+                  "fastMultiplier": 2.0,
+                  "usMultiplier": 1.1,
+                  "batchMultiplier": 0.5,
+                  "assumptions": [
+                    "Standard speed assumed.",
+                    "Standard service tier assumed.",
+                    "Global inference assumed.",
+                    "5-minute cache writes assumed; lifetime split is not recorded."
+                  ]
+                }
+              },
+              "costUsd": 0.004979600000000001,
+              "partial": false,
+              "unpricedReason": null,
+              "serviceTier": null,
+              "tierSource": "assumed",
+              "rateCorrection": null,
+              "source": {
+                "guestNamespace": "fixture-claude-price-guest",
+                "modelProvider": "anthropic",
+                "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+                "originTurnId": "msg_011CgyaaMPfH2wkdeMTFfmas",
+                "rootTurnId": null,
+                "responseId": "msg_011CgyaaMPfH2wkdeMTFfmas"
+              },
+              "amountCorrection": null,
+              "anthropic": {
+                "cacheCreation": null,
+                "speed": null,
+                "serviceTier": null,
+                "inferenceGeo": null,
+                "invalidFields": []
+              }
+            }
+          ],
+          "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "rootTurnId": null,
+          "parentTurnId": null
+        },
+        {
+          "id": "msg_011CgyaposzvHBvTGV5dfMdr",
+          "status": "complete",
+          "requests": [
+            {
+              "key": "anthropic:msg_011CgyaposzvHBvTGV5dfMdr",
+              "at": "2026-11-12T19:26:43.800Z",
+              "model": "claude-opus-5-5",
+              "tokens": {
+                "input": 16610,
+                "cached": 16486,
+                "cacheWrite": 120,
+                "output": 57,
+                "reasoning": 0,
+                "write12h": null,
+                "cacheKnown": true,
+                "cachedKnown": true,
+                "cacheWriteKnown": true
+              },
+              "rates": {
+                "date": "2026-11-13",
+                "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                "input": 4.0,
+                "cached": 0.2,
+                "write30m": 0.0,
+                "write12h": 0.0,
+                "output": 20.0,
+                "tier": "standard",
+                "tierAssumed": true,
+                "longContext": false,
+                "anthropic": {
+                  "model": "claude-opus-5-5",
+                  "write5m": 5.0,
+                  "write1h": 8.0,
+                  "speed": "standard",
+                  "inferenceGeo": "global",
+                  "multiplier": 1.0,
+                  "fastMultiplier": 2.0,
+                  "usMultiplier": 1.1,
+                  "batchMultiplier": 0.5,
+                  "assumptions": [
+                    "Standard speed assumed.",
+                    "Standard service tier assumed.",
+                    "Global inference assumed.",
+                    "5-minute cache writes assumed; lifetime split is not recorded."
+                  ]
+                }
+              },
+              "costUsd": 0.005053200000000001,
+              "partial": false,
+              "unpricedReason": null,
+              "serviceTier": null,
+              "tierSource": "assumed",
+              "rateCorrection": null,
+              "source": {
+                "guestNamespace": "fixture-claude-price-guest",
+                "modelProvider": "anthropic",
+                "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+                "originTurnId": "msg_011CgyaposzvHBvTGV5dfMdr",
+                "rootTurnId": null,
+                "responseId": "msg_011CgyaposzvHBvTGV5dfMdr"
+              },
+              "amountCorrection": null,
+              "anthropic": {
+                "cacheCreation": null,
+                "speed": null,
+                "serviceTier": null,
+                "inferenceGeo": null,
+                "invalidFields": []
+              }
+            }
+          ],
+          "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "rootTurnId": null,
+          "parentTurnId": null
+        },
+        {
+          "id": "msg_011Cgyb1AZjahCHgJLYZsw7L",
+          "status": "complete",
+          "requests": [
+            {
+              "key": "anthropic:msg_011Cgyb1AZjahCHgJLYZsw7L",
+              "at": "2026-11-12T19:29:04.517Z",
+              "model": "claude-opus-5-5",
+              "tokens": {
+                "input": 16797,
+                "cached": 16606,
+                "cacheWrite": 187,
+                "output": 134,
+                "reasoning": 0,
+                "write12h": null,
+                "cacheKnown": true,
+                "cachedKnown": true,
+                "cacheWriteKnown": true
+              },
+              "rates": {
+                "date": "2026-11-13",
+                "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+                "input": 4.0,
+                "cached": 0.2,
+                "write30m": 0.0,
+                "write12h": 0.0,
+                "output": 20.0,
+                "tier": "standard",
+                "tierAssumed": true,
+                "longContext": false,
+                "anthropic": {
+                  "model": "claude-opus-5-5",
+                  "write5m": 5.0,
+                  "write1h": 8.0,
+                  "speed": "standard",
+                  "inferenceGeo": "global",
+                  "multiplier": 1.0,
+                  "fastMultiplier": 2.0,
+                  "usMultiplier": 1.1,
+                  "batchMultiplier": 0.5,
+                  "assumptions": [
+                    "Standard speed assumed.",
+                    "Standard service tier assumed.",
+                    "Global inference assumed.",
+                    "5-minute cache writes assumed; lifetime split is not recorded."
+                  ]
+                }
+              },
+              "costUsd": 0.0069522,
+              "partial": false,
+              "unpricedReason": null,
+              "serviceTier": null,
+              "tierSource": "assumed",
+              "rateCorrection": null,
+              "source": {
+                "guestNamespace": "fixture-claude-price-guest",
+                "modelProvider": "anthropic",
+                "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+                "originTurnId": "msg_011Cgyb1AZjahCHgJLYZsw7L",
+                "rootTurnId": null,
+                "responseId": "msg_011Cgyb1AZjahCHgJLYZsw7L"
+              },
+              "amountCorrection": null,
+              "anthropic": {
+                "cacheCreation": null,
+                "speed": null,
+                "serviceTier": null,
+                "inferenceGeo": null,
+                "invalidFields": []
+              }
+            }
+          ],
+          "originThreadId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+          "rootTurnId": null,
+          "parentTurnId": null
+        }
+      ]
+    }
+  ],
+  "userPromptCount": null,
+  "agentTurnCount": 5,
+  "prompts": [],
+  "unassigned": {
+    "usage": {
+      "input": 82539,
+      "cached": 76065,
+      "cacheWrite": 6458,
+      "output": 409,
+      "reasoning": 0,
+      "total": 82948,
+      "costUsd": 0.055747000000000005,
+      "unpricedRequests": 0,
+      "requests": 5,
+      "completedTurns": 5,
+      "assumedTierRequests": 5,
+      "missingCacheRequests": 0,
+      "missingCachedRequests": 0,
+      "missingCacheWriteRequests": 0,
+      "unmeasuredTurns": 0
+    },
+    "requestRefs": [
+      {
+        "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "turnId": "msg_011CgyaSjr434dTGc9JnEC7w",
+        "requestKey": "anthropic:msg_011CgyaSjr434dTGc9JnEC7w"
+      },
+      {
+        "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "turnId": "msg_011CgyaUeqUZoxNAvnTfeNHb",
+        "requestKey": "anthropic:msg_011CgyaUeqUZoxNAvnTfeNHb"
+      },
+      {
+        "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "turnId": "msg_011CgyaaMPfH2wkdeMTFfmas",
+        "requestKey": "anthropic:msg_011CgyaaMPfH2wkdeMTFfmas"
+      },
+      {
+        "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "turnId": "msg_011CgyaposzvHBvTGV5dfMdr",
+        "requestKey": "anthropic:msg_011CgyaposzvHBvTGV5dfMdr"
+      },
+      {
+        "sessionId": "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf",
+        "turnId": "msg_011Cgyb1AZjahCHgJLYZsw7L",
+        "requestKey": "anthropic:msg_011Cgyb1AZjahCHgJLYZsw7L"
+      }
+    ],
+    "unmeasuredTurnRefs": []
+  }
+}
