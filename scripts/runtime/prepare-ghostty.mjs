@@ -13,20 +13,24 @@ const identity = JSON.stringify({ commit: pin.commit, zig: pin.zig.version, targ
 if (process.platform !== 'darwin' || process.arch !== 'arm64') throw new Error('This build requires an Apple silicon Mac.');
 const installed = fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === identity && fs.existsSync(path.join(install, 'lib/libghostty-vt.a'));
 fs.mkdirSync(work, { recursive: true });
-async function archive(url, expected, directory) {
+function archive(url, expected, directory) {
   if (installed && fs.existsSync(path.join(work, directory))) return;
   const file = path.join(work, new URL(url).pathname.split('/').at(-1));
-  if (!fs.existsSync(file)) {
-    const response = await fetch(url, { signal: AbortSignal.timeout(180_000) });
-    if (!response.ok) throw new Error('Download failed: ' + response.status);
-    fs.writeFileSync(file, Buffer.from(await response.arrayBuffer()));
+  const temporary = file + '.partial';
+  const cached = fs.existsSync(file);
+  try {
+    if (!cached) execFileSync('/usr/bin/curl', ['-fsSL', '--retry', '2', '--connect-timeout', '15', '--max-time', '180', url, '-o', temporary], { timeout: 600_000, stdio: 'inherit' });
+    const downloaded = cached ? file : temporary;
+    if (createHash('sha256').update(fs.readFileSync(downloaded)).digest('hex') !== expected) throw new Error('Archive checksum mismatch: ' + path.basename(file));
+    if (!cached) fs.renameSync(temporary, file);
+  } finally {
+    fs.rmSync(temporary, { force: true });
   }
-  if (createHash('sha256').update(fs.readFileSync(file)).digest('hex') !== expected) throw new Error('Archive checksum mismatch: ' + path.basename(file));
   execFileSync('/usr/bin/tar', ['-xf', file, '-C', work], { timeout: 180_000 });
 }
-await archive(pin.source.url, pin.source.sha256, 'libghostty-vt-' + pin.version + '/LICENSE');
-await archive(pin.dependencies.url, pin.dependencies.sha256, 'libghostty-vt-' + pin.version + '-deps');
-await archive(pin.zig.tarball, pin.zig.shasum, 'zig-aarch64-macos-' + pin.zig.version + '/LICENSE');
+archive(pin.source.url, pin.source.sha256, 'libghostty-vt-' + pin.version + '/LICENSE');
+archive(pin.dependencies.url, pin.dependencies.sha256, 'libghostty-vt-' + pin.version + '-deps');
+archive(pin.zig.tarball, pin.zig.shasum, 'zig-aarch64-macos-' + pin.zig.version + '/LICENSE');
 if (installed) process.exit(0);
 const zig = path.join(work, 'zig-aarch64-macos-' + pin.zig.version, 'zig');
 execFileSync(zig, ['build', '--system', '../libghostty-vt-' + pin.version + '-deps', '--prefix', install, '-Demit-lib-vt', '-Demit-xcframework=false', '-Dtarget=aarch64-macos.15.0', '-Dcpu=baseline', '-Doptimize=ReleaseSafe'], {
