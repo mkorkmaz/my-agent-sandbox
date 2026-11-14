@@ -8,7 +8,7 @@ test('legacy project login is rejected at the command boundary before project ac
   assert.ok(command, 'The native start_agent_session command must exist.');
   const body = command[0].split(') -> Result<u64, String> {')[1];
   assert.ok(body, 'The native launch result contract must remain available.');
-  const rejection = body.match(/^\s*if action == Action::Login \{\s*return Err\("Connect the provider in Settings, Providers\. Sign-in does not require a project\."\.into\(\)\);\s*}/);
+  const rejection = body.match(/^\s*if action == Action::Login \{\s*return Err\(\s*"Connect the provider in Settings, Providers\. Sign-in does not require a project\."\s*\.into\(\),?\s*\);\s*}/);
   assert.ok(rejection, 'Reject the legacy login action as the first command operation with the existing response.');
   for (const operation of ['window.app_handle()', 'selected(&app', 'terminal::reserve_identifier()']) {
     assert.ok(body.indexOf(operation) >= rejection[0].length, operation + ' must follow the legacy login rejection.');
