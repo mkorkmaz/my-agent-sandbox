@@ -11,7 +11,7 @@ const scripts = fileURLToPath(new URL('../../scripts/acceptance/', import.meta.u
 const requiredTools = ['tugboat', 'brig', 'brigd', 'brig-broker', 'hull', 'hvi', 'vz-runner', 'cosign', 'mke2fs', 'debugfs', 'e2fsck'];
 const macOnly = { skip: process.platform !== 'darwin' || process.arch !== 'arm64' };
 
-function fixture(t, stage) {
+function fixture(t, stage, macOSVersion = '27.2') {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'tgb-acceptance-fixture-'));
   const root = fs.mkdtempSync('/private/tmp/tgb-');
   t.after(() => { fs.rmSync(workspace, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); });
@@ -26,6 +26,12 @@ function fixture(t, stage) {
   const stub = path.join(workspace, 'commands.cjs');
   fs.writeFileSync(stub, `const {EventEmitter}=require('node:events');
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const childProcess=require('node:child_process');
+const originalExecFileSync=childProcess.execFileSync;
+childProcess.execFileSync=(binary,args,options)=>{
+  if(binary==='/usr/bin/sw_vers'&&args[0]==='-productVersion') return process.env.TGB_FIXTURE_MACOS_VERSION+'\\n';
+  return originalExecFileSync(binary,args,options);
+};
 const originalExists=fs.existsSync;
 if(process.env.TGB_FIXTURE_STAGE.startsWith('clean-mac-')) fs.existsSync=file=>{
   if(['/opt/homebrew/bin/brew','/opt/homebrew/Homebrew/bin/brew','/usr/local/bin/brew','/usr/local/Homebrew/bin/brew'].includes(file)) return process.env.TGB_FIXTURE_STAGE==='clean-mac-reject';
@@ -93,7 +99,7 @@ require('node:child_process').spawn=(binary,args,options)=>{
   if (stage.startsWith('clean-mac-')) argumentsList.push('--clean-mac');
   const result = spawnSync(process.execPath, argumentsList, {
     encoding: 'utf8', timeout: 10_000,
-    env: { ...process.env, TGB_FIXTURE_STAGE: stage, OPENAI_API_KEY: 'fixture-secret', ANTHROPIC_API_KEY: 'fixture-secret' },
+    env: { ...process.env, TGB_FIXTURE_STAGE: stage, TGB_FIXTURE_MACOS_VERSION: macOSVersion, OPENAI_API_KEY: 'fixture-secret', ANTHROPIC_API_KEY: 'fixture-secret' },
   });
   assert.ifError(result.error);
   const evidence = path.join(workspace, 'artifacts/bundled-runtime', path.basename(root) + '.json');
@@ -122,6 +128,15 @@ test('bundled acceptance stops before boot when offline inspection selects a sys
     assert.equal(report.commands.at(-1).offline, true);
     assert.equal(report.tools.hvi.path.endsWith('/Contents/MacOS/hvi'), true);
     assert.equal(JSON.stringify(report).includes('fixture-secret'), false);
+  }
+});
+
+test('bundled acceptance records macOS 15 coverage independently of the test host', macOnly, t => {
+  for (const [version, minimumMacOS15Test] of [['15.8.2', true], ['27.2', false]]) {
+    const { result, report } = fixture(t, 'runtime-error', version);
+    assert.equal(result.status, 1, result.stderr);
+    assert.equal(report.host.macOSVersion, version);
+    assert.equal(report.minimumMacOS15Test, minimumMacOS15Test);
   }
 });
 
