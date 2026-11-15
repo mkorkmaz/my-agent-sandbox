@@ -8,6 +8,7 @@ set -euo pipefail
 : "${APPLE_API_ISSUER:?Set the App Store Connect API issuer.}"
 : "${APPLE_API_KEY_CONTENT:?Set the App Store Connect private key contents.}"
 [[ "$APPLE_SIGNING_IDENTITY" == 'Developer ID Application: '* ]] || { echo 'A Developer ID Application identity is required.' >&2; exit 1; }
+node "$(dirname "$0")/release/validate-apple-api-key.mjs"
 
 work=$(mktemp -d)
 keychain="$work/release.keychain-db"

@@ -42,6 +42,8 @@ The `v0.1.0-build.1` and `v0.1.0-build.2` releases contain ad hoc signed applica
 
 The trunk release workflow runs its build and publication jobs only when the latest commit message in the push contains `new-release` (case-insensitive). It uses the Developer ID release script with six repository secrets: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (`Developer ID Application: …`), `APPLE_API_KEY`, `APPLE_API_ISSUER`, and `APPLE_API_KEY_CONTENT` (the complete App Store Connect `.p8` private key text). That script signs the owned helpers before recording their hashes, preserves the upstream runner signatures, and notarizes and staples the app and DMG. The release verifier checks the version, packaged runtime, signatures, tickets and Gatekeeper from a read-only mount before publication. Missing credentials or a failed check stop publication. Follow the [ordered secret setup](docs/developer-guide.html#signed-release) before pushing a release commit. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
 
+The workflow validates the notarization private key before installing dependencies or preparing native tools. If notarization reports `invalidP8`, follow the [private key recovery steps](docs/developer-guide.html#invalid-apple-api-key) to replace `APPLE_API_KEY_CONTENT` from the original `.p8` file.
+
 To build from source, install Node.js and npm, Rust and Cargo, and Xcode with its command line tools. Supported Node.js versions are 22.22.2 or later in the 22.x series, 24.15.0 or later in the 24.x series, and 26.0.0 or later. The recorded development environment uses Node.js 26.12.1 and Rust 1.99.1.
 
 Run these commands from the project root:

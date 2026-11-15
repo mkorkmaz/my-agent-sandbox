@@ -6,7 +6,7 @@ import path from 'node:path';
 import { verifyDeveloperId, verifyPackagedHull } from '../../scripts/release/verify-macos-release.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, generateKeyPairSync } from 'node:crypto';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
@@ -53,12 +53,13 @@ test('release restores the original keychain list on success and at each failure
   fs.writeFileSync(path.join(runtime,'build.json'),JSON.stringify({tools:{hull:{sha256:hullSha256}},patchSha256:'original-patch'}));
   const state = path.join(temp, 'original');
   const original = '/fixtures/Team Signing.keychain-db\n/fixtures/personal.keychain-db\n';
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1', privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
   for (const stage of ['import','native:prepare','tauri','notarytool','success']) {
     fs.writeFileSync(state, original);
     const result = spawnSync('/bin/bash', [path.join(root,'scripts/build-macos-release.sh')], {cwd:temp,encoding:'utf8',env:{
       PATH:bin+':'+process.env.PATH, TMPDIR:temp, KEYCHAIN_STATE:state, FAIL_STAGE:stage,
       APPLE_CERTIFICATE:'Zml4dHVyZQ==', APPLE_CERTIFICATE_PASSWORD:'fixture', APPLE_SIGNING_IDENTITY:'Developer ID Application: Test',
-      APPLE_API_KEY:'fixture', APPLE_API_ISSUER:'fixture', APPLE_API_KEY_CONTENT:'fixture',
+      APPLE_API_KEY:'fixture', APPLE_API_ISSUER:'fixture', APPLE_API_KEY_CONTENT:privateKey,
     }});
     assert.equal(result.status === 0, stage === 'success', stage + ': ' + result.stderr);
     assert.equal(fs.readFileSync(state,'utf8'),original,stage);
