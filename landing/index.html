@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#005e9d">
+  <meta name="description" content="Run Codex and Claude Code in separate environments on your Mac. Share one project folder, switch between chats, and review their work in Tugboat.">
+  <title>Tugboat — Agent Sandbox for Mac</title>
+  <link rel="icon" type="image/svg+xml" href="assets/tugboat.svg">
+  <link rel="stylesheet" href="style.css?v=12">
+  <script src="diagram.js?v=1" defer></script>
+</head>
+<body id="top">
+  <a class="skipLink" href="#main">Skip to content</a>
+  <svg class="symbolLibrary" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="arrowRight" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6"/></symbol>
+    <symbol id="arrowDown" viewBox="0 0 24 24"><path d="M12 4v15m-6-6 6 6 6-6"/></symbol>
+    <symbol id="arrowUp" viewBox="0 0 24 24"><path d="M12 20V5m-6 6 6-6 6 6"/></symbol>
+    <symbol id="arrowOut" viewBox="0 0 24 24"><path d="M6 18 18 6M7 6h11v11"/></symbol>
+    <symbol id="cube" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7Zm0 10 9-5m-9 15V12L3 7"/></symbol>
+    <symbol id="terminal" viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="m6.5 9 3 3-3 3m6-.2h4"/></symbol>
+    <symbol id="chats" viewBox="0 0 24 24"><path d="M20 12.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12l4-3.5h6"/><path d="M10 17.5h6L21 21v-6.5"/></symbol>
+    <symbol id="usage" viewBox="0 0 24 24"><path d="M3.5 20.5h17M6 17v-5m6 5V4m6 13V8"/></symbol>
+    <symbol id="network" viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="5" rx="1"/><rect x="2" y="16.5" width="6" height="5" rx="1"/><rect x="16" y="16.5" width="6" height="5" rx="1"/><path d="M12 7.5v4.5m-7 4.5V12h14v4.5"/></symbol>
+    <symbol id="expand" viewBox="0 0 24 24"><path d="M4 9V4h5m6 0h5v5m0 6v5h-5m-6 0H4v-5"/></symbol>
+    <symbol id="mac" viewBox="0 0 24 24"><path d="M3.5 4.5h17v12h-17zM1.5 19.5h21"/></symbol>
+  </svg>
+
+  <header class="siteHeader">
+    <div class="wrap headerRow">
+      <a class="brand" href="#top"><img src="assets/tugboat.svg" width="32" height="34" alt="">Tugboat</a>
+      <nav class="sectionNav" aria-label="On this page">
+        <a href="#isolation">Why sandbox?</a>
+        <a href="#workspace">Workspace</a>
+        <a href="#workflow">Workflow</a>
+        <a href="#faq">FAQ</a>
+        <a href="#get-started">Get started</a>
+      </nav>
+      <a class="sourceLink" href="https://github.com/reformo/tugboat">GitHub <svg class="icon" aria-hidden="true"><use href="#arrowOut"/></svg></a>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="heroSurface" aria-labelledby="headline">
+      <div class="hero wrap">
+        <div class="heroCopy">
+          <h1 id="headline">One project.<br><span>Two sandboxes.</span></h1>
+          <p class="introduction">Give Codex and Claude Code a project folder to edit. Their commands run in separate environments, with limits on the files and network destinations they can reach.</p>
+          <div class="actions">
+            <a class="button primary" href="#get-started">Get started on Mac <svg class="icon" aria-hidden="true"><use href="#arrowRight"/></svg></a>
+            <a class="textLink" href="#isolation">Why a sandbox? <svg class="icon" aria-hidden="true"><use href="#arrowDown"/></svg></a>
+          </div>
+          <p class="compatibility"><svg class="icon" aria-hidden="true"><use href="#mac"/></svg> Apple silicon <span aria-hidden="true">·</span> macOS 15 or later</p>
+        </div>
+        <figure class="environmentMap">
+          <div class="mapPlate">
+            <svg class="sandboxMap" viewBox="0 0 680 452" width="680" height="452" role="img" aria-label="Two isolated agent environments share one project folder" aria-describedby="mapDescription">
+              <title>Tugboat sharing plan</title>
+              <desc id="mapDescription">The two blue forms represent the Codex and Claude Code microVMs. Both can write to the shared project. Its yellow tile briefly turns green when either agent's request reaches it. The outlined tile represents other Mac folders. Requests for those folders start at each box's shadow. The Codex signal stops at the left boundary. The Claude Code signal stops at the right boundary. Each contact point briefly turns red, then fades back to pale blue.</desc>
+              <image href="assets/isolation-model.svg" width="680" height="452"/>
+              <g class="mapAgentNames" fill="#f2faff" aria-hidden="true"><text x="32" y="116">Codex</text><text x="513" y="45">Claude Code</text></g>
+              <path class="projectLeader" d="m454 314 39 43h119" fill="none" stroke="#c5e2f5" stroke-width="1.25" aria-hidden="true"/>
+              <g fill="none" stroke="#ffe735" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path class="mapTrace" data-contact="projectArrival" pathLength="100" d="m282 318.5 25 12.5h68l38-19"/>
+                <path class="mapTrace" data-contact="projectArrival" pathLength="100" d="m458 226.5 11 5.5v52l-26 13"/>
+                <path class="mapTrace" data-contact="codexBoundaryContact" pathLength="100" d="M279 317L307 331l-39 19.5h-16l-31 15.5"/>
+                <path class="mapTrace" data-contact="claudeBoundaryContact" pathLength="100" d="m459 227 49 24.5h16l43 21.5"/>
+              </g>
+              <g id="projectArrival" opacity="0" aria-hidden="true">
+                <path d="m397 304 30 15 30-15v6l-30 15-30-15Z" fill="#19ac67"/>
+                <path d="m397 304 30-15 30 15-30 15Z" fill="#41e78b" stroke="#a9f7c6" stroke-width="1.5"/>
+              </g>
+              <defs>
+                <g id="boundaryMark" fill="none" stroke-linecap="round">
+                  <path d="m-7-3.5 14 7" stroke="#23384c" stroke-width="8"/>
+                  <path d="m-7-3.5 14 7" stroke="#ff4945" stroke-width="5"/>
+                  <circle r="4" fill="#ff4945"/>
+                </g>
+              </defs>
+              <use id="codexBoundaryContact" href="#boundaryMark" transform="translate(221 366)" opacity="0" aria-hidden="true"/>
+              <use id="claudeBoundaryContact" href="#boundaryMark" transform="translate(567 273) scale(-1 1)" opacity="0" aria-hidden="true"/>
+            </svg>
+            <div class="mapOutcome unsharedOutcome" aria-hidden="true"><strong>Other Mac folders</strong><span>Not shared</span></div>
+            <div class="mapOutcome projectOutcome" aria-hidden="true"><strong>Shared project</strong><span>Read and write</span></div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <div class="specBand">
+      <div class="wrap specs">
+        <dl class="agentSpec">
+          <dt>Supported agents</dt>
+          <dd><span><img src="assets/codex.svg" width="22" height="22" alt="">Codex</span><span><img src="assets/claude-code.svg" width="22" height="22" alt="">Claude Code</span></dd>
+        </dl>
+        <dl>
+          <dt>Isolation runtime</dt>
+          <dd><svg class="icon" aria-hidden="true"><use href="#cube"/></svg>Brig microVMs</dd>
+        </dl>
+        <dl>
+          <dt>Native terminal</dt>
+          <dd><svg class="icon" aria-hidden="true"><use href="#terminal"/></svg>libghostty</dd>
+        </dl>
+      </div>
+    </div>
+
+    <section class="isolation wrap" id="isolation" aria-labelledby="isolationHeading">
+      <div class="isolationIntro">
+        <h2 id="isolationHeading">Why sandbox a coding agent?</h2>
+        <p>Ask an agent to run tests, and it may first install a dependency. In your Mac terminal, a faulty setup script could overwrite files in another project.</p>
+        <p>Brig runs each agent in its own <strong>microVM</strong>, a small virtual machine on your Mac. Each guest has its own Linux kernel and home directory. Both guests can edit the project folder you share.</p>
+      </div>
+      <div class="boundaryList">
+        <dl>
+          <dt>Files and tools</dt>
+          <dd>A setup script can replace a tool inside the guest without replacing the one on your Mac. Mac folders outside the sharing plan stay out of reach.</dd>
+        </dl>
+        <dl>
+          <dt>Network access</dt>
+          <dd>You choose which hosts guest commands can contact. The policy denies other destinations by default. A permitted host can still receive project data.</dd>
+        </dl>
+        <dl>
+          <dt>Account access</dt>
+          <dd>The guest gets an access token so the agent can make requests. The credential that renews your provider sign-in stays on your Mac.</dd>
+        </dl>
+      </div>
+      <aside class="sharedFolder" aria-labelledby="sharedHeading">
+        <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v2M3 6v12a1 1 0 0 0 1 1h15l3-9H7l-3 9"/></svg>
+        <div><h3 id="sharedHeading">The shared folder is still writable.</h3>
+          <p>If an agent deletes a file there, it also disappears from your Mac. Commit or back up work you need to keep. The <strong>Open local terminal</strong> action runs directly on your Mac, outside the sandbox.</p>
+        </div>
+      </aside>
+    </section>
+
+    <section class="workspace" id="workspace" aria-labelledby="workspaceHeading">
+      <div class="wrap">
+        <div class="sectionHead">
+          <h2 id="workspaceHeading">Inside the workspace.</h2>
+          <p>Select a view to explore a sample project.</p>
+        </div>
+        <fieldset class="tour">
+          <legend class="visuallyHidden">Choose a workspace view</legend>
+          <input class="visuallyHidden" id="sessionsView" type="radio" name="view" value="sessions" aria-controls="sessionsPanel" checked>
+          <input class="visuallyHidden" id="usageView" type="radio" name="view" value="usage" aria-controls="usagePanel">
+          <input class="visuallyHidden" id="networkView" type="radio" name="view" value="network" aria-controls="networkPanel">
+          <div class="tourLayout">
+            <div class="tourOptions">
+              <label for="sessionsView">
+                <span class="optionName"><svg class="icon" aria-hidden="true"><use href="#chats"/></svg><strong>Sessions</strong><svg class="icon selectionArrow" aria-hidden="true"><use href="#arrowRight"/></svg></span>
+                <span class="optionDetail">Switch between live terminals. Resume a saved chat with its history.</span>
+              </label>
+              <label for="usageView">
+                <span class="optionName"><svg class="icon" aria-hidden="true"><use href="#usage"/></svg><strong>Usage</strong><svg class="icon selectionArrow" aria-hidden="true"><use href="#arrowRight"/></svg></span>
+                <span class="optionDetail">See recorded token counts and cost estimates for each chat.</span>
+              </label>
+              <label for="networkView">
+                <span class="optionName"><svg class="icon" aria-hidden="true"><use href="#network"/></svg><strong>Network</strong><svg class="icon selectionArrow" aria-hidden="true"><use href="#arrowRight"/></svg></span>
+                <span class="optionDetail">Choose which hosts guest commands can reach in new agent environments.</span>
+              </label>
+            </div>
+            <div class="tourScreen">
+              <div class="windowBar" aria-hidden="true"><svg class="windowLights" width="34" height="8" viewBox="0 0 34 8"><circle cx="4" cy="4" r="4" fill="#ff736b"/><circle cx="17" cy="4" r="4" fill="#edc457"/><circle cx="30" cy="4" r="4" fill="#6ac78a"/></svg>Tugboat</div>
+              <figure class="tourPanel" id="sessionsPanel">
+                <img src="assets/tour/sessions.webp" width="1728" height="972" loading="lazy" alt="The Northstar project shows four saved Codex and Claude Code sessions.">
+                <figcaption><span>Project sessions <span class="sampleLabel">/ Sample data</span></span><a href="assets/tour/sessions.webp" aria-label="Open the full-size sessions screenshot"><svg class="icon" aria-hidden="true"><use href="#expand"/></svg>Full size</a></figcaption>
+              </figure>
+              <figure class="tourPanel" id="usagePanel">
+                <img src="assets/tour/usage.webp" width="1728" height="972" loading="lazy" alt="Session usage shows token counts and estimated API cost for two requests.">
+                <figcaption><span>Session usage <span class="sampleLabel">/ Sample data</span></span><a href="assets/tour/usage.webp" aria-label="Open the full-size usage screenshot"><svg class="icon" aria-hidden="true"><use href="#expand"/></svg>Full size</a></figcaption>
+              </figure>
+              <figure class="tourPanel" id="networkPanel">
+                <img src="assets/tour/network.webp" width="1728" height="972" loading="lazy" alt="Network settings show separate lists of allowed guest hosts for new Codex and Claude Code policies.">
+                <figcaption><span>Network settings <span class="sampleLabel">/ Sample data</span></span><a href="assets/tour/network.webp" aria-label="Open the full-size network screenshot"><svg class="icon" aria-hidden="true"><use href="#expand"/></svg>Full size</a></figcaption>
+              </figure>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+
+    <section class="workflow wrap" id="workflow" aria-labelledby="workflowHeading">
+      <h2 id="workflowHeading">From folder to first chat.</h2>
+      <ol class="steps" role="list">
+        <li>
+          <span class="stepNumber" aria-hidden="true">01</span>
+          <h3>Connect your account.</h3>
+          <p>Sign in with ChatGPT or Claude under <strong>Settings → Providers</strong>. Use that account across your projects.</p>
+        </li>
+        <li>
+          <span class="stepNumber" aria-hidden="true">02</span>
+          <h3>Choose a folder.</h3>
+          <p>Select <strong>Add new project</strong>, then choose your agent. Tugboat prepares a separate environment for that agent.</p>
+        </li>
+        <li>
+          <span class="stepNumber" aria-hidden="true">03</span>
+          <h3>Start the conversation.</h3>
+          <p>Select <strong>New Chat</strong> to work in the terminal. Review Git changes and run project tests in the same environment.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="faq wrap" id="faq" aria-labelledby="faqHeading">
+      <h2 id="faqHeading">Frequently asked questions</h2>
+      <div>
+        <details open>
+          <summary>Why does Tugboat use Brig instead of Docker Sandboxes?</summary>
+          <p>Brig puts the network rules outside the agent’s control. A gateway on your Mac filters outgoing packets from the agent and any install script it runs. Tugboat requires a policy that denies connections by default. Brig can allow specific hosts or IP address ranges. If the runtime cannot enforce the policy, Brig refuses to start the sandbox.</p>
+          <p>Brig’s optional credential broker can keep a key on the host and use it only for an allowed request, down to the HTTP method, path or Git repository. For ChatGPT and Claude sign-in, Tugboat gives the guest an access token and keeps the refresh token on your Mac.</p>
+          <p>Docker Sandboxes (<code>sbx</code>) also uses microVMs. It enforces network rules through host-side proxies and can add credentials to outgoing requests. Brig lets us inspect the gateway code and the tests that show which connections it allows or blocks.</p>
+          <p class="faqSources"><a href="https://www.brig.sh/docs/policies/">Brig network policies</a><a href="https://www.brig.sh/docs/broker/">Brig credential broker</a><a href="https://www.brig.sh/docs/claims/">Brig security tests</a><a href="https://docs.docker.com/ai/sandboxes/architecture/">Docker Sandboxes architecture</a></p>
+        </details>
+        <details>
+          <summary>Which parts of a chat run on my Mac?</summary>
+          <p>The agent edits files and runs commands inside its sandbox on your Mac. It sends requests to its model provider for responses. Those requests can include code and command output from your project.</p>
+        </details>
+        <details>
+          <summary>What happens to my work when I stop a sandbox?</summary>
+          <p>Your edits are already in the project folder on your Mac. Stopping the sandbox ends that agent’s running processes. Tugboat keeps its guest home and saved chats, so you can resume a conversation later.</p>
+        </details>
+        <details>
+          <summary>Why the name Tugboat?</summary>
+          <p>A ship can cross an ocean under its own power and still need a harbor tug to ease it sideways to the dock.</p>
+          <p>Your Mac is the harbor. Your project folder is the dock. Codex and Claude Code are the ships. Tugboat brings them alongside the same project and gives each its own berth. In the app, that berth is a sandbox. Both agents can edit the folder you share, and you choose which network destinations each can reach.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="getStarted" id="get-started" aria-labelledby="setupHeading">
+      <div class="wrap setupContent">
+        <div class="setupCopy">
+          <h2 id="setupHeading">Get Tugboat for Mac.</h2>
+          <p>You need an Apple silicon Mac with macOS 15 or later, an account for your agent, and internet access for the first environment download.</p>
+          <div class="actions">
+            <a class="button light" href="https://github.com/reformo/tugboat/releases">View releases <svg class="icon" aria-hidden="true"><use href="#arrowOut"/></svg></a>
+            <a class="textLink" href="https://github.com/reformo/tugboat#build-and-install">Build from source <svg class="icon" aria-hidden="true"><use href="#arrowOut"/></svg></a>
+          </div>
+        </div>
+        <svg class="promptArt" viewBox="0 0 230 140" fill="none" aria-hidden="true"><path d="m19 21 56 49-56 49m85 1h109" stroke="currentColor" stroke-width="15"/></svg>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap footerRow">
+    <a class="brand footerBrand" href="#top"><img src="assets/tugboat.svg" width="25" height="27" alt="">Tugboat</a>
+    <span class="footerDescription">Agent Sandbox</span>
+    <a class="textLink backLink" href="#top">Back to top <svg class="icon" aria-hidden="true"><use href="#arrowUp"/></svg></a>
+  </footer>
+</body>
+</html>

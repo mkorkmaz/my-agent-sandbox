@@ -74,6 +74,8 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
+Whenever code changes, review the documentation under `./docs` for affected behavior, interfaces, and development steps. Update it in the same task when needed to keep it consistent with the code.
+
 ## 5. Object Calisthenics
 
 1. One level of indentation per method — extract a private method when a loop or conditional would add another level.

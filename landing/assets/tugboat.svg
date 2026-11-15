@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="118 98 788 852">
+  <title>Tugboat</title>
+  <path fill="#a8c7ff" d="m150 347 362 223v350L150 699Z"/>
+  <path fill="#4d8dff" d="m512 570 362-223v352L512 920Z"/>
+  <path fill="#121212" d="m512 121 362 226-362 223-362-223Z"/>
+  <path fill="none" stroke="#fff" stroke-width="6" d="m150 347 362 223 362-223M512 570v350"/>
+  <g fill="#ffe735" transform="translate(423.404 370.556) scale(.072 -.072)">
+    <path d="m209 995 108 111 672-561L317-16 209 94l545 449Z"/>
+    <path d="M2252-410H1126v144h1126Z"/>
+  </g>
+</svg>

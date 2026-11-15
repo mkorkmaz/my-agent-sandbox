@@ -270,9 +270,20 @@
           <dt>Reason (inferred)</dt>
           <dd>Frontend tests can run without a Mac. Native terminal, filesystem, virtual machine, and packaging behavior need macOS tools. Publishing an installer requires separate write access.</dd>
           <dt>Consequence</dt>
-          <dd>The current trunk workflow builds with an ad hoc signing identity. Its package checks establish the version, disk image, and bundled runtime. Developer ID distribution uses the separate signing and notarization script. The release verifier checks Apple tickets and Gatekeeper on a mounted installer. Upstream runner signatures have their own verification step.</dd>
+          <dd>The original trunk workflow used an ad hoc signing identity. Its package checks established the version, disk image, and bundled runtime. Developer ID distribution used a separate signing and notarization script. The release verifier checks Apple tickets and Gatekeeper on a mounted installer. Upstream runner signatures have their own verification step. <a href="#adr-019">ADR-019</a> replaces the release trigger and connects Apple signing and verification to publication.</dd>
         </dl>
         <p class="source">Source files · <a href="../.github/workflows/pull-request.yml">Pull request checks</a> · <a href="../.github/workflows/macos-release.yml">Trunk publication</a> · <a href="../src-tauri/tauri.conf.json">Bundle settings</a> · <a href="../scripts/build-macos-release.sh">Developer ID release script</a> · <a href="../scripts/release/verify-macos-release.mjs">Apple distribution checks</a> · <a href="../scripts/runtime/runtime-bundle.mjs">Runner checks</a></p>
+      </article>
+      <article id="adr-019">
+        <h3>ADR-019 · Require a release marker and Apple verification before publication</h3>
+        <p>This decision replaces the release trigger and signing path in <a href="#adr-018">ADR-018</a>. A push to <code>trunk</code> starts the release jobs only when its latest commit message contains <code>new-release</code>. The match ignores letter case. The workflow passes six repository secrets to the existing Developer ID release script.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The release commit must explicitly request a build signed with an Apple Developer ID certificate and notarized by Apple. Routine pushes must not publish installers.</dd>
+          <dt>Consequence</dt>
+          <dd>Tests and package verification must succeed before the publication job can run. Missing signing credentials, rejected notarization, invalid signatures, or failed Gatekeeper checks stop publication. A push without the marker skips both release jobs. Pull request checks retain their existing behavior.</dd>
+        </dl>
+        <p class="source">Source files · <a href="../.github/workflows/macos-release.yml">Release condition and publication dependency</a> · <a href="../scripts/build-macos-release.sh">Signing and notarization</a> · <a href="../scripts/release/verify-macos-release.mjs">Apple distribution checks</a> · <a href="developer-guide.html#signed-release">Ordered secret setup</a></p>
       </article>
     </section>
 
