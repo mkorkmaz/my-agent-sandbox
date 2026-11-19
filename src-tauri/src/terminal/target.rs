@@ -19,14 +19,20 @@ impl AgentTarget {
 
     pub fn codex(project_id: &str) -> Self {
         Self {
-            environment_id: EnvironmentId::for_agent(project_id, AgentKind::Codex),
+            environment_id: EnvironmentId::for_project(project_id),
             agent_kind: AgentKind::Codex,
         }
     }
 }
 
-pub(super) fn same_process_scope(left: Option<&AgentTarget>, right: Option<&AgentTarget>) -> bool {
-    left.is_none() || right.is_none() || left == right
+pub(super) fn same_environment_scope(
+    left: Option<&AgentTarget>,
+    right: Option<&AgentTarget>,
+) -> bool {
+    match (left, right) {
+        (Some(left), Some(right)) => left.environment_id == right.environment_id,
+        _ => true,
+    }
 }
 
 pub(super) fn is_codex(target: Option<&AgentTarget>) -> bool {
@@ -44,12 +50,18 @@ mod tests {
             environment_id: EnvironmentId::for_agent("project-one", AgentKind::ClaudeCode),
             agent_kind: AgentKind::ClaudeCode,
         };
-        assert!(same_process_scope(Some(&codex), Some(&codex)));
-        assert!(!same_process_scope(Some(&codex), Some(&claude)));
-        assert!(!same_process_scope(Some(&claude), Some(&codex)));
-        assert!(same_process_scope(None, Some(&codex)));
-        assert!(same_process_scope(Some(&claude), None));
-        assert!(same_process_scope(None, None));
+        let shared_claude = AgentTarget {
+            environment_id: codex.environment_id.clone(),
+            agent_kind: AgentKind::ClaudeCode,
+        };
+        assert_ne!(codex, shared_claude);
+        assert!(same_environment_scope(Some(&codex), Some(&shared_claude)));
+        assert!(same_environment_scope(Some(&codex), Some(&codex)));
+        assert!(!same_environment_scope(Some(&codex), Some(&claude)));
+        assert!(!same_environment_scope(Some(&claude), Some(&codex)));
+        assert!(same_environment_scope(None, Some(&codex)));
+        assert!(same_environment_scope(Some(&claude), None));
+        assert!(same_environment_scope(None, None));
         assert!(is_codex(Some(&codex)));
         assert!(!is_codex(Some(&claude)));
         assert!(!is_codex(None));

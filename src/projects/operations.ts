@@ -1,12 +1,26 @@
 import { invoke } from '@tauri-apps/api/core';
 import { showDialog } from '../ui/dialogs';
-import { sameProject, sameProjectView, type Project, type ProjectContext } from './projects';
+import { conversationKey, isChat, sameProject, sameProjectView, terminalMatches, terminalNames, type Conversation, type Project, type ProjectContext, type TerminalStatus } from './projects';
 import { setBusy } from '../ui/loading';
 import { RequestState } from '../ui/request-state';
 import { RemovalReview } from './removal-review';
 import type { OpenTerminal } from '../terminal/terminal-launch';
 
-interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean; logout?: boolean | null }
+interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean }
+
+export function renderStopImpact(project: Project | null, terminals: TerminalStatus[], conversations: Conversation[]): void {
+  const guestPurposes = ['environment', 'login', 'codex', 'resume', 'claude', 'claude-resume', 'shell', 'git-status', 'git-diff', 'git-staged-diff', 'tests'];
+  const affected = terminals.filter(terminal => project && terminal.running && terminalMatches(terminal, project) && guestPurposes.includes(terminal.purpose));
+  const list = document.getElementById('stop-impact-list')!;
+  list.replaceChildren(...affected.map(terminal => {
+    const item = document.createElement('li');
+    const key = isChat(terminal) && terminal.conversationId ? conversationKey({ ...terminal, id: terminal.conversationId }) : null;
+    const title = key ? conversations.find(conversation => conversationKey(conversation) === key)?.title : null;
+    item.textContent = [terminalNames[terminal.purpose], title, 'Terminal ' + terminal.identifier].filter(Boolean).join(' · ');
+    return item;
+  }));
+  document.getElementById('stop-impact')!.hidden = !affected.length;
+}
 
 function requiresNewRemovalReview(error: unknown): error is { currentReference: string; currentDescription: string } {
   return typeof error === 'object' && error !== null
@@ -41,22 +55,19 @@ export function initializeOperations(current: () => ProjectContext | null, open:
   const confirm = document.getElementById('confirm-removal') as HTMLButtonElement;
   const cancel = document.getElementById('cancel-removal')!;
   const errorMessage = document.getElementById('removal-error')!;
-  const review = new RemovalReview<{ preview: Preview; context: ProjectContext; all: boolean }>();
-  const previewButtons = ['preview-removal', 'preview-project-removal']
-    .map(id => document.getElementById(id) as HTMLButtonElement | null)
-    .filter((button): button is HTMLButtonElement => button !== null);
-  for (const previewButton of previewButtons) previewButton.addEventListener('click', async () => {
+  const review = new RemovalReview<{ preview: Preview; context: ProjectContext }>();
+  const previewButton = document.getElementById('preview-removal') as HTMLButtonElement;
+  previewButton.addEventListener('click', async () => {
     const context = current(); if (!context || previewButton.disabled) return;
-    const all = previewButton.id === 'preview-project-removal';
     const pending = requests.begin();
-    for (const button of previewButtons) button.disabled = true;
+    previewButton.disabled = true;
     setBusy(previewButton, true);
     review.read(pending);
     status.textContent = 'Preparing removal preview…';
     try {
-      const result = await invoke<Preview>('preview_removal', { identifier: context.id, ...(all ? {} : { environmentId: context.environmentId }) });
+      const result = await invoke<Preview>('preview_removal', { identifier: context.id, environmentId: context.environmentId });
       if (!sameProjectView(current(), context) || !requests.accepts(pending)) return;
-      if (!review.review(pending, { preview: result, context, all }, result.reference)) return;
+      if (!review.review(pending, { preview: result, context }, result.reference)) return;
       const preview = review.current()!.preview;
       status.textContent = '';
       document.getElementById('removal-description')!.textContent = preview.description;
@@ -67,7 +78,7 @@ export function initializeOperations(current: () => ProjectContext | null, open:
       errorMessage.textContent = '';
       showDialog(dialog, previewButton.id); confirmation.focus();
     } catch (error) { if (sameProjectView(current(), context) && requests.accepts(pending)) status.textContent = String(error); }
-    finally { if (sameProjectView(current(), context)) requests.finish(pending); if (sameProjectView(current(), context)) for (const button of previewButtons) { button.disabled = false; setBusy(button, false); } }
+    finally { if (sameProjectView(current(), context)) { requests.finish(pending); previewButton.disabled = false; setBusy(previewButton, false); } }
   });
   confirmation.addEventListener('input', () => { confirm.disabled = !review.confirms(confirmation.value); });
   cancel.addEventListener('click', () => { dialog.close(); });
@@ -84,12 +95,12 @@ export function initializeOperations(current: () => ProjectContext | null, open:
     if (!snapshot || !sameProjectView(current(), snapshot.context)) return;
     const removal = review.remove(confirmation.value);
     if (!removal) return;
-    const { preview, context, all } = removal;
+    const { preview, context } = removal;
     const pending = requests.begin();
     confirm.disabled = true;
     setBusy(confirm, true);
     try {
-      const message = await invoke<string>('remove_project', { identifier: context.id, ...(all ? {} : { environmentId: context.environmentId }), fingerprint: preview.fingerprint, confirmation: confirmation.value, logout: preview.logout ?? false });
+      const message = await invoke<string>('remove_project', { identifier: context.id, environmentId: context.environmentId, fingerprint: preview.fingerprint, confirmation: confirmation.value });
       review.completed(removal);
       if (sameProjectView(current(), context) && requests.accepts(pending)) dialog.close();
       if (sameProject(current(), context)) await removed(message);
@@ -121,8 +132,8 @@ export function initializeOperations(current: () => ProjectContext | null, open:
   return () => {
     requests.invalidate(); review.reset();
     status.textContent = ''; stop.disabled = false; confirm.disabled = true; confirmation.value = '';
-    for (const button of [stop, ...previewButtons, confirm]) setBusy(button, false);
-    for (const button of previewButtons) button.disabled = false;
+    for (const button of [stop, previewButton, confirm]) setBusy(button, false);
+    previewButton.disabled = false;
     for (const id of ['removal-description', 'removal-reference', 'removal-workspace', 'removal-error']) document.getElementById(id)!.textContent = '';
     document.getElementById('removal-external')!.hidden = true;
     if (dialog.open) dialog.close();

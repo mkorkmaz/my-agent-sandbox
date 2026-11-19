@@ -32,6 +32,7 @@
         <li><a href="#projects">Choose a project and environment</a></li>
         <li><a href="#sessions">Work with chats and terminals</a></li>
         <li><a href="#settings">Set resources and network access</a></li>
+        <li><a href="#image-update">Update the guest image</a></li>
         <li><a href="#review">Review changes and run tests</a></li>
         <li><a href="#usage">Read usage and cost</a></li>
         <li><a href="#records">Move or reconnect your records</a></li>
@@ -49,8 +50,8 @@
         <li>Open <strong>Settings</strong>. Select <strong>System Checks</strong> and then <strong>Check this Mac</strong>. Look for <strong>Brig installed</strong> and the selected Brig version. Expand <strong>Brig doctor results</strong> to read each finding.</li>
         <li>Open <strong>Providers</strong>. Select <strong>Sign in with ChatGPT</strong> for Codex or <strong>Sign in with Claude</strong> for Claude Code. Complete authorization in the browser. Return when the provider card shows the connected account.</li>
         <li>Open <strong>Projects</strong>. Select <strong>Add new project</strong>. Choose the folder that contains the project. Both agents can change files in that folder on your Mac.</li>
-        <li>Choose <strong>Codex</strong> or <strong>Claude Code</strong> in the selector beside <strong>New Chat</strong>. Tugboat prepares the selected environment in the background. The first start can download the guest image and boot files.</li>
-        <li>If Tugboat asks for a choice, open <strong>Review project settings</strong>. Check the <strong>Sharing and execution plan</strong>. Resolve any session or policy request. Wait for preparation to finish.</li>
+        <li>Choose <strong>Codex</strong> or <strong>Claude Code</strong> beside <strong>New Chat</strong>. The choice applies to the next chat.</li>
+        <li>Open <strong>Review project settings</strong>. Check the <strong>Sharing and execution plan</strong>. Select <strong>Prepare environment</strong>. The first start downloads the guest image and boot files.</li>
         <li>Select <strong>New Chat</strong>. Type a request in the terminal. For a first request, try <q>Name the test command for this project and show me where it is defined.</q></li>
         <li>Select <strong>Return to project</strong>. Select the chat in the sidebar to return to its terminal. Its previous output stays visible while the terminal is open.</li>
       </ol>
@@ -59,14 +60,14 @@
 
     <section id="accounts">
       <h2>Connect and manage accounts</h2>
-      <p>A provider account serves its agent across projects on this Mac. Each agent still has a separate environment, guest home, network policy, and chat history for each project. You can connect either provider before adding a folder.</p>
+      <p>A provider account serves its agent across projects on this Mac. Both agents use the project’s shared environment and keep their own chat history. You can connect either provider before adding a folder.</p>
       <div class="table-wrap" role="region" aria-labelledby="account-profiles-caption" tabindex="0">
         <table>
           <caption id="account-profiles-caption">Which account and profile to use</caption>
           <thead><tr><th scope="col">Agent</th><th scope="col">Browser sign-in</th><th scope="col">Inside the environment</th></tr></thead>
           <tbody>
             <tr><th scope="row">Codex</th><td>Choose <strong>Sign in with ChatGPT</strong>. Enter the <strong>ChatGPT device code</strong> from Tugboat on the official page opened by Tugboat.</td><td>The default profile is <code>codex</code>. Tugboat installs a managed sign-in copy in the standard guest Codex location. A custom credential location or profile file or volume mapping can prevent this step.</td></tr>
-            <tr><th scope="row">Claude Code</th><td>Choose <strong>Sign in with Claude</strong>. Complete authorization in the browser on this Mac. The browser returns the result to Tugboat through a temporary local connection.</td><td>Shared sign-in requires an environment that Tugboat created with <code>tugboat-claude</code>. Its access copy lives in guest memory. Stopping the environment clears that copy. You can sign in again while a stopped project’s working folder is unavailable. Starting a chat restores the access copy from your shared account.</td></tr>
+            <tr><th scope="row">Claude Code</th><td>Choose <strong>Sign in with Claude</strong>. Complete authorization in the browser on this Mac. The browser returns the result to Tugboat through a temporary local connection.</td><td>The project guest keeps its Claude access copy in memory. Stopping the guest clears the copy. Starting a Claude chat restores it from the shared account.</td></tr>
           </tbody>
         </table>
       </div>
@@ -81,8 +82,9 @@
     <section id="projects">
       <h2>Choose a project and environment</h2>
       <p>The <strong>Projects</strong> library lists folders in order of last use. Hover over a name to see its path. A Git project also shows the current branch when Tugboat can read it. Selecting a row opens its dashboard. The project header shows the folder and the Brig reference, such as <code>codex@…</code>.</p>
-      <p>A <strong>Brig environment</strong> is the guest system that runs the agent. A <strong>chat</strong> is one conversation inside that environment. You can open several chats in an environment. Both agent environments see the same project files. For example, a change that Codex makes to a source file is also visible to Claude Code in this project.</p>
-      <p>New folders start with the default Codex environment. Use the selector beside <strong>New Chat</strong> to select the Claude Code environment. Changing this selector also changes the target of project settings and guest operations. The session table continues to show both agents. Check the agent beside the chat title when two titles are similar.</p>
+      <p>Each project has one <strong>Brig environment</strong>. Both agents can use its project files, guest processes, and network permissions. Tugboat keeps provider sign-in and token renewal on the Mac.</p>
+      <p>The selector beside <strong>New Chat</strong> chooses the next chat’s agent. A saved chat keeps its recorded agent. Project settings and guest operations use the shared environment. The Sessions table shows the agent beside each chat.</p>
+      <p>Existing projects keep their registrations and project files. The one-time environment reset starts their chat history empty. The shared provider accounts stay on the Mac.</p>
       <h3>Read the execution plan</h3>
       <ol>
         <li>Open the <strong>Project settings</strong> button in the project header. If setup needs your attention, you can also use <strong>Review project settings</strong>.</li>
@@ -90,8 +92,8 @@
         <li>Expand <strong>Sharing and execution plan</strong>. Check the host folder, guest path, and guest home. Check resources, runtime, image signature, attached policies, allowed destinations, and listed host credentials.</li>
         <li>Use <strong>Refresh plan</strong> after an external change. Use <strong>Prepare environment</strong> if a reviewed plan still needs to start or verify its guest.</li>
       </ol>
-      <p>On later visits, Tugboat can show saved history while it starts the selected environment. It reuses a running environment after checking its identity and plan. Codex waits for the project account to sync before enabling <strong>New Chat</strong>. Claude enables the button when its environment and app account are ready. It checks guest access when you start the chat.</p>
-      <p>When an environment starts, its setup terminal opens in the workspace. A centered animation shows <strong>Codex environment booting</strong> or <strong>Claude Code environment booting</strong>. Setup output stays visible around the message. If your system uses reduced motion, the graphic stays still.</p>
+      <p>On later visits, Tugboat shows saved history while it checks the environment. It starts an unchanged approved plan automatically and reuses a verified running guest. An updated plan requires review. New Chat becomes available when the guest and chosen provider account are ready.</p>
+      <p>When the project environment starts, its setup terminal opens in the workspace. The message reads <strong>Brig environment booting</strong>. Setup output stays visible around it. Reduced motion uses a still image.</p>
       <p>The message closes when setup finishes or reports an error. The setup terminal closes when its process ends and disappears from the workspace and <strong>Terminals</strong> list. If setup fails, read the error in the project view and select <strong>Retry environment</strong>. Selecting another terminal, Help, or Settings leaves setup running.</p>
       <p>If an Offline start fails, the bundled Brig keeps the recorded guest home and its saved chats during a retry. To continue a Claude chat, stop the Offline environment and restore <strong>Access allowed by policy</strong> in project settings. Then select the saved chat.</p>
     </section>
@@ -106,7 +108,7 @@
           <thead><tr><th scope="col">Goal</th><th scope="col">Action and result</th></tr></thead>
           <tbody>
             <tr><th scope="row">Leave a chat running</th><td>Select <strong>Return to project</strong>. Select the chat again to see the same process and its scrollback.</td></tr>
-            <tr><th scope="row">Continue a saved chat</th><td>Select its title in <strong>Sessions</strong>. Tugboat uses the environment that owns the chat. If prompted, prepare that environment first. Claude resumes the same native conversation ID.</td></tr>
+            <tr><th scope="row">Continue a saved chat</th><td>Select its title in <strong>Sessions</strong>. Tugboat uses the recorded agent and native ID in the shared environment. Prepare the environment first if prompted.</td></tr>
             <tr><th scope="row">End one process</th><td>Save any unfinished terminal input. Select <strong>Close terminal</strong> while that terminal is running. The selected process ends. An agent chat with a saved transcript can be resumed later.</td></tr>
             <tr><th scope="row">Read command output again</th><td>Open the project’s <strong>Terminals</strong> list. Select the test, diagnostic, or other operation. Its caption shows whether it is running or how it ended. <strong>Close output</strong> discards that view.</td></tr>
             <tr><th scope="row">Run a guest command</th><td>Open <strong>Project settings</strong>. Choose <strong>Guest terminal</strong> after preparation. Commands run in the selected Brig environment under its policy. If a running chat blocks the shell, the message shows its title when available. Close the chat and try again.</td></tr>
@@ -123,16 +125,16 @@
 
     <section id="settings">
       <h2>Set resources and network access</h2>
-      <p><strong>Settings → General</strong> supplies app defaults. <strong>Agent Profile</strong> selects the profile used to set up new environments for each agent. Use <strong>Save settings</strong> after editing either tab. For an existing project, open its settings and check the Brig reference at the top.</p>
+      <p><strong>Settings → General</strong> supplies app defaults. Open <strong>Project settings</strong> to check a project’s Brig reference and change its resources and network policy.</p>
       <div class="table-wrap" role="region" aria-labelledby="settings-scope-caption" tabindex="0">
         <table>
           <caption id="settings-scope-caption">Where settings take effect</caption>
           <thead><tr><th scope="col">Setting</th><th scope="col">Default or allowed values</th><th scope="col">Effect</th></tr></thead>
           <tbody>
-            <tr><th scope="row">CPU count and Memory (MB)</th><td>4 processors and 4096 MB. Set 1 to 32 processors. Set 1024 to 65536 MB in steps of 256.</td><td>Project overrides apply to both agents. End project terminal processes. If both environments are running, stop the first, switch to the second, and stop it. Save from the second environment. Switching back can restart the first.</td></tr>
-            <tr><th scope="row">Image signature</th><td><strong>Require verification</strong> is the default. <strong>Warn on failure</strong> and <strong>Verification off</strong> reduce the checks.</td><td>The project override is shared. An image verification failure merits a runtime or image check before changing this setting.</td></tr>
-            <tr><th scope="row">Network</th><td><strong>Access allowed by policy</strong> permits guest command connections to allowed destinations. <strong>Offline</strong> blocks guest command traffic.</td><td>The project setting belongs to the selected agent environment. Online chats require the policy-controlled network. Browser account sign-in uses the Mac connection.</td></tr>
-            <tr><th scope="row">Allowed guest hosts</th><td>Use one exact lowercase host name per line, with a maximum of 64. Omit schemes, paths, ports, and wildcards.</td><td>General has a separate list for each agent. Saving these defaults affects newly created policies. Use the project policy editor for an existing environment.</td></tr>
+            <tr><th scope="row">CPU count and Memory (MB)</th><td>4 processors and 4096 MB. Set 1 to 32 processors. Set 1024 to 65536 MB in steps of 256.</td><td>Stop the shared environment before saving an override. Both agents use the saved limits.</td></tr>
+            <tr><th scope="row">Image signature</th><td>Required for the project image.</td><td>Check <strong>System Checks</strong> if image verification fails.</td></tr>
+            <tr><th scope="row">Network</th><td><strong>Access allowed by policy</strong> permits guest command connections to allowed destinations. <strong>Offline</strong> blocks guest command traffic.</td><td>The setting applies to both agents. Online chats require the policy-controlled network. Browser account sign-in uses the Mac connection.</td></tr>
+            <tr><th scope="row">Allowed guest hosts</th><td>Use one exact lowercase host name per line. Omit schemes, paths, ports, and wildcards.</td><td>Tugboat combines both lists in new policies. An existing project uses its saved policy.</td></tr>
             <tr><th scope="row">Brig CLI path</th><td>An empty field selects bundled Brig v0.5.2. A custom entry must be the absolute path to a compatible executable.</td><td><strong>System Checks</strong> shows which copy Tugboat checks. The packaged runtime also needs to pass its integrity checks.</td></tr>
             <tr><th scope="row">Enable Brig usage telemetry</th><td>Off by default.</td><td>After saving, read the saved and effective Brig preferences. Tugboat displays its own recorded session usage independently.</td></tr>
           </tbody>
@@ -141,7 +143,7 @@
       <p>The default Codex host list contains <code>auth.openai.com</code>, <code>chatgpt.com</code>, and <code>api.openai.com</code>. Claude Code starts with <code>api.anthropic.com</code>, <code>platform.claude.com</code>, and <code>claude.ai</code>. A project that downloads dependencies can require additional destinations.</p>
       <h3>Allow a destination for one existing environment</h3>
       <ol>
-        <li>Select the intended agent beside <strong>New Chat</strong>. Finish active work in that environment.</li>
+        <li>Finish active work in the shared environment.</li>
         <li>Open <strong>Project settings</strong>. Expand <strong>Changes and environment management</strong>. Select <strong>Stop Brig environment</strong>.</li>
         <li>Expand <strong>Project network policy</strong>. Select <strong>Read or refresh policy</strong>. Check the existing document and host list.</li>
         <li>Add the required host under <strong>Allowed guest hosts for this project</strong>. Keep the existing hosts you still need. Select <strong>Save allowed hosts</strong>.</li>
@@ -155,9 +157,54 @@
       <p><strong>Check Brig boundaries</strong> tests file sharing and network behavior in the current environment. Compare the expected and observed results. An inconclusive result can mean two hosts share an address or the active policy has no suitable comparison host. The check reports observations. It does not change the policy. Hosted tools such as Codex web search operate separately from guest commands. A hosted result cannot establish that the guest reached that site.</p>
     </section>
 
+    <section id="github-access">
+      <h2>Grant GitHub fetch access</h2>
+      <ol>
+        <li>Open <strong>Project settings → GitHub access</strong>.</li>
+        <li>Enter the repository as <code>owner/repository</code>. Enter a GitHub token with <strong>Contents</strong> read permission for that repository.</li>
+        <li>Select <strong>Save fetch access</strong>. If the environment is running, select <strong>Stop environment and save access</strong>. Stopping ends project terminals and preserves saved chats.</li>
+        <li>Prepare the environment again. Both agents can fetch through the project grant. Check the token's repository selection and Contents permission if GitHub refuses a fetch.</li>
+        <li>Select <strong>Replace token</strong> to change the token. Select <strong>Revoke access</strong> to remove the project's grant.</li>
+      </ol>
+      <p>Tugboat clears the input field after you submit it. Brig uses the Mac Keychain to store the token and issues a scoped session token to the guest. Use <strong>Check access</strong> after a Keychain prompt or an interrupted change. The saved status confirms the local grant. It shows GitHub fetch permission as unverified.</p>
+    </section>
+
+    <section id="preview">
+      <h2>Open a local web preview</h2>
+      <ol>
+        <li>Prepare the project environment. Start the web server in the guest.</li>
+        <li>Open <strong>Project settings → Local web preview</strong>. Enter a free Mac port and the guest web server port.</li>
+        <li>Select <strong>Publish preview</strong>. The project can publish one TCP port at <code>127.0.0.1</code>.</li>
+        <li>Select <strong>Open in browser</strong> when the server is ready. Select <strong>Check preview</strong> to check the server or an interrupted change again.</li>
+        <li>Select <strong>Close preview</strong> to remove the mapping. Do this before selecting different ports.</li>
+      </ol>
+      <p>Brig keeps the approved mapping when the project environment stops. It restores the mapping at startup unless you closed the preview.</p>
+    </section>
+
+    <section id="existing-project-reset">
+      <h2>Open an existing project after the shared environment update</h2>
+      <p>Tugboat keeps your project registration, working folder, and provider accounts. It removes the former Tugboat-owned environment and its saved chat history and usage. The shared environment starts with empty history.</p>
+      <p>Stop an active former Brig guest and restart Tugboat to resume its reset. If the records drive is unavailable, reconnect the original records folder first. A reset removes only reviewed Tugboat-owned files and startup confirms the original folder before it resumes.</p>
+    </section>
+
+    <section id="image-update">
+      <h2>Update the guest image</h2>
+      <p>Image updates require a prepared project guest and the bundled Hull recovery runtime. Read the message in Project settings if either is unavailable.</p>
+      <ol>
+        <li>Finish both agents’ chats and close this project’s active terminals.</li>
+        <li>Open <strong>Project settings → Update guest image</strong>.</li>
+        <li>Compare the image digests and agent versions. <strong>Current image pin</strong> is the saved digest. <strong>Already up to date</strong> means Tugboat verified that Hull uses the offered image.</li>
+        <li>Select <strong>Review update</strong>. Tugboat verifies the candidate, stops the idle guest, and lists changed system paths.</li>
+        <li>Read the list. Select <strong>Apply update</strong> to replace those system changes. Select <strong>Keep current</strong> to restore the reviewed disk.</li>
+      </ol>
+      <p>The update uses the same project folder, persistent guest home, network policy, and approved preview. Use the original chat rows to resume after Tugboat verifies both agent executables.</p>
+      <p>If a download, disk space, or signature check fails, correct the cause and select <strong>Check image status</strong>. Tugboat requires a complete system file inventory before it offers <strong>Apply update</strong>.</p>
+      <p>After an interruption, reopen <strong>Update guest image</strong>. Use <strong>Keep current</strong> for a completed review. Use <strong>Recover image</strong> if Tugboat reports that recovery is required. The temporary system disk supports recovery until the operation completes.</p>
+    </section>
+
     <section id="review">
       <h2>Review changes and run tests</h2>
-      <p>Suppose an agent reports that it changed a function and added a test. Leave the chat running with <strong>Return to project</strong>. Select its agent and open <strong>Project settings → Changes and environment management</strong>.</p>
+      <p>Leave the chat running with <strong>Return to project</strong>. Open <strong>Project settings → Changes and environment management</strong>.</p>
       <ol>
         <li>Choose <strong>Git status</strong>. Read the modified, staged, and untracked file names. After each command, choose <strong>Return to project</strong> and reopen project settings for the next command.</li>
         <li>Choose <strong>Working tree diff</strong> to inspect unstaged changes to tracked files. Choose <strong>Staged diff</strong> to inspect changes already staged in Git. New, untracked files appear in status and need separate inspection.</li>
@@ -165,7 +212,8 @@
         <li>Select the original chat when you are ready to continue. Open <strong>Terminals</strong> to compare the results from earlier operations.</li>
       </ol>
       <p>Tugboat checks for a test command at the project root. It tries a configured npm test script, a Composer test script, a Cargo project, then a pytest configuration. The first match runs. A monorepo can have its test configuration in a subfolder. Use <strong>Guest terminal</strong> and run the project’s documented command there if detection finds no test. Guest tests operate on the shared files and need their own tools and dependencies.</p>
-      <p>For an environment problem, choose <strong>Brig doctor</strong> to check its profile. Choose <strong>Session info</strong> to verify the session target. <strong>Policy bindings</strong> shows the policies attached to it. <strong>Recent logs</strong> opens up to 100 recent lines for that session. These results also appear under <strong>Terminals</strong>.</p>
+      <p>For an environment problem, choose <strong>Brig doctor</strong> to check its profile. Choose <strong>Session info</strong> to verify the session target. <strong>Policy bindings</strong> shows the policies attached to it. <strong>Guest logs</strong> opens up to 100 recent lines for that session. These results also appear under <strong>Terminals</strong>.</p>
+      <p>Choose <strong>Gateway logs</strong> to see the selected environment's latest 100 project gateway lines. The view shows recognized events and hides free-form details. Choose <strong>Copy gateway logs</strong> to copy the displayed text. The view reports an empty log, an unavailable log, or Offline mode. Brig removes the project gateway log when its gateway stops.</p>
     </section>
 
     <section id="usage">
@@ -206,10 +254,11 @@
         <li>After restart, open <strong>Records folder</strong>. Check the active location. Open a known project and check its saved usage.</li>
       </ol>
       <p>If the destination volume cannot support private file permissions, Tugboat keeps the current records folder active. Choose an empty folder on another volume.</p>
-      <p>Tugboat finishes recording usage and verifies the copy before switching locations. The move includes the closed usage database, retained older records, backups, and both shared accounts. Project files and guest homes stay in their own locations. <strong>Use default folder</strong> schedules the move back.</p>
+      <p>Tugboat finishes recording usage and verifies the copy before switching locations. The move includes the closed usage database and both shared accounts. Project files and guest homes stay in their own locations. <strong>Use default folder</strong> schedules the move back.</p>
+      <p>If Settings reports a pending folder change from before the project reset, select <strong>Cancel folder change</strong>. Then select <strong>Restart Tugboat</strong> to complete the reset from the active records folder.</p>
       <h3>Reconnect a missing disk</h3>
       <p>If the records drive is absent, connect the original drive and restart Tugboat. If the same records now have a different path, choose <strong>Locate records folder…</strong>. Select the complete records folder that belongs to this installation. Restart when prompted. After restart, check <strong>Records folder</strong> for confirmation that Tugboat verified and reconnected your records. A partial copy or a folder from another installation will fail the identity check.</p>
-      <p>If <strong>Usage storage is unavailable</strong> appears, preserve the entire records folder, including <code>usage.sqlite3</code> and <code>usage.sqlite3-journal</code> if present. Reconnect the original drive first. If the active database is missing or damaged, obtain help restoring a verified matching backup with Tugboat closed. Avoid copying an open database, deleting its journal, or downgrading to an older ledger writer. Retained older ledgers can lack the latest usage.</p>
+      <p>If <strong>Usage storage is unavailable</strong> appears, preserve the entire records folder, including <code>usage.sqlite3</code> and <code>usage.sqlite3-journal</code> if present. Reconnect the original drive first. If the active database is missing or damaged, obtain help restoring a verified matching backup with Tugboat closed.</p>
     </section>
 
     <section id="lifecycle">
@@ -219,15 +268,14 @@
           <caption id="project-actions-caption">What each action affects</caption>
           <thead><tr><th scope="col">Action</th><th scope="col">Target and consequence</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Stop Brig environment</th><td>Stops the selected agent environment and its processes. The project files, guest home, saved conversations, and other agent environment remain available. Select <strong>Start environment</strong> to use it again. Reopening the project can start its selected environment automatically.</td></tr>
+            <tr><th scope="row">Stop Brig environment</th><td>Ends the listed guest processes for both agents. The project files, persistent guest home, saved chats, and local terminal stay available. Start the environment again from the project.</td></tr>
             <tr><th scope="row">Quit Tugboat</th><td>Finishes the app session. If processes are running, <strong>Cancel</strong> keeps them open. <strong>End processes and close</strong> ends them and records final usage. Brig environments and saved chat history persist.</td></tr>
             <tr><th scope="row">Forget…</th><td>Appears on a <strong>Folder unavailable</strong> row in Projects. End any running project terminal first. Confirm <strong>Forget record</strong> to remove the library entry and stop monitoring it. Project files, Brig environments, guest homes, and recorded usage stay on disk.</td></tr>
-            <tr><th scope="row">Preview environment removal…</th><td>Reviews removal of the selected agent environment. An existing guest home and its transcripts can be removed. The preview lists the exact session, guest home, bindings, and policy. Project files are preserved.</td></tr>
-            <tr><th scope="row">Preview all environments…</th><td>Reviews every agent environment registered to this project. Removing its last environment also removes its project entry. This action can affect both agents’ guest histories.</td></tr>
+            <tr><th scope="row">Preview environment removal…</th><td>Reviews the shared guest reference, terminals to close, guest home, bindings, and policy. Removal can delete its native transcripts. Project files and shared provider accounts stay on the Mac.</td></tr>
           </tbody>
         </table>
       </div>
-      <p>To remove an environment, open <strong>Project settings → Changes and environment management</strong>. Select the preview with the intended scope. Review every path, including sessions created outside Tugboat. Keep a separate copy of guest work you need before continuing. Type the displayed confirmation name exactly and select <strong>Remove session</strong>. Use <strong>Cancel</strong> to leave the preview. Removing one environment preserves the shared provider accounts used by other projects.</p>
+      <p>Open <strong>Project settings → Changes and environment management</strong>. Select <strong>Preview environment removal…</strong>. Review the listed scope. Save any guest work you need. Type the displayed session name and select <strong>Remove session</strong>.</p>
       <p>If removal stops partway through, open <strong>Review incomplete removal…</strong>. Check the recorded steps and the remaining target in the new preview. Setup stays paused for the affected environment until the operation completes.</p>
     </section>
 
@@ -260,11 +308,11 @@
         <dt>A folder fails registration or cannot be mounted</dt>
         <dd>Choose a directory your Mac account can read and write. Check the folder name for tabs, line breaks, or quotation marks if mounting fails. Spaces are supported by the bundled runtime. Keep private Tugboat records outside both the project and the guest home.</dd>
         <dt>Setup asks for a session or refuses a changed plan</dt>
-        <dd>Open <strong>Review project settings</strong>. Match <strong>Existing Brig session</strong> to the intended folder and agent. If the policy changed, read the current policy and review the allowed destinations. Reattach a detached policy. Use <strong>Refresh plan</strong> or <strong>Retry setup</strong>, as offered. If the reported home or project belongs to another session, correct the selection before starting it.</dd>
+        <dd>Open <strong>Review project settings</strong>. Confirm its folder and Brig reference. Read the current policy if it changed. Reattach a detached policy and use <strong>Refresh plan</strong> or <strong>Retry setup</strong>.</dd>
         <dt>Environment startup fails after a plan appears</dt>
-        <dd>Read the environment error in the project view. The setup terminal closes after its process ends. Confirm that the Mac has internet access for its initial downloads and that the selected profile runs the intended agent. Run <strong>Brig doctor</strong> for that profile. After correcting the cause, select <strong>Retry environment</strong>. An explicit stop instead offers <strong>Start environment</strong>.</dd>
+        <dd>Read the environment error in the project view. Check the Mac connection for the initial downloads. Run <strong>Brig doctor</strong>. After correcting the cause, select <strong>Retry environment</strong>.</dd>
         <dt>A saved project setting cannot be changed</dt>
-        <dd>Inspect the agent and session reference in project settings. Close live terminals that affect the change. Stop the selected environment before editing. If you changed processor count, memory, or image verification, stop the project’s other running agent environment too. Save with <strong>Save project settings</strong>. The project name is a library label and can contain 1 to 120 characters.</dd>
+        <dd>Check the Brig reference in Project settings. Stop the shared environment. Change its resource settings and choose <strong>Save project settings</strong>.</dd>
       </dl>
       <h3 id="fix-account">Sign-in and New Chat</h3>
       <dl>
@@ -273,7 +321,7 @@
         <dt>The account is connected but New Chat is unavailable or its launch fails</dt>
         <dd>Confirm the selected agent matches the account. Read the project status for a pending environment check. Use <strong>Open application settings…</strong> if shown. Check the provider connection there. Inspect the selected environment’s network mode and allowed provider hosts. A Mac browser authorization can succeed while the guest is offline.</dd>
         <dt>A provider copy cannot be updated, or a process blocks sign-out</dt>
-        <dd>Finish that provider’s active chats and guest shells. For an older Codex process that remains active, stop and reopen the affected environment. Use <strong>Check connection</strong> or <strong>Retry connection</strong>. Sign in again if Tugboat says the account needs sign-in. If Claude reports an unsupported profile, check that Tugboat created the environment with <code>tugboat-claude</code>.</dd>
+        <dd>Finish the provider’s active chats and guest shells. Check the provider connection in Settings. Stop and reopen the project environment if a guest access copy stays in use.</dd>
       </dl>
       <h3 id="fix-operations">Network, tests, and terminals</h3>
       <dl>

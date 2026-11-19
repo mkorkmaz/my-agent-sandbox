@@ -16,11 +16,12 @@ function deferred() {
   const promise = new Promise((complete, fail) => { resolve = complete; reject = fail; });
   return { promise, resolve, reject };
 }
-const project = { id: 'project-a', environmentId: 'a'.repeat(32), agentKind: 'codex', name: 'örnek proje', path: '/fixture/örnek proje', profile: 'codex', label: 'sample-a', stage: 'environment-ready', ownsBinding: true, ownsSession: true, policy: { name: 'sample', owned: true, fingerprint: 'policy' } };
-const plan = { data: { profile: 'codex', session: 'sample-a', runtime: { kind: 'hull', backend: 'hvi' }, isolation: 'microVM', project: { host: project.path, guest: '/work/örnek proje', mode: 'read-write' }, home: { host: '/fixture/guest-home', guest: '/root' }, limits: { cpus: 4, mem: 4096 }, posture: 'isolated', image: { ref: 'fixture' }, verify: { mode: 'require' }, policies: ['sample'], egress: { default: 'deny', allow: [] }, credentials: [] } };
+const project = { id: 'project-a', environmentId: 'a'.repeat(32), agentKind: 'codex', name: 'örnek proje', path: '/fixture/örnek proje', profile: 'tugboat-project', label: 'sample-a', imageRef: 'ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce', stage: 'environment-ready', approvedPlan: 'plan-a', ownsBinding: true, ownsSession: true, policy: { name: 'sample', owned: true, fingerprint: 'policy' } };
+const plan = { data: { profile: project.profile, session: project.label, runtime: { kind: 'hull', backend: 'hvi' }, isolation: 'microVM', project: { host: project.path, guest: '/work/örnek proje', mode: 'read-write' }, home: { host: '/fixture/guest-home', guest: '/root' }, limits: { cpus: 4, mem: 4096 }, posture: 'isolated', image: { ref: project.imageRef }, verify: { mode: 'require' }, policies: ['sample'], egress: { default: 'deny', allow: [] }, credentials: [] } };
 const emptyUsage = { input: 0, cached: 0, cacheWrite: 0, output: 0, reasoning: 0, total: 0, costUsd: 0, unpricedRequests: 0, requests: 0, completedTurns: 0, assumedTierRequests: 0, missingCacheRequests: 0, missingCachedRequests: 0, missingCacheWriteRequests: 0, unmeasuredTurns: 0 };
 const unknownLineage = { kind: 'unknown', parentSessionId: null, agentPath: null, nickname: null, sourceVersion: null, lineageVersion: 1 };
-const conversationFixture = conversation => ({ state: 'active', available: true, usage: { ...emptyUsage }, warning: null, lineage: { ...unknownLineage }, relationStatus: 'unknown', rootSessionId: null, subagentCount: 0, coverage: 'unknown', usageRevision: 'fixture-v1', ...conversation, familyUsage: conversation.familyUsage ?? conversation.usage ?? { ...emptyUsage } });
+const conversationFixture = conversation => ({ environmentId: project.environmentId, agentKind: project.agentKind, state: 'active', available: true, usage: { ...emptyUsage }, warning: null, lineage: { ...unknownLineage }, relationStatus: 'unknown', rootSessionId: null, subagentCount: 0, coverage: 'unknown', usageRevision: 'fixture-v1', ...conversation, familyUsage: conversation.familyUsage ?? conversation.usage ?? { ...emptyUsage } });
+const fixtureConversationKey = (id, owner = project) => owner.environmentId + '/' + owner.agentKind + '/' + id;
 const sessionDashboard = (conversations, overrides = {}) => ({ conversations: conversations.map(conversationFixture), usage: { ...emptyUsage }, coverage: 'unknown', pricingDate: '2026-11-10', warnings: [], ...overrides });
 const rateFixture = rates => rates ? { source: 'fixture', input: 1, cached: 0.1, write30m: 1, write12h: 1, output: 2, longContext: false, ...rates } : null;
 const requestFixture = (request, key) => ({ key, partial: false, serviceTier: null, tierSource: null, rateCorrection: null, source: null, amountCorrection: null, ...request, tokens: { reasoning: 0, write12h: null, cacheKnown: true, cachedKnown: null, cacheWriteKnown: null, ...request.tokens }, rates: rateFixture(request.rates) });
@@ -44,7 +45,7 @@ function sessionDetails(sessionId, sourceTurns, overrides = {}) {
       requestRefs.push({ sessionId, turnId: turn.id, requestKey: request.key });
     }
   }
-  return { sessionId, rootSessionId: null, ownUsage: usage, descendantsUsage: { ...emptyUsage }, combinedUsage: usage, coverage: 'unknown', warnings: [], agents: [{ sessionId, title: 'Legacy single', available: true, lineage: { ...unknownLineage }, relationStatus: 'unknown', ownUsage: usage, coverage: 'unknown', turns }], userPromptCount: null, agentTurnCount: turns.length, prompts: [], unassigned: { usage, requestRefs, unmeasuredTurnRefs }, ...overrides };
+  return { agentKind: 'codex', sessionId, rootSessionId: null, ownUsage: usage, descendantsUsage: { ...emptyUsage }, combinedUsage: usage, coverage: 'unknown', warnings: [], agents: [{ sessionId, title: 'Legacy single', available: true, lineage: { ...unknownLineage }, relationStatus: 'unknown', ownUsage: usage, coverage: 'unknown', turns }], userPromptCount: null, agentTurnCount: turns.length, prompts: [], unassigned: { usage, requestRefs, unmeasuredTurnRefs }, ...overrides };
 }
 const settings = { schemaVersion: 2, cliPath: null, codex: { profile: 'codex', allowedHosts: [] }, claudeCode: { profile: 'tugboat-claude', allowedHosts: ['api.anthropic.com'] }, cpus: 4, memoryMb: 4096, verification: 'require', network: 'isolated', telemetry: false };
 const recordsLocation = { directory: '/fixture/Application Support/Tugboat', defaultDirectory: '/fixture/Application Support/Tugboat', pendingDirectory: null, available: true, canChange: true, message: null };
@@ -104,13 +105,13 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
     terminal_snapshot: ({ identifier }) => terminals.get(identifier) ?? null,
     terminal_layout: () => null, terminal_focus: () => null,
     terminal_close: ({ identifier }) => { terminals.delete(identifier); },
-    ensure_project_environment: ({ agentKind }) => agentKind === 'codex' ? project : { ...project, agentKind, environmentId: 'b'.repeat(32), profile: 'tugboat-claude' },
-    start_agent_session: ({ identifier: projectId, environmentId, action, sessionId }) => {
+    start_agent_session: ({ identifier: projectId, environmentId, agentKind, action, sessionId }) => {
+      assert.ok(agentKind === 'codex' || agentKind === 'claude-code', 'The command must select an agent.');
       const identifier = nextTerminal++;
-      const provider = environmentId === 'b'.repeat(32) || (selectedFixture.environmentId === environmentId && selectedFixture.agentKind === 'claude-code') ? 'claude' : 'codex';
+      const provider = agentKind === 'claude-code' ? 'claude' : 'codex';
       const status = terminalStatuses[provider + '-' + action] ?? { purpose: action, running: true, exitCode: null, busy: false };
       const conversationId = action === 'new-chat' && provider === 'claude' ? '00000000-0000-4000-8000-' + String(identifier).padStart(12, '0') : sessionId ?? null;
-      terminals.set(identifier, { ...status, identifier, projectId, environmentId, agentKind: provider === 'claude' ? 'claude-code' : 'codex', conversationId });
+      terminals.set(identifier, { ...status, identifier, projectId, environmentId, agentKind, conversationId });
       return identifier;
     },
     ...overrides,
@@ -119,7 +120,7 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
     calls.push({ command, args });
     assert.ok(handlers[command], 'Unhandled command: ' + command);
     const result = await handlers[command](args);
-    if (['open_project', 'register_project', 'ensure_project_environment'].includes(command) && result) selectedFixture = result;
+    if (['open_project', 'register_project'].includes(command) && result) selectedFixture = result;
     return result;
   };
   const context = vm.createContext({ document: dom.window.document, console, ResizeObserver: class { constructor(callback) { resizeTerminal = callback; } observe() {} }, setTimeout, clearTimeout });
@@ -159,4 +160,4 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
   return { dom, calls, handlers, ready, listeners, terminals, resizeTerminal: () => resizeTerminal(), renderUsage: details => modules.get(path.join(root, 'src/dashboard/dashboard.ts')).namespace.renderUsageDetails(details), element: id => dom.window.document.getElementById(id), setTerminal: value => { terminals.set(value.identifier, value); } };
 }
 
-export { root, flush, deferred, project, plan, emptyUsage, unknownLineage, conversationFixture, sessionDashboard, sessionDetails, settings, recordsLocation, sharedAccount, sharedClaudeAccount, providerLogin, captureProjectRescans, interfaceHarness };
+export { root, flush, deferred, project, plan, emptyUsage, unknownLineage, conversationFixture, fixtureConversationKey, sessionDashboard, sessionDetails, settings, recordsLocation, sharedAccount, sharedClaudeAccount, providerLogin, captureProjectRescans, interfaceHarness };

@@ -85,22 +85,22 @@
 
     <section id="ownership">
       <h2>What belongs to whom</h2>
-      <p>One project can have a Codex environment and a Claude Code environment. One environment can have several chats. A live terminal has a shorter lifetime than either a chat or its environment.</p>
+      <p>Each project owns one Brig environment. Both agents share the project mount, persistent guest home, guest processes, and network policy. Each chat has a shorter lifetime than the project. A live terminal can end before the chat does.</p>
       <div class="table-wrap" role="region" aria-labelledby="ownership-caption" tabindex="0">
         <table>
           <caption id="ownership-caption">Identity and lifetime by scope</caption>
           <thead><tr><th scope="col">Scope</th><th scope="col">Identity and contents</th><th scope="col">What survives</th></tr></thead>
           <tbody>
             <tr><th scope="row">Application</th><td>Settings, interface preferences, one shared ChatGPT account and one shared Claude account. A records directory ID ties these records to a dataset.</td><td>Accounts and settings remain available across projects and environment removals.</td></tr>
-            <tr><th scope="row">Project</th><td>The registry tracks the project ID, folder identity, name and opening order. CPU, memory and image verification overrides belong to the project.</td><td>Both guests see writes to the selected folder. Stopping a guest leaves those edits on the Mac.</td></tr>
-            <tr><th scope="row">Environment</th><td>The project ID and agent kind determine the environment ID. Each environment has a profile, Brig reference, policy binding, network mode, guest home and preparation state.</td><td>Stopping the guest preserves its home and history. An explicit removal follows the target shown in the preview.</td></tr>
-            <tr><th scope="row">Chat</th><td>A native session ID identifies a chat within a project and environment. Verified parent links attach subagent work to a root conversation.</td><td>Saved usage can survive transcript loss. Resume also requires a usable source session.</td></tr>
+            <tr><th scope="row">Project</th><td>The registry tracks project ID, folder identity, name, and opening order. CPU, memory, network mode, and image pin belong to the project.</td><td>Both agents can write to the selected folder. Stopping the guest keeps those edits on the Mac.</td></tr>
+            <tr><th scope="row">Environment</th><td>The project ID determines one environment ID and Brig reference. The environment owns its persistent guest home, policy binding, and preparation state.</td><td>Stopping the guest preserves its home and native chat history. Removal follows the reviewed scope.</td></tr>
+            <tr><th scope="row">Chat</th><td>The identity contains a project ID, environment ID, agent kind, and native session ID. Verified parent links attach subagent work to a root conversation.</td><td>Saved usage can survive transcript loss. Resume also requires a usable source session.</td></tr>
             <tr><th scope="row">Terminal</th><td>A runtime identifier selects a process and its native view. Guest processes carry an environment target. A local shell has host scope.</td><td>A completed output view can survive process exit until eviction, manual close, or app exit.</td></tr>
           </tbody>
         </table>
       </div>
-      <p>The registry resolves a project record into the selected environment view before each operation. Two chats with the same native session ID in different guest homes remain separate. A branch name, folder display name, or chat title can change without changing that identity.</p>
-      <p class="source"><a href="../src-tauri/src/projects/record.rs">Project record</a> · <a href="../src-tauri/src/projects/agent_environment.rs">Environment membership</a> · <a href="../src-tauri/src/projects/environment_id.rs">Environment identity</a> · <a href="../src-tauri/src/terminal/target.rs">Terminal scope</a></p>
+      <p>The registry resolves the same physical environment for both agents. Chat actions include the agent kind. Environment operations use the project and environment IDs. Equal native session IDs can belong to different agents.</p>
+      <p class="source"><a href="../src-tauri/src/projects/record.rs">Project record</a> · <a href="../src-tauri/src/projects/mod.rs">Registry validation</a> · <a href="../src-tauri/src/projects/environment_id.rs">Environment identity</a> · <a href="../src-tauri/src/terminal/target.rs">Terminal scope</a></p>
     </section>
 
     <section id="desktop">
@@ -126,15 +126,15 @@
     <section id="launch">
       <h2>From New Chat to a guest process</h2>
       <ol class="steps">
-        <li><strong>Resolve the selection.</strong> The interface sends the project and environment identifiers. Rust reads the registry, checks the folder identity, and resolves effective settings for the selected agent.</li>
-        <li><strong>Prepare the binding.</strong> Preparation looks for a Brig session that matches the folder and agent. It can create a binding, adopt one matching session, or return candidates for a user choice. A detached policy or an incomplete removal needs its own recovery path.</li>
+        <li><strong>Resolve the selection.</strong> The interface sends the project ID, environment ID, and agent kind. Rust checks the registry and folder identity.</li>
+        <li><strong>Prepare the binding.</strong> Preparation uses the reserved <code>tugboat-project@&lt;label&gt;</code> reference and verifies the managed profile. A detached policy or an incomplete removal needs recovery.</li>
         <li><strong>Check the execution plan.</strong> Rust reads the profile, policy, plan and inventory. It verifies the host folder, guest project path, home, and protected records directories. A fingerprint identifies the reviewed configuration. A changed fingerprint requires another review.</li>
         <li><strong>Verify the guest.</strong> The app reuses a matching running environment or starts one. Preparation associates its terminal with an attempt. A late result must match the current attempt. A successful command exit still requires evidence from the guest.</li>
         <li><strong>Admit the chat.</strong> Session code checks the environment, online mode, provider account, and required guest capabilities. Resume also checks the saved session. A matching live chat can return its existing terminal identifier.</li>
         <li><strong>Run the command.</strong> The agent module builds an argument list. Rust starts the selected Brig executable through a PTY. Codex assigns its own new chat ID. Tugboat supplies a new UUID (universally unique identifier) for Claude Code. Resume uses the existing native ID.</li>
       </ol>
-      <p>For example, a user can switch to Claude while Codex preparation is running. The selected agent can change immediately, but the outstanding Codex result still belongs to the Codex environment. Independent environment identities and attempt checks keep that result from enabling a Claude chat.</p>
-      <p class="source"><a href="../src-tauri/src/environment/preparation/selection.rs">Session selection</a> · <a href="../src-tauri/src/environment/mod.rs">Plan checks and completion</a> · <a href="../src-tauri/src/projects/attempt.rs">Preparation attempts</a> · <a href="../src-tauri/src/agent_sessions/launch.rs">Launch admission</a> · <a href="../src-tauri/src/agents/mod.rs">Agent commands</a></p>
+      <p>Changing the next chat’s agent leaves the checked plan and boot attempt in place. Setup verifies both executables. Only a completed attempt for the same project and environment can mark the guest ready.</p>
+      <p class="source"><a href="../src-tauri/src/environment/preparation/mod.rs">Shared environment preparation</a> · <a href="../src-tauri/src/environment/mod.rs">Plan checks and completion</a> · <a href="../src-tauri/src/projects/attempt.rs">Preparation attempts</a> · <a href="../src-tauri/src/agent_sessions/launch.rs">Launch admission</a> · <a href="../src-tauri/src/agents/mod.rs">Agent commands</a></p>
     </section>
 
     <section id="terminal">
@@ -152,7 +152,7 @@
       <p>Tugboat keeps renewable sessions in private files beneath the verified records directory. A compatible Codex guest receives an access copy in the standard guest credential location. Managed Claude environments receive an access copy in memory. The Claude helper preserves other connector credentials. Only the private host records contain the shared refresh tokens.</p>
       <p>The project share is writable. Private records stay outside directories exposed by the guest plan. Brig and hull apply the guest network policy. Offline mode blocks guest network access. Mac browser sign-in and provider-hosted tools have different network paths. A hosted search result cannot establish that a guest command reached the same host.</p>
       <p>Codex normally uses the Brig boundary with its inner sandbox disabled. The optional workspace sandbox restricts writes and command network access. Codex approval remains <code>never</code> in either mode. Claude Code runs in manual permission mode. The selected profile and network policy still apply in both cases.</p>
-      <p class="source"><a href="../src-tauri/src/providers/provider_login/protocol.rs">Authorization protocols</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">Codex access copies</a> · <a href="../src-tauri/src/providers/shared_claude/guest.rs">Claude access copies</a> · <a href="../src-tauri/profiles/tugboat-claude.yaml">Managed Claude volumes</a> · <a href="../src-tauri/src/agents/codex.rs">Codex arguments</a> · <a href="../src-tauri/src/agents/claude.rs">Claude arguments</a></p>
+      <p class="source"><a href="../src-tauri/src/providers/provider_login/protocol.rs">Authorization protocols</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">Codex access copies</a> · <a href="../src-tauri/src/providers/shared_claude/guest.rs">Claude access copies</a> · <a href="../src-tauri/profiles/tugboat-project.yaml">Shared profile mounts</a> · <a href="../src-tauri/src/agents/codex.rs">Codex arguments</a> · <a href="../src-tauri/src/agents/claude.rs">Claude arguments</a></p>
     </section>
 
     <section id="history">
@@ -180,21 +180,21 @@
           <tbody>
             <tr><th scope="row">Active records folder</th><td>Project registry, settings, interface preferences, managed profiles, diagnostic records, and private provider files.</td><td>Use the verified records location. File publication checks ownership and syncs the temporary record before replacement.</td></tr>
             <tr><th scope="row"><code>usage.sqlite3</code></th><td>One database holds both agents' usage across projects, chat state, request facts, source cursors, saved prices and derived summaries.</td><td>After activation, SQLite is authoritative. A missing or damaged active database blocks usage writes. Preserve the database and any rollback journal.</td></tr>
-            <tr><th scope="row">Retained JSON ledgers and backups</th><td>Earlier usage records and migration evidence. The first SQLite activation verifies the import before publication.</td><td>Retain the original inputs. They can predate newer SQL writes. A legacy writer can lose post-migration work.</td></tr>
+            <tr><th scope="row">Former project registrations</th><td>The one-time reset keeps project identity, name, folder, and verified ownership evidence during recovery. It retires the verified former guest and chat storage.</td><td>Current projects use the shared profile and start with empty history after reset. External resources remain available to their owners.</td></tr>
             <tr><th scope="row">Guest homes and project folder</th><td>Agent-owned transcripts, persistent guest files, and the user's source tree.</td><td>A records move transfers Tugboat records. Brig continues to own its homes and the project keeps its original location.</td></tr>
           </tbody>
         </table>
       </div>
       <p>A records move begins as a pending operation. On a successful shutdown, writers stop, usage is flushed, and the database closes. Startup copies and verifies the dataset before committing the location pointer and cleaning the source. Locate can reconnect the same dataset at a different path. An incomplete copy cannot become the active dataset.</p>
       <p>After an uncertain commit, the next access must reopen the verified database and establish its state before scanning again. A disconnected drive can look like an empty directory. Preserving the saved identity lets recovery distinguish those cases.</p>
-      <p class="source"><a href="../src-tauri/src/storage/data_location/mod.rs">Location transaction</a> · <a href="../src-tauri/src/storage/publication.rs">File publication</a> · <a href="../src-tauri/src/usage_store/importer/mod.rs">Legacy import</a> · <a href="../src-tauri/src/usage_store/connection.rs">Connection checks</a> · <a href="../src-tauri/src/usage_store/migrations/001_initial.sql">SQL schema</a></p>
+      <p class="source"><a href="../src-tauri/src/storage/data_location/mod.rs">Location transaction</a> · <a href="../src-tauri/src/storage/publication.rs">File publication</a> · <a href="../src-tauri/src/projects/operations/retired_history.rs">One-time reset</a> · <a href="../src-tauri/src/usage_store/connection.rs">Connection checks</a> · <a href="../src-tauri/src/usage_store/migrations/001_initial.sql">SQL schema</a></p>
     </section>
 
     <section id="lifecycle">
       <h2>Stop, remove, and quit</h2>
-      <p><strong>Stop an environment.</strong> The operation takes an environment-scoped gate and targets that guest's processes. The other agent can keep working. Stopping preserves the registered project and persistent history.</p>
+      <p><strong>Stop an environment.</strong> The operation takes a project and environment gate. It ends both agents’ guest processes. Other projects and local terminals stay available. The guest home and recorded usage persist.</p>
       <p><strong>Forget an unavailable project.</strong> Once its project terminals have ended, the user can forget the library entry. Tugboat removes the registration and stops watching it. It preserves project files, Brig environments, guest homes, and recorded usage. A later registration can receive a different project ID.</p>
-      <p><strong>Remove an environment.</strong> A preview identifies the reference, guest home and policy. The user confirms that scope. Native code checks the target again and records completed steps. It preserves a replaced target or a policy that it cannot prove it owns. An interrupted removal resumes from the recorded step.</p>
+      <p><strong>Remove an environment.</strong> A preview identifies its reference, guest home, affected terminals, and policy. The user confirms that scope. A retry verifies the target and continues from the recorded step.</p>
       <p><strong>Quit or restart.</strong> The desktop lifecycle asks for confirmation when a terminal process is active. On confirmation it drains terminal processes, waits for host commands, flushes provider work and usage, then closes storage. A failure prevents completion and returns an error. A project switch has none of these shutdown effects.</p>
       <p class="source"><a href="../src-tauri/src/environment/gate.rs">Environment gate</a> · <a href="../src-tauri/src/projects/mod.rs">Project registry</a> · <a href="../src-tauri/src/projects/removal.rs">Removal checkpoints</a> · <a href="../src-tauri/src/projects/operations/removal_target.rs">Removal ownership</a> · <a href="../src-tauri/src/desktop/lifecycle/mod.rs">Shutdown order</a></p>
     </section>

@@ -1,0 +1,14 @@
+apiVersion: brig.sh/v1alpha1
+kind: Policy
+metadata:
+  name: tugboat-project-proof
+spec:
+  egress:
+    default: deny
+    allow:
+      - host: auth.openai.com
+      - host: chatgpt.com
+      - host: api.openai.com
+      - host: api.anthropic.com
+      - host: platform.claude.com
+      - host: claude.ai

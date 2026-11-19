@@ -43,6 +43,26 @@ fn terminal_status_serialization_matches_the_interface_chat_fixture() {
     }
 }
 
+#[test]
+fn explicit_agent_target_uses_one_project_and_refuses_another_projects_environment() {
+    let fixture = Fixture::new();
+    let mut registry = Registry::default();
+    let project = registry.register(&fixture.root.join("project")).unwrap();
+    let other = registry.register(&fixture.root.join("home")).unwrap();
+    for agent in [AgentKind::Codex, AgentKind::ClaudeCode] {
+        let selected = registry
+            .agent_environment(&project.id, &project.environment_id, agent)
+            .unwrap();
+        assert_eq!(selected.environment_id, project.environment_id);
+        assert_eq!(selected.reference(), project.reference());
+        assert_eq!(selected.agent_kind, agent);
+        assert!(registry
+            .agent_environment(&project.id, &other.environment_id, agent)
+            .is_err());
+    }
+    assert!(!fixture.root.join("calls").exists());
+}
+
 struct Fixture {
     root: PathBuf,
     checked: CheckedProject,
@@ -59,13 +79,10 @@ impl Fixture {
         fs::create_dir_all(root.join("home/.claude/projects/-work-p")).unwrap();
         let root = fs::canonicalize(root).unwrap();
         let mut registry = Registry::default();
-        let codex = registry.register(&root.join("project"), "codex").unwrap();
+        let codex = registry.register(&root.join("project")).unwrap();
         let settings = Settings::default();
-        let environment = registry
-            .ensure_environment(&codex.id, AgentKind::ClaudeCode, &settings)
-            .unwrap();
         let mut project = registry
-            .environment(&codex.id, &environment.environment_id)
+            .agent_environment(&codex.id, &codex.environment_id, AgentKind::ClaudeCode)
             .unwrap();
         project.stage = crate::projects::ProjectStage::EnvironmentReady;
         let executable = root.join("brig");
@@ -73,7 +90,7 @@ impl Fixture {
             &executable,
             r#"#!/bin/sh
 printf '%s\n' "$@" >> "$CALLS"
-case "$4 $5" in
+case "${4##*/} $5" in
   "auth status")
     if [ "$AUTH_TERMINAL" = 1 ]; then
       printf '\0337\033[r\0338\033[?25h{\n\033[3G"loggedIn":\033[15Gfalse\n}\n'
@@ -160,10 +177,9 @@ fn new_session_ids_are_unique_rfc4122_version_four_ids_and_only_resume_accepts_s
         );
         assert!(generated.insert(value));
     }
-    for action in [Action::Login, Action::Shell, Action::NewChat] {
+    for action in [Action::Shell, Action::NewChat] {
         assert!(action.session(Some(SESSION)).is_err());
     }
-    assert!(Action::Login.session(None).unwrap().is_none());
     assert!(Action::Shell.session(None).unwrap().is_none());
     assert!(Action::Resume.session(None).is_err());
     assert!(Action::Resume.session(Some("--resume")).is_err());
@@ -175,32 +191,42 @@ fn new_session_ids_are_unique_rfc4122_version_four_ids_and_only_resume_accepts_s
             .argument(),
         SESSION
     );
-    assert_eq!(
-        serde_json::from_value::<Action>(json!("new-chat")).unwrap(),
-        Action::NewChat
-    );
     assert!(matches!(Action::NewChat.codex(), codex::Action::Codex));
     assert!(matches!(Action::Resume.codex(), codex::Action::Resume));
-    assert!(matches!(Action::Login.codex(), codex::Action::Login));
     assert!(matches!(Action::Shell.codex(), codex::Action::Shell));
-    assert!(serde_json::from_value::<Action>(json!("codex")).is_err());
 }
 
 #[test]
-fn environment_account_locks_do_not_cross_project_or_environment_boundaries() {
+fn launch_accepts_only_chat_and_shell_actions() {
+    for (label, action) in [
+        ("new-chat", Action::NewChat),
+        ("resume", Action::Resume),
+        ("shell", Action::Shell),
+    ] {
+        assert_eq!(
+            serde_json::from_value::<Action>(json!(label)).unwrap(),
+            action
+        );
+    }
+    for label in ["login", "codex"] {
+        assert!(serde_json::from_value::<Action>(json!(label)).is_err());
+    }
+}
+
+#[test]
+fn environment_account_locks_cover_both_agents_and_keep_projects_separate() {
     let fixture = Fixture::new();
     let project = &fixture.checked.project;
     let mut other = project.clone();
     other.agent_kind = AgentKind::Codex;
-    other.environment_id = EnvironmentId::for_agent(&project.id, AgentKind::Codex);
     let accounts = Accounts::default();
     let first = accounts.operation(project).unwrap();
     assert!(Arc::ptr_eq(&first, &accounts.operation(project).unwrap()));
     let guard = first.try_lock().unwrap();
     assert!(accounts.operation(project).unwrap().try_lock().is_err());
-    assert!(accounts.operation(&other).unwrap().try_lock().is_ok());
+    assert!(accounts.operation(&other).unwrap().try_lock().is_err());
     other.id = "f".repeat(32);
-    other.environment_id = EnvironmentId::for_agent(&other.id, AgentKind::ClaudeCode);
+    other.environment_id = EnvironmentId::for_project(&other.id);
     other.agent_kind = AgentKind::ClaudeCode;
     assert!(accounts.operation(&other).unwrap().try_lock().is_ok());
     drop(guard);
@@ -223,7 +249,7 @@ fn terminal_identity_requires_the_project_environment_and_agent_to_match() {
         busy: false,
     };
     assert!(status.belongs_to(project));
-    status.environment_id = Some(EnvironmentId::for_agent(&project.id, AgentKind::Codex));
+    status.environment_id = Some(EnvironmentId::for_project(&"f".repeat(32)));
     assert!(!status.belongs_to(project));
     status.environment_id = Some(project.environment_id.clone());
     status.agent_kind = Some(AgentKind::Codex);
@@ -242,9 +268,6 @@ fn claude_chat_and_shell_commands_use_only_the_selected_guest_reference() {
     let fixture = Fixture::new();
     let checked = &fixture.checked;
     let session = SessionId::new(SESSION).unwrap();
-    assert!(claude::arguments(checked, Action::Login, None, None)
-        .unwrap_err()
-        .contains("Settings"));
     assert!(fixture.calls().is_empty());
     assert_eq!(
         claude::arguments(checked, Action::Shell, None, None).unwrap(),
@@ -255,17 +278,17 @@ fn claude_chat_and_shell_commands_use_only_the_selected_guest_reference() {
         (Action::Resume, "--resume"),
     ] {
         let arguments = claude::arguments(checked, action, Some(&session), Some(true)).unwrap();
-        let separator = arguments.iter().position(|value| value == "--").unwrap();
         assert_eq!(
-            &arguments[separator - 2..separator],
-            &[
-                checked.project.reference(),
-                checked.project.path.to_string_lossy().into()
+            arguments,
+            [
+                "sh",
+                &checked.project.reference(),
+                "/usr/local/bin/claude",
+                option,
+                SESSION,
+                "--permission-mode",
+                "manual"
             ]
-        );
-        assert_eq!(
-            &arguments[separator + 1..],
-            &[option, SESSION, "--permission-mode", "manual"]
         );
     }
     let calls = fixture.calls();
@@ -275,26 +298,26 @@ fn claude_chat_and_shell_commands_use_only_the_selected_guest_reference() {
             "exec",
             &checked.project.reference(),
             "--",
-            "claude",
+            "/usr/local/bin/claude",
             "auth",
             "status",
             "--json",
             "exec",
             &checked.project.reference(),
             "--",
-            "claude",
+            "/usr/local/bin/claude",
             "--help",
             "exec",
             &checked.project.reference(),
             "--",
-            "claude",
+            "/usr/local/bin/claude",
             "auth",
             "status",
             "--json",
             "exec",
             &checked.project.reference(),
             "--",
-            "claude",
+            "/usr/local/bin/claude",
             "--help"
         ]
     );
@@ -352,7 +375,7 @@ fn claude_status_uses_machine_output_without_terminal_cursor_sequences() {
             "exec",
             &fixture.checked.project.reference(),
             "--",
-            "claude",
+            "/usr/local/bin/claude",
             "auth",
             "status",
             "--json"
@@ -429,18 +452,11 @@ fn resume_accepts_a_claude_chat_from_the_verified_former_folder_name() {
     let renamed = fixture.root.join("moved p");
     fs::create_dir(&original).unwrap();
     let mut registry = Registry::default();
-    let project = registry.register(&original, "codex").unwrap();
-    let claude = registry
-        .ensure_environment(
-            &project.id,
-            AgentKind::ClaudeCode,
-            &fixture.checked.settings,
-        )
-        .unwrap();
+    let project = registry.register(&original).unwrap();
     fs::rename(original, &renamed).unwrap();
-    registry.register(&renamed, "codex").unwrap();
+    registry.register(&renamed).unwrap();
     fixture.checked.project = registry
-        .environment(&project.id, &claude.environment_id)
+        .agent_environment(&project.id, &project.environment_id, AgentKind::ClaudeCode)
         .unwrap();
     fixture.checked.paths.guest_project = "/work/moved p".into();
 

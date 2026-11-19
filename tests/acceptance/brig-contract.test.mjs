@@ -6,14 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 const directory = process.env.BRIG_FIXTURES ?? fileURLToPath(new URL('../fixtures/brig/v0.5.2/', import.meta.url));
-const read = (name, agentKind = 'codex') => JSON.parse(fs.readFileSync(path.join(directory, agentKind === 'codex' ? '' : agentKind, name + '.json'), 'utf8'));
-const agents = {
-  codex: { profile: 'codex', session: 'bd01-fixture', hosts: ['api.openai.com', 'auth.openai.com', 'chatgpt.com'] },
-  'claude-code': { profile: 'tugboat-claude', session: 'bd01-claude', hosts: ['api.anthropic.com', 'claude.ai', 'platform.claude.com'] },
-};
+const read = name => JSON.parse(fs.readFileSync(path.join(directory, name + '.json'), 'utf8'));
+const hosts = ['api.anthropic.com', 'api.openai.com', 'auth.openai.com', 'chatgpt.com', 'claude.ai', 'platform.claude.com'];
+const image = 'ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce';
 
-function inspect(result, agentKind = 'codex') {
-  const agent = agents[agentKind];
+function inspect(result) {
   if (result.errorCode === 'ENOENT') return 'missing-brig';
   assert.equal(result.errorCode, null);
   assert.equal(result.exitCode, 0);
@@ -26,25 +23,18 @@ function inspect(result, agentKind = 'codex') {
   assert.equal(plan.runtime.available, true);
   assert.equal(plan.runtime.kind, 'hull');
   assert.equal(plan.runtime.backend, 'hvi');
-  assert.equal(plan.profile, agent.profile);
-  assert.equal(plan.session, agent.session);
-  assert.equal(plan.project.host, '/fixture/örnek proje');
-  assert.equal(plan.project.guest, '/work/örnek proje');
-  assert.equal(plan.project.mode, 'read-write');
+  assert.equal(plan.profile, 'tugboat-project');
+  assert.equal(plan.session, 'bd01-fixture');
+  assert.deepEqual(plan.project, { host: '/fixture/örnek proje', guest: '/work/örnek proje', mode: 'read-write' });
   assert.equal(plan.posture, 'isolated');
-  assert.ok(plan.policies.includes(agent.session));
+  assert.deepEqual(plan.policies, ['bd01-fixture']);
   assert.equal(plan.noPolicy, false);
   assert.equal(plan.egress.default, 'deny');
-  assert.deepEqual(plan.egress.allow.map(rule => rule.host).sort(), agent.hosts);
-  assert.ok(Array.isArray(plan.credentials));
-  assert.ok(plan.credentials.every(credential => ['unresolved', 'withheld'].includes(credential.state)));
-  if (agentKind === 'claude-code') {
-    assert.deepEqual(plan.credentials, []);
-    assert.equal(plan.image.ref, 'ghcr.io/brig-sh/claude-code-stock:root');
-    assert.equal(plan.verify.mode, 'require');
-    assert.equal(plan.home.host, '/fixture/guest-claude-bd01-claude');
-    assert.equal(plan.home.guest, '/root');
-  }
+  assert.deepEqual(plan.egress.allow.map(rule => rule.host).sort(), hosts);
+  assert.deepEqual(plan.credentials, []);
+  assert.equal(plan.image.ref, image);
+  assert.deepEqual(plan.verify, { mode: 'require', policy: 'brig' });
+  assert.deepEqual(plan.home, { host: '/fixture/project-home-bd01-fixture', guest: '/root', mode: 'read-write' });
   return 'ready';
 }
 
@@ -60,57 +50,53 @@ test('version envelope records the captured Brig build', () => {
   assert.equal(envelope.data.arch, 'arm64');
 });
 
-for (const name of ['ready', 'refused', 'missing-runtime']) {
-  test('classify the captured Claude ' + name + ' case', () => assert.equal(inspect(read(name, 'claude-code'), 'claude-code'), name));
-}
-
-test('Claude plan capture pins the managed profile and preserves separate argument values', () => {
-  const manifest = read('manifest', 'claude-code');
-  assert.equal(manifest.agentKind, 'claude-code');
-  assert.equal(manifest.brigVersion, read('manifest').brigVersion);
-  assert.equal(manifest.brigCommit, read('manifest').brigCommit);
-  const source = fileURLToPath(new URL('../../src-tauri/profiles/tugboat-claude.yaml', import.meta.url));
+test('shared project plan capture records the exact profile source and separate argument values', () => {
+  const manifest = read('manifest');
+  const source = fileURLToPath(new URL('../../src-tauri/profiles/tugboat-project.yaml', import.meta.url));
+  assert.equal(manifest.profileSource, 'src-tauri/profiles/tugboat-project.yaml');
   assert.equal(manifest.profileSha256, createHash('sha256').update(fs.readFileSync(source)).digest('hex'));
-  assert.deepEqual(read('ready', 'claude-code').command.slice(1), [
-    '--json', 'plan', '--network', 'isolated', '--home', '/fixture/guest-claude',
-    'tugboat-claude@bd01-claude', '/fixture/örnek proje',
+  assert.deepEqual(read('ready').command.slice(1), [
+    '--json', 'plan', '--network', 'isolated', '--cpus', '4', '--mem', '4096',
+    '--image', image, '--home', '/fixture/project-home', 'tugboat-project@bd01-fixture', '/fixture/örnek proje',
   ]);
   assert.match(manifest.planScope, /No VM or account operation/);
 });
 
-test('captured Claude profile has no host credential sources and keeps transcript storage separate from credentials', () => {
-  const result = read('profile', 'claude-code');
+test('the shared profile has one neutral executable and keeps Claude access on a memory mount', () => {
+  const result = read('profile');
   assert.equal(result.exitCode, 0);
   const profile = JSON.parse(result.stdout);
-  assert.equal(profile.name, 'tugboat-claude');
+  assert.equal(profile.name, 'tugboat-project');
   assert.equal(profile.kind, 'agent');
-  assert.equal(profile.binary, 'claude');
+  assert.equal(profile.binary, 'bash');
   assert.deepEqual(profile.secrets ?? [], []);
   assert.deepEqual(profile.files ?? [], []);
   assert.deepEqual(profile.env, [
     { name: 'IS_SANDBOX', value: '1' }, { name: 'CLAUDE_CONFIG_DIR', value: '/brig/claude' },
+    { name: 'DISABLE_UPDATES', value: '1' },
   ]);
   assert.ok(profile.volumes.some(volume => volume.kind === 'tmpfs' && volume.at === '/brig/claude'));
   assert.ok(profile.volumes.some(volume => volume.kind === 'hostmount' && volume.path === '.claude/projects'));
   assert.ok(profile.staleCredentialFiles.includes('.claude/.credentials.json'));
 });
 
-test('Claude plans reject another agent home, image, profile, or forwarded credential', () => {
-  const codexHome = JSON.parse(read('ready').stdout).data.home;
+test('shared plans reject changed identity, image, policy, or host credentials', () => {
   for (const mutate of [
-    plan => { plan.home = codexHome; },
-    plan => { plan.image.ref = 'ghcr.io/brig-sh/codex-stock:root'; },
+    plan => { plan.home.host = '/fixture/another-project-home'; },
+    plan => { plan.project.host = '/fixture/another-project'; },
+    plan => { plan.image.ref = 'ghcr.io/brig-sh/claude-code-stock:root'; },
     plan => { plan.profile = 'codex'; },
-    plan => { plan.session = 'bd01-fixture'; },
+    plan => { plan.session = 'another-project'; },
+    plan => { plan.policies.push('unexpected'); },
     plan => { plan.credentials = [{ name: 'ANTHROPIC_API_KEY', state: 'forwarded' }]; },
-    plan => { plan.credentials = [{ name: 'ANTHROPIC_API_KEY', state: 'unknown' }]; },
+    plan => { plan.credentials = [{ name: 'ANTHROPIC_API_KEY', state: 'unresolved' }]; },
     plan => { plan.verify.mode = 'off'; },
   ]) {
-    const result = read('ready', 'claude-code');
+    const result = read('ready');
     const envelope = JSON.parse(result.stdout);
     mutate(envelope.data);
     result.stdout = JSON.stringify(envelope);
-    assert.throws(() => inspect(result, 'claude-code'));
+    assert.throws(() => inspect(result));
   }
 });
 
@@ -118,36 +104,23 @@ for (const name of ['ready', 'refused', 'missing-runtime', 'missing-brig']) {
   test('classify the captured ' + name + ' case', () => assert.equal(inspect(read(name)), name));
 }
 
-test('exit code zero also occurs when a policy refuses the plan', () => {
-  const result = read('refused');
-  assert.equal(result.exitCode, 0);
-  const plan = JSON.parse(result.stdout).data;
-  assert.equal(plan.runtime.backend, 'vz');
-  assert.ok(plan.refused.reason.trim());
-  assert.equal(inspect(result), 'refused');
+test('exit code zero can represent an unavailable runtime or a refused plan', () => {
+  const refused = read('refused');
+  const missing = read('missing-runtime');
+  assert.equal(refused.exitCode, 0);
+  assert.equal(missing.exitCode, 0);
+  assert.equal(JSON.parse(refused.stdout).data.runtime.backend, 'vz');
+  assert.ok(JSON.parse(refused.stdout).data.refused.reason.trim());
+  assert.equal(JSON.parse(missing.stdout).data.refused, undefined);
 });
 
-test('a missing runtime can have exit code zero and no refused field', () => {
-  const result = read('missing-runtime');
-  assert.equal(result.exitCode, 0);
-  assert.equal(JSON.parse(result.stdout).data.refused, undefined);
-  assert.equal(inspect(result), 'missing-runtime');
-});
-
-test('additional fields in the same API version remain compatible', () => {
+test('additional fields preserve the contract with the same API version', () => {
   const result = read('ready');
   const envelope = JSON.parse(result.stdout);
   envelope.data.futureField = { supported: true };
   result.stdout = JSON.stringify(envelope);
   assert.equal(inspect(result), 'ready');
-});
-
-test('another project or API version fails the contract', () => {
-  for (const mutate of [envelope => { envelope.data.project.host = '/fixture/other'; }, envelope => { envelope.apiVersion = 'brig.sh/v2'; }]) {
-    const result = read('ready');
-    const envelope = JSON.parse(result.stdout);
-    mutate(envelope);
-    result.stdout = JSON.stringify(envelope);
-    assert.throws(() => inspect(result));
-  }
+  envelope.apiVersion = 'brig.sh/v2';
+  result.stdout = JSON.stringify(envelope);
+  assert.throws(() => inspect(result));
 });

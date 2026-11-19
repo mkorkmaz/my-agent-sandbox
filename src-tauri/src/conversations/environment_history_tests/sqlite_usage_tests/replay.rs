@@ -18,7 +18,7 @@ fn codex_guest_switches_preserve_both_records_requests_cursors_and_states() {
     let legacy = fixture.watch(AgentKind::Codex);
     write_codex(&legacy);
     synchronize(&legacy).unwrap();
-    let (first, original) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (first, original) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let original_bytes = fs::read(&original).unwrap();
     let second = Watch {
         home: fixture.0.join("second-codex"),
@@ -96,7 +96,7 @@ fn details_resolve_a_selected_legacy_variant_namespace_from_its_own_evidence() {
         .entry(CHAT.into())
         .or_default()
         .insert(namespace.into(), historical);
-    let (sql, _) = imported(&fixture, &legacy, &ledger);
+    let (sql, _) = seeded(&fixture, &legacy, &ledger);
     let mut expected = ledger.clone();
     expected.select_guest(namespace);
     let expected = usage_details::from_ledger(&expected, CHAT).unwrap();
@@ -118,7 +118,7 @@ fn an_aborted_cursor_write_rolls_back_request_rows_and_does_not_publish() {
     let source = write_codex(&legacy);
     let dashboard = synchronize(&legacy).unwrap().0;
     let ledger = legacy.selected_ledger().unwrap();
-    let (sql, original) = imported(&fixture, &legacy, &ledger);
+    let (sql, original) = seeded(&fixture, &legacy, &ledger);
     let original_bytes = fs::read(&original).unwrap();
     let store = sql.store.as_ref().unwrap();
     let environment = sql.target.as_ref().unwrap().usage_environment().unwrap();
@@ -158,7 +158,7 @@ fn a_state_change_uses_the_requested_guest_and_preserves_the_other_guests_state(
     let legacy = fixture.watch(AgentKind::Codex);
     write_codex(&legacy);
     synchronize(&legacy).unwrap();
-    let (first, _) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (first, _) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let second = Watch {
         home: fixture.0.join("second-codex"),
         ..first.clone()
@@ -178,7 +178,7 @@ fn claude_copied_child_evidence_keeps_the_saved_owner_when_its_transcript_is_mis
     let legacy = fixture.watch(AgentKind::ClaudeCode);
     family(&legacy, "priced-subagents");
     let initial = synchronize(&legacy).unwrap().0;
-    let (sql, original) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, original) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let original_bytes = fs::read(&original).unwrap();
     let root = claude_file(&legacy, CHAT);
     let alpha = root.with_extension("").join("subagents/agent-alpha.jsonl");
@@ -215,7 +215,7 @@ fn failed_live_scans_keep_the_previous_committed_usage_in_the_history_cache() {
     let legacy = fixture.watch(AgentKind::Codex);
     let source = write_codex(&legacy);
     let dashboard = synchronize(&legacy).unwrap().0;
-    let (sql, _) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, _) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let history = History::default();
     history.record_result(PROJECT, dashboard.clone()).unwrap();
     history.record_published(PROJECT, &dashboard).unwrap();
@@ -247,7 +247,7 @@ fn partial_codex_lines_rotation_truncation_and_source_loss_keep_recorded_facts()
     let source = write_codex(&legacy);
     synchronize(&legacy).unwrap();
     let initial_source = fs::read(&source).unwrap();
-    let (sql, original) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, original) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let original_bytes = fs::read(&original).unwrap();
     let mut output = OpenOptions::new().append(true).open(&source).unwrap();
     write!(output, "{}", codex_request("response-2", 2)).unwrap();
@@ -292,7 +292,7 @@ fn failed_saved_claude_preparation_keeps_facts_and_both_history_caches_unchanged
     synchronize(&legacy).unwrap();
     let raw = unpriced(legacy.selected_ledger().unwrap());
     let before = dashboard_from_ledger(raw.clone(), HashMap::new()).unwrap();
-    let (sql, _) = imported(&fixture, &legacy, &raw);
+    let (sql, _) = seeded(&fixture, &legacy, &raw);
     let target = sql.target.as_ref().unwrap();
     let environment = target.usage_environment().unwrap();
     let store = sql.store.as_ref().unwrap();
@@ -341,7 +341,7 @@ fn unchanged_codex_scan_loads_no_raw_records_and_commits_no_data_change() {
     let legacy = fixture.watch(AgentKind::Codex);
     write_codex(&legacy);
     synchronize(&legacy).unwrap();
-    let (sql, _) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, _) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     // The first live open prepares saved provider corrections once per connection.
     synchronize(&sql).unwrap();
     let store = sql.store.as_ref().unwrap();
@@ -368,7 +368,7 @@ fn a_current_guest_state_change_updates_one_row_without_loading_raw_records() {
     let legacy = fixture.watch(AgentKind::Codex);
     write_codex(&legacy);
     synchronize(&legacy).unwrap();
-    let (sql, _) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, _) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let store = sql.store.as_ref().unwrap();
     let before = store
         .with(|store| Ok(store.connection.total_changes()))
@@ -420,12 +420,12 @@ fn historical_details_load_only_the_chosen_slot_without_hidden_or_unrelated_reco
     unrelated.title = "Unrelated root".into();
     unrelated.guest_namespace = Some(namespace.into());
     ledger.sessions.insert(CHILD.into(), unrelated);
-    let (sql, _) = imported(&fixture, &legacy, &ledger);
+    let (sql, _) = seeded(&fixture, &legacy, &ledger);
     let store = sql.store.as_ref().unwrap();
     let other_project = "2".repeat(32);
     let other = crate::usage_store::Environment::new(
         other_project.clone(),
-        projects::EnvironmentId::for_agent(&other_project, AgentKind::Codex),
+        projects::EnvironmentId::for_project(&other_project),
         AgentKind::Codex,
     )
     .unwrap();
@@ -477,9 +477,8 @@ fn a_mixed_v1_codex_record_splits_guests_without_losing_unattributed_spending() 
     unattributed.source = None;
     unattributed.cost_usd = Some(1.25);
     requests.push(unattributed);
-    let (sql_first, original) = imported(&fixture, &first, &raw);
+    let (sql_first, original) = seeded(&fixture, &first, &raw);
     let original_bytes = fs::read(&original).unwrap();
-    let backup_bytes = fs::read(storage::v1_backup_path(&original)).unwrap();
     storage::write(&first.ledger, &raw).unwrap();
     let legacy_second = Watch {
         ledger: first.ledger.clone(),
@@ -518,8 +517,4 @@ fn a_mixed_v1_codex_record_splits_guests_without_losing_unattributed_spending() 
         );
     }
     assert_eq!(fs::read(&original).unwrap(), original_bytes);
-    assert_eq!(
-        fs::read(storage::v1_backup_path(&original)).unwrap(),
-        backup_bytes
-    );
 }

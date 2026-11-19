@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { cleanSharedProject } from '../../scripts/acceptance/shared-project-cleanup.mjs';
 
 const scripts = fileURLToPath(new URL('../../scripts/acceptance', import.meta.url));
 const darwinOnly = { skip: process.platform !== 'darwin' };
@@ -68,86 +69,60 @@ test('real Brig acceptance defaults to the bundled tools and preserves explicit 
   }
 });
 
-function agentFixture(t, stage = 'success') {
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'tugboat-agents-'));
-  const root = fs.mkdtempSync('/private/tmp/tga-');
-  t.after(() => { fs.rmSync(workspace, { recursive: true, force: true }); fs.rmSync(root, { recursive: true, force: true }); });
-  for (const name of ['scripts/acceptance', 'src-tauri/profiles', '.build/brig-runtime/bin']) fs.mkdirSync(path.join(workspace, name), { recursive: true });
-  const entry = path.join(workspace, 'scripts/acceptance/check-agent-environments.mjs');
-  fs.copyFileSync(path.join(scripts, 'check-agent-environments.mjs'), entry);
-  fs.copyFileSync(path.join(scripts, 'acceptance-process.mjs'), path.join(workspace, 'scripts/acceptance/acceptance-process.mjs'));
-  fs.copyFileSync(path.join(scripts, 'acceptance-runtime.mjs'), path.join(workspace, 'scripts/acceptance/acceptance-runtime.mjs'));
-  fs.copyFileSync(fileURLToPath(new URL('../../src-tauri/profiles/tugboat-claude.yaml', import.meta.url)), path.join(workspace, 'src-tauri/profiles/tugboat-claude.yaml'));
-  fs.writeFileSync(path.join(workspace, '.build/brig-runtime/bin/hull'), '');
-  const stub = fileURLToPath(new URL('../fixtures/brig/agent-environments-stub.cjs', import.meta.url));
-  const result = spawnSync(process.execPath, ['--require', stub, entry, root], {
-    encoding: 'utf8', timeout: 10_000,
-    env: { ...process.env, TEST_BRIG_STAGE: stage, ANTHROPIC_API_KEY: 'synthetic-host-value', OPENAI_API_KEY: 'synthetic-host-value' },
-  });
-  assert.ifError(result.error);
-  const report = JSON.parse(fs.readFileSync(path.join(workspace, 'artifacts/claude-code/step-9-cli-environments.json'), 'utf8'));
-  return { status: result.status, report };
+const sharedReference = 'tugboat-project-proof@proof';
+
+function sharedCleanupFixture(stage) {
+  const calls = [];
+  let detachAttempts = 0;
+  const inventory = async () => {
+    if (stage === 'inventory') throw new Error('inventory unavailable');
+    if (stage === 'foreign') return [{ ref: 'another-project@review', state: 'running' }];
+    if (calls.some(args => args[0] === 'rm' && args.length === 2) && stage !== 'remaining') return [];
+    return [{ ref: sharedReference, state: stage === 'stopped' ? 'stopped' : 'running' }];
+  };
+  const brig = async args => {
+    calls.push(args);
+    if (stage === args[0]) throw new Error('guest command failed');
+    return { stdout: stage === 'preview' ? 'another-project@review' : 'Remove ' + sharedReference };
+  };
+  const detach = async () => {
+    calls.push(['detach']);
+    detachAttempts++;
+    if (stage === 'busy' && detachAttempts === 1 || stage === 'busy-exhausted') {
+      return { status: 1, stderr: 'Resource busy' };
+    }
+    if (stage === 'detach') return { status: 1, stderr: 'Store unavailable' };
+    return { status: 0, stderr: '' };
+  };
+  return { calls, run: () => cleanSharedProject(sharedReference, inventory, brig, detach) };
 }
 
-test('dual-agent acceptance uses separate homes and policies with exact guest arguments', darwinOnly, t => {
-  const { status, report } = agentFixture(t);
-  assert.equal(status, 0);
-  assert.equal(report.outcome, 'passed-cli-with-native-and-account-acceptance-pending');
-  assert.deepEqual(report.remaining, []);
-  assert.equal(report.testRootRemoved, true);
-  assert.equal(report.checks.length, 6);
-  assert.ok(report.checks.every(check => check.passed));
-  const [codex, claude] = report.agents;
-  assert.notEqual(codex.home, claude.home);
-  assert.notEqual(codex.policy, claude.policy);
-  assert.deepEqual(report.commands.filter(command => command.args[0] === 'run').map(command => command.args.slice(-4)), [
-    ['tugboat-test-codex@co', report.project, '--', '--version'], ['tugboat-claude@cl', report.project, '--', '--version'],
+test('shared project cleanup uses one exact guest and verifies its removal before detaching', async () => {
+  const running = sharedCleanupFixture('success');
+  assert.equal(await running.run(), 1);
+  assert.deepEqual(running.calls, [
+    ['stop', sharedReference], ['rm', sharedReference, '--dry-run'], ['rm', sharedReference], ['detach'],
   ]);
-  assert.ok(report.commands.filter(command => command.args[0] === 'run').every(command => command.timeoutMs === 900_000));
-  assert.ok(report.agents.every(agent => agent.storeCalls > 0));
-  assert.equal(report.hostHomePreserved, true);
-  assert.equal(report.isolatedHome, false);
-  assert.equal(report.isolatedGuestHomes, true);
-  assert.ok(report.runtimeStores.length >= 2);
-  assert.ok(report.runtimeStores.every(store => store === report.store));
-  assert.deepEqual(report.codexProfile, { name: 'tugboat-test-codex', derivedFrom: 'codex', credentialSourcesRemoved: true });
-  assert.equal(report.userInterfaceTest, false);
-  assert.equal(report.accountTest, false);
-  assert.equal(report.modelRequestTest, false);
+  const stopped = sharedCleanupFixture('stopped');
+  await stopped.run();
+  assert.deepEqual(stopped.calls, running.calls.slice(1));
 });
 
-test('dual-agent acceptance rejects failed boots, forwarded credentials, and another environment home', darwinOnly, t => {
-  for (const stage of ['version', 'claude-boot', 'credentials', 'wrong-home', 'wrong-store', 'wrong-runtime']) {
-    const { status, report } = agentFixture(t, stage);
-    assert.equal(status, 1, stage);
-    assert.equal(report.outcome, 'blocked', stage);
-    assert.ok(report.blocker, stage);
-    assert.deepEqual(report.remaining, [], stage);
-    assert.ok(report.completedAt, stage);
-    if (stage === 'wrong-runtime') assert.ok(report.commands.every(command => command.args[0] !== 'run'));
+test('shared project cleanup preserves unexpected guests and refuses incomplete removal', async () => {
+  for (const stage of ['foreign', 'inventory', 'stop', 'preview', 'rm', 'remaining']) {
+    const fixture = sharedCleanupFixture(stage);
+    await assert.rejects(fixture.run(), stage);
+    assert.ok(!fixture.calls.some(args => args[0] === 'detach'), stage);
+    if (stage === 'foreign' || stage === 'inventory') assert.deepEqual(fixture.calls, []);
   }
 });
 
-test('dual-agent acceptance retries transient busy detach errors and fails after three attempts', darwinOnly, t => {
-  const recovered = agentFixture(t, 'detach-busy');
-  assert.equal(recovered.status, 0);
-  assert.equal(recovered.report.detachAttempts, 2);
-  const exhausted = agentFixture(t, 'detach-exhausted');
-  assert.equal(exhausted.status, 1);
-  assert.equal(exhausted.report.outcome, 'blocked');
-  assert.equal(exhausted.report.detachAttempts, 3);
-  assert.match(exhausted.report.cleanupError, /Resource busy/);
-  assert.deepEqual(exhausted.report.remaining, []);
-  assert.notEqual(exhausted.report.testRootRemoved, true);
-});
-
-test('dual-agent acceptance fails when cleanup cannot stop, preview, remove, verify, detach, or delete', darwinOnly, t => {
-  for (const stage of ['stop', 'preview', 'remove', 'remaining', 'inventory', 'detach', 'root-cleanup']) {
-    const { status, report } = agentFixture(t, stage);
-    assert.equal(status, 1, stage);
-    assert.equal(report.outcome, 'blocked', stage);
-    assert.ok(report.cleanupError, stage);
-    assert.ok(report.completedAt, stage);
-    assert.notEqual(report.testRootRemoved, true, stage);
+test('shared project cleanup retries only a transient busy detach', async () => {
+  const recovered = sharedCleanupFixture('busy');
+  assert.equal(await recovered.run(), 2);
+  for (const [stage, count] of [['detach', 1], ['busy-exhausted', 3]]) {
+    const fixture = sharedCleanupFixture(stage);
+    await assert.rejects(fixture.run(), /detach/);
+    assert.equal(fixture.calls.filter(args => args[0] === 'detach').length, count);
   }
 });

@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-11-10T10:29:17.442Z",
+  "capturedAt": "2026-11-19T20:21:28.013Z",
   "brigVersion": "v0.5.2",
   "brigCommit": "1c4962a25a9e563beee9fce13eecbe7f51809780",
   "apiVersion": "brig.sh/v1alpha1",
@@ -7,10 +7,13 @@
   "rootReplacement": "/fixture",
   "cases": [
     "version",
+    "profile",
     "ready",
     "refused",
     "missing-runtime",
     "missing-brig"
   ],
-  "planScope": "No-boot CLI plan. A running VM and interactive Codex are verified in later plan items."
+  "profileSource": "src-tauri/profiles/tugboat-project.yaml",
+  "profileSha256": "ac81c25f778295a7e71c9b0c9d22bfe6f3e84665c39513000d07ded88e9e0466",
+  "planScope": "Real Brig CLI with a disposable profile, policy, home, and runtime executable. No VM or account operation."
 }

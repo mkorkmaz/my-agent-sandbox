@@ -52,12 +52,12 @@
       <dl>
         <dt>UI action or display</dt>
         <dd>Trace the control in the root <code>index.html</code> through its TypeScript controller. Keep layout, focus, and temporary view state in the interface. A native command must still check the target when the user has switched projects since the action began.</dd>
-        <dt>Project or agent environment</dt>
-        <dd>Use the registry to resolve the project ID and environment ID. CPU, memory, and image verification are project resources. The network mode, policy, profile, guest home, and preparation attempt belong to an environment. Preserve the other agent's environment when changing one target.</dd>
+        <dt>Project environment</dt>
+        <dd>Use the registry to resolve the project ID and its shared environment ID. Both agents use the same guest home, policy, image, and preparation attempt. Verify that a change cannot affect another project.</dd>
         <dt>Chat or terminal</dt>
-        <dd>Use the project, environment, and native session ID together to identify a chat. A terminal identifier selects a live process or retained view. Use the terminal registry to find a running chat. Reusing the last visible terminal can send an action to the wrong process.</dd>
+        <dd>Use the project ID, environment ID, agent kind, and native session ID to identify a chat. A terminal identifier selects a live process or retained view. Use the terminal registry to find the running chat.</dd>
         <dt>Provider or usage record</dt>
-        <dd>Account renewals belong to the provider on the Mac. Usage belongs to the observed project, environment and session. Use the existing provider or storage API. Preserve the distinction between provider identity, transcript identity, and user-visible titles.</dd>
+        <dd>Account renewals belong to the provider on the Mac. Use the existing provider or storage API. Scope usage by project, environment, agent, and native session ID.</dd>
       </dl>
       <p class="source"><a href="../src-tauri/src/projects/record.rs">Shared resource ownership</a> · <a href="../src-tauri/src/environment/mod.rs">Checked environment</a> · <a href="../src-tauri/src/terminal/target.rs">Process targeting</a> · <a href="../src/dashboard/dashboard-state.ts">Late dashboard results</a></p>
     </section>
@@ -74,15 +74,15 @@
 
     <section id="records">
       <h2>Protect saved records</h2>
-      <p>For persistence changes, identify the writer, transaction, reader, previous format, and recovery path first. Use a temporary records directory with generated fixtures. Starting the desktop app runs normal storage activation and can import real records.</p>
+      <p>For persistence changes, identify the writer, transaction, reader, and recovery path. Use a temporary records directory. App startup can reset former project environments and retire their verified Tugboat-owned history.</p>
       <ul>
         <li>Use the verified records directory and its dataset ID. Respect its lock and directory marker. A missing drive or active database requires recovery. Creating an empty replacement can disconnect the user's history.</li>
-        <li>After activation, use <code>usage_store</code> for usage and saved chat state. Keep usage facts, parser progress and affected summaries consistent across a commit or retry. Retain immutable migration inputs and backups.</li>
+        <li>After activation, use <code>usage_store</code> for usage and saved chat state. Keep usage facts, parser progress and summaries consistent across a commit or retry.</li>
         <li>Read native transcripts from the verified guest home. Bound file traversal and parsing. Preserve project membership and parent evidence. Equal titles or token counts are insufficient to merge records.</li>
         <li>Preserve measured zero, partial coverage, unknown counts and unpriced requests. Keep saved prices and correction evidence. A fresh catalogue is insufficient reason to reprice past requests.</li>
         <li>Route record moves through the existing location transaction. Close writers, verify the destination, then commit the pointer. Leave journal recovery to SQLite. Test an interrupted move and a missing source using disposable data.</li>
       </ul>
-      <p class="source"><a href="../src-tauri/src/storage/data_location/mod.rs">Records location</a> · <a href="../src-tauri/src/usage_store/importer/mod.rs">Activation</a> · <a href="../src-tauri/src/usage_store/writes.rs">Usage transactions</a> · <a href="../src-tauri/src/conversations/membership.rs">Project membership</a> · <a href="architecture.html#storage">Recovery rules</a></p>
+      <p class="source"><a href="../src-tauri/src/storage/data_location/mod.rs">Records location</a> · <a href="../src-tauri/src/usage_store/bootstrap.rs">Fresh database activation</a> · <a href="../src-tauri/src/usage_store/writes.rs">Usage transactions</a> · <a href="../src-tauri/src/conversations/membership.rs">Project membership</a> · <a href="architecture.html#storage">Recovery rules</a></p>
     </section>
 
     <section id="feature">
@@ -109,7 +109,7 @@
         <dt>Rust, terminal or guest adapter</dt>
         <dd>Use the owning Rust tests with <code>cargo test --manifest-path src-tauri/Cargo.toml --locked</code> on the supported Mac with prepared dependencies. Choose the native terminal, hull, or Brig check for changes in that layer. Check the script's prerequisites and effects before choosing the preparation route.</dd>
         <dt>Usage migration or storage recovery</dt>
-        <dd>Use the checked-in SQLite fixtures and the disposable acceptance tests. Include old data, two agent environments, duplicate replay and an interrupted transaction when those cases affect the change. For a performance claim, identify the fixture, baseline and measurement.</dd>
+        <dd>Use the checked-in SQLite fixtures and disposable tests. Cover former registration reset, agent IDs that collide in a shared environment, duplicate replay, or interrupted writes as applicable. For performance, identify the fixture, baseline, and measurement.</dd>
         <dt>Restricted signing or release work</dt>
         <dd>The full Node suite includes a macOS test that signs a temporary binary. Standard Tauri hooks also prepare native tools. The pull request workflow has a <code>--no-sign</code> preparation mode for explicit signing steps. Compilers can still add ad hoc signatures. Use the verification procedure that matches the actual restriction.</dd>
         <dt>Local documentation</dt>

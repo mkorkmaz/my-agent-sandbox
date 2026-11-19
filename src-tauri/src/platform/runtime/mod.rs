@@ -86,6 +86,24 @@ pub fn validate() -> Result<(), String> {
     })
 }
 
+pub(crate) fn require_root_restore() -> Result<(), String> {
+    validate()?;
+    let data = directory()
+        .and_then(|directory| data_directory(&directory))
+        .ok_or("The bundled runtime directory is unavailable.")?;
+    let manifest = crate::storage::read_regular_bytes(&data.join("build.json"))?
+        .ok_or("The bundled runtime manifest is unavailable.")?;
+    let manifest: serde_json::Value = serde_json::from_slice(&manifest)
+        .map_err(|_| "The bundled runtime manifest is invalid.")?;
+    let expected = crate::hash::hex(Sha256::digest(include_bytes!(
+        "../../../../resources/runtime/hull-rootfs-restore.patch"
+    )));
+    if manifest["hull"]["rootRestorePatchSha256"].as_str() != Some(&expected) {
+        return Err("Guest image updates require the bundled Hull recovery build. Prepare the development runtime or reinstall Tugboat.".into());
+    }
+    Ok(())
+}
+
 fn validate_at(directory: &Path) -> Result<(), String> {
     let data = data_directory(directory).ok_or("The runtime data directory is invalid.")?;
     let manifest_path = data.join("build.json");

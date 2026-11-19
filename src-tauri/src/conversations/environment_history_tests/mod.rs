@@ -24,7 +24,7 @@ impl Fixture {
         Watch {
             target: Some(environment_history::Target {
                 project_id: PROJECT.into(),
-                environment_id: projects::EnvironmentId::for_agent(PROJECT, kind),
+                environment_id: projects::EnvironmentId::for_project(PROJECT),
                 agent_kind: kind,
             }),
             records_directory: None,
@@ -83,7 +83,8 @@ fn write_codex(watch: &Watch) -> PathBuf {
 fn two_agents_with_the_same_uuid_keep_independent_archive_and_usage() {
     let fixture = Fixture::new("same-uuid");
     let codex = fixture.watch(AgentKind::Codex);
-    let claude = fixture.watch(AgentKind::ClaudeCode);
+    let mut claude = fixture.watch(AgentKind::ClaudeCode);
+    claude.home = codex.home.clone();
     write_codex(&codex);
     write_claude(&claude);
     let codex_dashboard = synchronize(&codex).unwrap().0;
@@ -92,9 +93,13 @@ fn two_agents_with_the_same_uuid_keep_independent_archive_and_usage() {
         codex_dashboard.conversations[0].id,
         claude_dashboard.conversations[0].id
     );
-    assert_ne!(
+    assert_eq!(
         codex_dashboard.conversations[0].environment_id,
         claude_dashboard.conversations[0].environment_id
+    );
+    assert_ne!(
+        codex_dashboard.conversations[0].agent_kind,
+        claude_dashboard.conversations[0].agent_kind
     );
     assert!(codex_dashboard.usage.requests > 0);
     assert_eq!(claude_dashboard.usage.requests, 5);
@@ -122,6 +127,32 @@ fn two_agents_with_the_same_uuid_keep_independent_archive_and_usage() {
         synchronize(&claude).unwrap().0.conversations[0].state,
         SessionState::Active
     );
+}
+
+#[test]
+fn same_environment_and_native_id_keep_independent_availability() {
+    let fixture = Fixture::new("shared-environment-availability");
+    let codex = fixture.watch(AgentKind::Codex);
+    let mut claude = fixture.watch(AgentKind::ClaudeCode);
+    let codex_target = codex.target.as_ref().unwrap();
+    let claude_target = claude.target.as_mut().unwrap();
+    claude_target.environment_id = codex_target.environment_id.clone();
+    assert_ne!(codex_target.key(), claude_target.key());
+    write_codex(&codex);
+    write_claude(&claude);
+    let verified = synchronize(&codex).unwrap().0;
+    let claude_dashboard = synchronize(&claude).unwrap().0;
+    let mut recorded =
+        environment_history::combine([verified.clone(), claude_dashboard].into_iter());
+    assert_eq!(recorded.conversations.len(), 2);
+    assert!(recorded
+        .conversations
+        .iter()
+        .all(|row| row.id == CHAT && row.available));
+    environment_history::retain_verified_availability(&mut recorded, Some(&verified));
+    for row in recorded.conversations {
+        assert_eq!(row.available, row.agent_kind == AgentKind::Codex);
+    }
 }
 
 #[test]
@@ -361,14 +392,22 @@ fn one_failed_environment_keeps_the_other_current_result_and_last_saved_rows() {
 }
 
 #[test]
-fn removing_one_environment_flushes_it_and_keeps_other_watchers() {
-    let fixture = Fixture::new("remove-one");
+fn removing_a_shared_environment_flushes_both_agents_and_keeps_the_sibling_project() {
+    let fixture = Fixture::new("remove-shared");
+    let sibling_fixture = Fixture::new("remove-sibling");
+    let sibling_id = "9".repeat(32);
     let codex = fixture.watch(AgentKind::Codex);
-    let claude = fixture.watch(AgentKind::ClaudeCode);
+    let mut claude = fixture.watch(AgentKind::ClaudeCode);
+    claude.home = codex.home.clone();
+    let mut sibling = sibling_fixture.watch(AgentKind::Codex);
+    let target = sibling.target.as_mut().unwrap();
+    target.project_id = sibling_id.clone();
+    target.environment_id = projects::EnvironmentId::for_project(&sibling_id);
     write_codex(&codex);
     write_claude(&claude);
+    write_codex(&sibling);
     let history = History::default();
-    for watch in [codex.clone(), claude.clone()] {
+    for watch in [codex.clone(), claude.clone(), sibling.clone()] {
         let key = watch.target.as_ref().unwrap().key();
         history
             .watches
@@ -385,11 +424,13 @@ fn removing_one_environment_flushes_it_and_keeps_other_watchers() {
         )
         .unwrap();
     assert_eq!(history.watches.lock().unwrap().len(), 1);
-    assert_eq!(history.merged(PROJECT).unwrap().conversations.len(), 1);
+    assert!(history.merged(PROJECT).unwrap().conversations.is_empty());
+    assert_eq!(history.merged(&sibling_id).unwrap().conversations.len(), 1);
     assert!(claude.ledger.is_file());
-    history.flush().unwrap();
     assert!(codex.ledger.is_file());
-    history.unobserve(PROJECT).unwrap();
+    history.flush().unwrap();
+    assert!(sibling.ledger.is_file());
+    history.unobserve(&sibling_id).unwrap();
     assert!(history.watches.lock().unwrap().is_empty());
 }
 

@@ -118,10 +118,8 @@ fn billing_metadata_tariffs_and_ordered_evidence_match_after_sql_reopen() {
                 usage::anthropic::evidence(request, "second historical correction"),
             ];
         }
-        let (sql, original) = imported(&fixture, &legacy, &raw);
+        let (sql, original) = seeded(&fixture, &legacy, &raw);
         let original_bytes = fs::read(&original).unwrap();
-        let backup = storage::v1_backup_path(&original);
-        let backup_bytes = fs::read(&backup).unwrap();
         let target = sql.target.as_ref().unwrap();
         let store = sql.store.as_ref().unwrap();
         let environment = target.usage_environment().unwrap();
@@ -250,7 +248,6 @@ fn billing_metadata_tariffs_and_ordered_evidence_match_after_sql_reopen() {
             "{name} reopen"
         );
         assert_eq!(fs::read(&original).unwrap(), original_bytes);
-        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
         evidence.push(json!({"case":name,"request":request,"summary":expected_dashboard.usage,"coverage":expected_dashboard.coverage,"userPromptCount":expected_details.user_prompt_count,"ledgerSha256":crate::hash::hex(Sha256::digest(serde_json::to_vec(&expected).unwrap())),"dashboardSha256":crate::hash::hex(Sha256::digest(serde_json::to_vec(&expected_dashboard).unwrap())),"detailsSha256":crate::hash::hex(Sha256::digest(serde_json::to_vec(&expected_details).unwrap()))}));
         reopened.close().unwrap();
     }
@@ -266,7 +263,7 @@ fn live_claude_recovery_conflict_and_output_growth_keep_dated_evidence_after_rep
     initial["message"].as_object_mut().unwrap().remove("model");
     fs::write(&source, format!("{initial}\n")).unwrap();
     synchronize(&legacy).unwrap();
-    let (sql, _original) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, _original) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     synchronize(&sql).unwrap();
     let mut invalid = claude_response("msg_live_acceptance", claude_counts(3), false);
     invalid["message"]["model"] = json!("claude-opus-5-5");
@@ -361,24 +358,18 @@ fn saved_pricing_sweeps_only_the_requested_environment_and_rejects_future_policy
     let other_project = "2".repeat(32);
     let other = crate::usage_store::Environment::new(
         other_project.clone(),
-        projects::EnvironmentId::for_agent(&other_project, AgentKind::ClaudeCode),
+        projects::EnvironmentId::for_project(&other_project),
         AgentKind::ClaudeCode,
     )
     .unwrap();
     let target = legacy.target.as_ref().unwrap();
     let first = target.usage_environment().unwrap();
+    let mut database = bootstrap::open_or_initialize(&records).unwrap();
     for environment in [&first, &other] {
-        storage::write(
-            &directory
-                .join("conversation-ledgers")
-                .join(&environment.project_id)
-                .join(format!("{}.json", environment.environment_id)),
-            &raw,
-        )
-        .unwrap();
+        database.save_environment(environment, &raw).unwrap();
+        reset_fixture_pricing(&database, environment);
     }
-    importer::activate(&records).unwrap();
-    let store = SharedStore::new(Store::open(&records).unwrap());
+    let store = SharedStore::new(database);
     let other_ids=store.with(|store|store.connection.prepare("SELECT r.record_id FROM usage_environments e JOIN session_groups g ON g.environment_key=e.environment_key JOIN session_records r ON r.session_key=g.session_key WHERE e.project_id=?1").map_err(crate::usage_store::error)?.query_map([&other_project],|row|row.get::<_,i64>(0)).map_err(crate::usage_store::error)?.collect::<rusqlite::Result<Vec<_>>>().map_err(crate::usage_store::error)).unwrap();
     crate::usage_store::record_reads::begin();
     sql_backend::dashboard(target, &store, true).unwrap();

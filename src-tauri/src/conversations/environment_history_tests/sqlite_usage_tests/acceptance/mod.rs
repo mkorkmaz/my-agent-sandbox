@@ -35,7 +35,7 @@ fn generated() -> (Fixture, Watch, PathBuf, PathBuf, Ledger) {
     let native = write_codex(&legacy);
     synchronize(&legacy).unwrap();
     let ledger = legacy.selected_ledger().unwrap();
-    let (sql, original) = imported(&fixture, &legacy, &ledger);
+    let (sql, original) = seeded(&fixture, &legacy, &ledger);
     (fixture, sql, native, original, ledger)
 }
 
@@ -61,7 +61,7 @@ fn worker_watch(root: &Path) -> Watch {
     Watch {
         target: Some(environment_history::Target {
             project_id: PROJECT.into(),
-            environment_id: projects::EnvironmentId::for_agent(PROJECT, AgentKind::Codex),
+            environment_id: projects::EnvironmentId::for_project(PROJECT),
             agent_kind: AgentKind::Codex,
         }),
         records_directory: Some(records.clone()),
@@ -357,7 +357,7 @@ fn failed_database_sync_restores_the_last_commit_before_reopen() {
 fn environment_for_codex() -> crate::usage_store::Environment {
     crate::usage_store::Environment::new(
         PROJECT.into(),
-        projects::EnvironmentId::for_agent(PROJECT, AgentKind::Codex),
+        projects::EnvironmentId::for_project(PROJECT),
         AgentKind::Codex,
     )
     .unwrap()
@@ -404,12 +404,12 @@ fn interior_page_corruption_and_a_newer_schema_block_activation_without_json_fal
         if case == "newer-schema" {
             let connection = rusqlite::Connection::open(&database).unwrap();
             connection
-                .pragma_update(None, "user_version", 2i64)
+                .pragma_update(None, "user_version", crate::usage_store::SCHEMA_VERSION + 1)
                 .unwrap();
             connection.close().unwrap();
         }
         let damaged = fs::read(&database).unwrap();
-        assert!(importer::activate(&records).is_err(), "{case}");
+        assert!(bootstrap::open_or_initialize(&records).is_err(), "{case}");
         assert_eq!(records.schema_version().unwrap(), 2);
         assert_eq!(fs::read(&database).unwrap(), damaged);
         assert_eq!(fs::read(&original).unwrap(), original_bytes);
@@ -467,7 +467,7 @@ mod contracts;
 mod append;
 
 #[test]
-fn pending_counter_exact_pairs_survive_import_restart_and_duplicate_occurrences() {
+fn pending_counter_exact_pairs_survive_restart_and_duplicate_occurrences() {
     let fixture = Fixture::new("sqlite-acceptance-pending-counter-exact");
     let legacy = fixture.watch(AgentKind::Codex);
     let source = write_codex(&legacy);
@@ -490,7 +490,7 @@ fn pending_counter_exact_pairs_survive_import_restart_and_duplicate_occurrences(
     let first_key = raw.sessions[CHAT].turns.values().next().unwrap().requests[0]
         .key
         .clone();
-    let (sql, original) = imported(&fixture, &legacy, &raw);
+    let (sql, original) = seeded(&fixture, &legacy, &raw);
     let original_bytes = fs::read(&original).unwrap();
     let exact = json!({"type":"token_usage_record","timestamp":"2026-11-13T00:00:01.123456Z","payload":{"thread_id":CHAT,"turn_id":"aaaaaaaa-0000-4000-8000-000000000001","root_turn_id":"aaaaaaaa-0000-4000-8000-000000000001","response_id":"late-exact-response-1","usage":counts,"thread_token_usage":counts}});
     let mut file = OpenOptions::new().append(true).open(&source).unwrap();

@@ -15,6 +15,13 @@ impl GuestCommand {
         arguments
     }
 
+    pub fn in_output(self, reference: String) -> Vec<String> {
+        let mut arguments = vec!["exec".into(), reference, "--".into(), self.program.into()];
+        arguments.extend(self.arguments);
+        arguments
+    }
+
+    #[cfg(test)]
     pub fn in_profile(self) -> Vec<String> {
         self.arguments
     }

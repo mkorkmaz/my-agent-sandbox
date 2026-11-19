@@ -110,7 +110,11 @@ fn running_binding(
     registry: &Registry,
     binding: &Binding,
 ) -> Result<Option<CheckedProject>, String> {
-    let Ok(project) = registry.environment(&binding.project_id, &binding.environment_id) else {
+    let Ok(project) = registry.agent_environment(
+        &binding.project_id,
+        &binding.environment_id,
+        crate::agents::AgentKind::ClaudeCode,
+    ) else {
         return Ok(None);
     };
     data_location::validate_project_records(app, registry)?;

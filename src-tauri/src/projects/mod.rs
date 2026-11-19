@@ -1,5 +1,4 @@
 use crate::agents::AgentKind;
-use crate::platform::brig::Brig;
 use crate::{desktop::settings, platform::command, platform::host, storage};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,21 +11,21 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, State};
 
-mod agent_environment;
 mod attempt;
 mod environment_id;
 mod folder;
 mod guest_project_scope;
-mod migration;
-#[cfg(test)]
-pub(crate) mod migration_tests;
 pub(crate) mod operations;
+pub(crate) mod project_github_access;
+pub(crate) mod project_image_update;
 pub(crate) mod project_policy;
+pub(crate) mod project_preview;
 mod record;
+#[cfg(test)]
+pub(crate) mod registry_tests;
 mod removal;
 mod stage;
-pub use agent_environment::{AgentEnvironment, Environments};
-use agent_environment::{Membership, RemovalEffect};
+pub(crate) mod transition;
 pub use attempt::{AttemptCompletion, EnvironmentAttempt};
 pub use environment_id::EnvironmentId;
 pub use folder::FolderState;
@@ -34,6 +33,9 @@ pub(crate) use guest_project_scope::GuestProjectScope;
 use record::ProjectRecord;
 pub use removal::RemovalStep;
 pub use stage::ProjectStage;
+
+pub(crate) const ENVIRONMENT_PROFILE: &str = "tugboat-project";
+pub(crate) const DEFAULT_ENVIRONMENT_IMAGE: &str = "ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce";
 
 static NEXT_PROBE: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
@@ -65,6 +67,9 @@ pub struct Project {
     pub network: settings::Network,
     pub profile: String,
     pub label: String,
+    pub image_ref: String,
+    #[serde(skip)]
+    pub(crate) image_update: Option<project_image_update::Pending>,
     pub policy: Option<Policy>,
     pub stage: ProjectStage,
     #[serde(default)]
@@ -79,6 +84,8 @@ pub struct Project {
     pub environment_verified: Option<bool>,
     #[serde(default)]
     pub environment_attempt: Option<EnvironmentAttempt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_plan: Option<String>,
     #[serde(default)]
     pub removal: Option<Removal>,
     pub updated_at: u64,
@@ -86,6 +93,10 @@ pub struct Project {
     pub last_opened_at: Option<u64>,
     #[serde(default)]
     pub options: Option<ProjectOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) preview: Option<project_preview::Approval>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) github_access: Option<project_github_access::Grant>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -93,9 +104,7 @@ pub struct Project {
 pub struct Removal {
     pub reference: String,
     pub workspace: String,
-    pub logout: bool,
     pub had_environment: bool,
-    pub logged_out: bool,
     pub stopped: bool,
     pub environment_removed: bool,
     pub binding_detached: bool,
@@ -123,7 +132,7 @@ impl ProjectOptions {
 impl Project {
     pub fn require_codex(&self) -> Result<(), String> {
         if self.agent_kind != AgentKind::Codex {
-            return Err("Shared ChatGPT sign-in is available only for Codex environments.".into());
+            return Err("Shared ChatGPT sign-in is available only for Codex.".into());
         }
         Ok(())
     }
@@ -145,6 +154,15 @@ impl Project {
         if self.removal_pending() {
             return Err("Removal is incomplete. Review the removal preview to continue before using this project.".into());
         }
+        self.require_no_image_update()
+    }
+    pub(crate) fn require_no_image_update(&self) -> Result<(), String> {
+        if self.image_update.is_some() {
+            return Err(
+                "Finish guest image recovery in Project settings before using this environment."
+                    .into(),
+            );
+        }
         Ok(())
     }
     pub fn settings(&self, mut defaults: settings::Settings) -> Result<settings::Settings, String> {
@@ -152,6 +170,7 @@ impl Project {
         if let Some(options) = &self.options {
             options.apply(&mut defaults);
         }
+        defaults.verification = settings::Verification::Require;
         defaults.validate()?;
         Ok(defaults)
     }
@@ -179,6 +198,7 @@ impl Project {
         }
         self.stage = ProjectStage::EnvironmentStarting;
         self.environment_verified = Some(false);
+        self.approved_plan = attempt.plan_fingerprint.clone();
         self.environment_attempt = Some(attempt);
         Ok(())
     }
@@ -238,9 +258,20 @@ impl Project {
         format!("{}@{}", self.profile, self.label)
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.environment_id != EnvironmentId::for_agent(&self.id, self.agent_kind) {
+        if self.environment_id != EnvironmentId::for_project(&self.id) {
             return Err("The environment identity does not match this project.".into());
         }
+        self.validate_fields()?;
+        if self.profile != ENVIRONMENT_PROFILE
+            || self.label != project_label(&self.id)
+            || !self.owns_session
+            || self.adopted_managed_profile
+        {
+            return Err("The registered Brig reference does not match this shared project.".into());
+        }
+        Ok(())
+    }
+    fn validate_fields(&self) -> Result<(), String> {
         if self.id.len() != 32
             || !self.id.bytes().all(|byte| byte.is_ascii_hexdigit())
             || !self.path.is_absolute()
@@ -248,6 +279,20 @@ impl Project {
             || !settings::valid_identifier(&self.profile)
         {
             return Err("Invalid project record. Select the folder again.".into());
+        }
+        if !matches!(
+            self.image_ref.as_str(),
+            DEFAULT_ENVIRONMENT_IMAGE | project_image_update::CANDIDATE_IMAGE
+        ) {
+            return Err(
+                "The project guest image must have an approved signed stock image digest.".into(),
+            );
+        }
+        if let Some(update) = &self.image_update {
+            update.validate(self)?;
+        }
+        if self.image_update.is_some() != (self.stage == ProjectStage::UpdatingImage) {
+            return Err("The project image operation and stage do not match.".into());
         }
         if let Some(policy) = &self.policy {
             if !settings::valid_identifier(&policy.name) {
@@ -323,10 +368,18 @@ pub struct Registry {
     pub projects: Vec<ProjectRecord>,
 }
 
+enum RegistryRead {
+    Current(Registry),
+    ResetRequired,
+}
+
+const RESET_REQUIRED: &str =
+    "The records need the one-time project environment reset before opening projects.";
+
 impl Default for Registry {
     fn default() -> Self {
         Self {
-            schema_version: 2,
+            schema_version: 3,
             projects: Vec::new(),
         }
     }
@@ -334,14 +387,49 @@ impl Default for Registry {
 
 impl Registry {
     pub fn load(file: &Path) -> Result<Self, String> {
+        match Self::read_state(file)? {
+            RegistryRead::Current(registry) => Ok(registry),
+            RegistryRead::ResetRequired => Err(RESET_REQUIRED.into()),
+        }
+    }
+
+    pub(crate) fn requires_reset(file: &Path) -> Result<bool, String> {
+        Ok(matches!(
+            Self::read_state(file)?,
+            RegistryRead::ResetRequired
+        ))
+    }
+
+    fn read_state(file: &Path) -> Result<RegistryRead, String> {
         let Some(bytes) = storage::read_regular_bytes(file)? else {
-            return Ok(Self::default());
+            return Ok(RegistryRead::Current(Self::default()));
         };
-        Ok(migration::decode(file, &bytes)?.into_record())
+        let raw: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|_| "Could not read the saved projects.")?;
+        if matches!(raw["schemaVersion"].as_u64(), Some(1 | 2)) {
+            return Ok(RegistryRead::ResetRequired);
+        }
+        let registry: Self =
+            serde_json::from_value(raw).map_err(|_| "Could not read the saved projects.")?;
+        registry.validate()?;
+        Ok(RegistryRead::Current(registry))
+    }
+
+    fn load_after_reset(
+        file: &Path,
+        wait: impl FnOnce() -> Result<(), String>,
+    ) -> Result<Self, String> {
+        match Self::read_state(file)? {
+            RegistryRead::Current(registry) => Ok(registry),
+            RegistryRead::ResetRequired => {
+                wait()?;
+                Self::load(file)
+            }
+        }
     }
 
     fn validate(&self) -> Result<(), String> {
-        if self.schema_version != 2 {
+        if self.schema_version != 3 {
             return Err("This project registry version is unsupported.".into());
         }
         let mut identities = std::collections::HashSet::new();
@@ -351,28 +439,19 @@ impl Registry {
             if !identities.insert(&project.id) {
                 return Err("Duplicate project record found.".into());
             }
-            for environment in project.environments.iter() {
-                if !references.insert(environment.reference()) {
-                    return Err("Duplicate Brig environment reference found.".into());
-                }
+            if !references.insert(project.reference()) {
+                return Err("Duplicate Brig environment reference found.".into());
             }
         }
         Ok(())
     }
 
-    pub fn codex_projects(&self) -> Result<Vec<Project>, String> {
-        self.projects
-            .iter()
-            .filter(|record| record.environments.by_kind(AgentKind::Codex).is_ok())
-            .map(ProjectRecord::codex_project)
-            .collect()
-    }
-
     pub(crate) fn project_views(&self) -> Result<Vec<Project>, String> {
-        self.projects
+        Ok(self
+            .projects
             .iter()
-            .map(ProjectRecord::default_project)
-            .collect()
+            .map(|project| project.for_agent(AgentKind::Codex))
+            .collect())
     }
 
     pub fn environment(
@@ -380,7 +459,24 @@ impl Registry {
         project: &str,
         environment: &EnvironmentId,
     ) -> Result<Project, String> {
-        self.record(project)?.project(environment)
+        self.agent_environment(project, environment, AgentKind::Codex)
+    }
+
+    pub(crate) fn agent_environment(
+        &self,
+        identifier: &str,
+        environment: &EnvironmentId,
+        agent: AgentKind,
+    ) -> Result<Project, String> {
+        self.record(identifier)?.project(environment, agent)
+    }
+
+    pub(crate) fn agent_views(&self, identifier: &str) -> Result<[Project; 2], String> {
+        let project = self.record(identifier)?;
+        Ok([
+            project.for_agent(AgentKind::Codex),
+            project.for_agent(AgentKind::ClaudeCode),
+        ])
     }
 
     pub fn resolve_environment(
@@ -401,17 +497,13 @@ impl Registry {
             .ok_or("Project record not found. Select the folder again.".into())
     }
 
-    pub fn environments(&self, id: &str) -> Result<Environments, String> {
-        Ok(self.record(id)?.environments.clone())
-    }
-
     pub fn register_with_defaults(
         &mut self,
         selected: &Path,
         defaults: &settings::Settings,
     ) -> Result<Project, String> {
         let previous_count = self.projects.len();
-        let mut project = self.register(selected, &defaults.codex.profile)?;
+        let mut project = self.register(selected)?;
         if self.projects.len() > previous_count {
             project.network = defaults.network.clone();
             self.update(project.clone())?;
@@ -419,29 +511,7 @@ impl Registry {
         Ok(project)
     }
 
-    fn register_for_agent(
-        &mut self,
-        selected: &Path,
-        defaults: &settings::Settings,
-        kind: Option<AgentKind>,
-    ) -> Result<Project, String> {
-        let mut proposed = self.clone();
-        let previous_count = proposed.projects.len();
-        let project = proposed.register_with_defaults(selected, defaults)?;
-        let kind = kind.unwrap_or(project.agent_kind);
-        let environment = proposed.ensure_environment(&project.id, kind, defaults)?;
-        if proposed.projects.len() > previous_count && kind == AgentKind::ClaudeCode {
-            proposed.remove_environment(
-                &project.id,
-                &EnvironmentId::for_agent(&project.id, AgentKind::Codex),
-            )?;
-        }
-        let selected = proposed.environment(&project.id, &environment.environment_id)?;
-        *self = proposed;
-        Ok(selected)
-    }
-
-    pub fn register(&mut self, selected: &Path, profile: &str) -> Result<Project, String> {
+    pub fn register(&mut self, selected: &Path) -> Result<Project, String> {
         let path = check_folder(selected)?;
         let metadata = path.metadata().map_err(|error| error.to_string())?;
         let created = creation_time(&metadata);
@@ -457,7 +527,7 @@ impl Registry {
             project.volume_uuid = volume;
             project.updated_at = now();
             project.last_opened_at = Some(opened_at);
-            return project.default_project();
+            return Ok(project.for_agent(AgentKind::Codex));
         }
         let mut identity = Sha256::new();
         identity.update(path.as_os_str().as_encoded_bytes());
@@ -472,8 +542,8 @@ impl Registry {
             .into_owned();
         let project = Project {
             // hull places QMP sockets below the instance name; Darwin limits their path to 103 bytes.
-            label: format!("bd-{}", &id[..16]),
-            environment_id: EnvironmentId::for_agent(&id, AgentKind::Codex),
+            label: project_label(&id),
+            environment_id: EnvironmentId::for_project(&id),
             agent_kind: AgentKind::Codex,
             network: settings::Settings::default().network,
             id,
@@ -484,7 +554,9 @@ impl Registry {
             volume_uuid: volume,
             inode: metadata.ino(),
             created,
-            profile: profile.into(),
+            profile: ENVIRONMENT_PROFILE.into(),
+            image_ref: DEFAULT_ENVIRONMENT_IMAGE.into(),
+            image_update: None,
             policy: None,
             stage: crate::projects::ProjectStage::Selected,
             owns_session: true,
@@ -493,18 +565,23 @@ impl Registry {
             policy_detached: false,
             environment_verified: Some(false),
             environment_attempt: None,
+            approved_plan: None,
             removal: None,
             updated_at: now(),
             last_opened_at: Some(opened_at),
             options: None,
+            preview: None,
+            github_access: None,
         };
-        project.validate()?;
-        self.projects.push(project.clone().into());
+        let mut proposed = self.clone();
+        proposed.projects.push(project.clone().into());
+        proposed.validate()?;
+        *self = proposed;
         Ok(project)
     }
 
     pub fn project(&self, id: &str) -> Result<Project, String> {
-        self.record(id)?.default_project()
+        Ok(self.record(id)?.for_agent(AgentKind::Codex))
     }
 
     pub fn remove_environment(
@@ -512,27 +589,10 @@ impl Registry {
         id: &str,
         environment: &EnvironmentId,
     ) -> Result<(), String> {
-        self.environment(id, environment)?;
-        let mut proposed = self.clone();
-        if proposed
-            .record(id)?
-            .environments
-            .removal_effect(environment)?
-            == RemovalEffect::RemoveProject
-        {
-            proposed.projects.retain(|record| record.id != id);
-            proposed.validate()?;
-            *self = proposed;
-            return Ok(());
+        if self.environment(id, environment)?.github_access.is_some() {
+            return Err("Finish revoking GitHub access before removing the project record.".into());
         }
-        proposed
-            .projects
-            .iter_mut()
-            .find(|record| record.id == id)
-            .ok_or("Project not found.")?
-            .remove_environment(environment)?;
-        proposed.validate()?;
-        *self = proposed;
+        self.projects.retain(|record| record.id != id);
         Ok(())
     }
     fn rescan_paths(&mut self) -> bool {
@@ -555,6 +615,7 @@ impl Registry {
     }
     fn forget_unavailable(&mut self, id: &str) -> Result<(), String> {
         let project = self.project(id)?;
+        project.require_no_image_update()?;
         if project.folder_state() == FolderState::Available {
             return Err(
                 "The folder is available again. Open the project to manage its environment.".into(),
@@ -594,52 +655,10 @@ impl Registry {
         Ok(())
     }
 
-    pub fn ensure_environment(
-        &mut self,
-        project_id: &str,
-        kind: AgentKind,
-        defaults: &settings::Settings,
-    ) -> Result<AgentEnvironment, String> {
-        defaults.validate()?;
-        if let Membership::Present(existing) =
-            self.record(project_id)?.environments.membership(kind)
-        {
-            return Ok(existing.clone());
-        }
-        let mut project = self.project(project_id)?;
-        project.require_active()?;
-        let configuration = match kind {
-            AgentKind::Codex => &defaults.codex,
-            AgentKind::ClaudeCode => &defaults.claude_code,
-        };
-        project.environment_id = EnvironmentId::for_agent(project_id, kind);
-        project.agent_kind = kind;
-        project.profile = configuration.profile.clone();
-        project.label = project_id[..16].into();
-        project.network = defaults.network.clone();
-        project.policy = None;
-        project.stage = crate::projects::ProjectStage::Selected;
-        project.owns_session = true;
-        project.adopted_managed_profile = false;
-        project.owns_binding = false;
-        project.policy_detached = false;
-        project.environment_verified = Some(false);
-        project.environment_attempt = None;
-        project.removal = None;
-        project.validate()?;
-        let environment = AgentEnvironment::from_project(&project);
-        let mut proposed = self.clone();
-        proposed
-            .projects
-            .iter_mut()
-            .find(|record| record.id == project_id)
-            .ok_or("Project not found.")?
-            .environments
-            .add(environment.clone())?;
-        proposed.validate()?;
-        *self = proposed;
-        Ok(environment)
-    }
+}
+
+fn project_label(project: &str) -> String {
+    project[..16].into()
 }
 
 pub fn now() -> u64 {
@@ -711,25 +730,7 @@ fn volume_uuid(_path: &Path) -> Option<[u8; 16]> {
 }
 pub fn file(app: &AppHandle) -> Result<PathBuf, String> {
     let records = crate::storage::data_location::records_directory(app)?;
-    let file = crate::storage::data_location::directory(app)?.join("projects.json");
-    migrate(&file, &records)?;
-    Ok(file)
-}
-
-pub fn migrate(
-    file: &Path,
-    records: &crate::storage::data_location::RecordsDirectory,
-) -> Result<bool, String> {
-    storage::upgrade_record(file, records, |bytes| {
-        let decoded = migration::decode(file, bytes)?;
-        if let storage::RecordSchema::Upgrade(registry) = &decoded {
-            crate::storage::data_location::require_private_records(
-                file.parent().ok_or("Invalid project records location.")?,
-                registry,
-            )?;
-        }
-        Ok(decoded)
-    })
+    Ok(records.path().join("projects.json"))
 }
 
 pub fn check_folder(selected: &Path) -> Result<PathBuf, String> {
@@ -764,7 +765,6 @@ pub fn register_project(
     app: AppHandle,
     state: State<'_, Projects>,
     folder: String,
-    agent_kind: Option<AgentKind>,
 ) -> Result<Project, String> {
     let _guard = state
         .0
@@ -774,32 +774,8 @@ pub fn register_project(
     let file = file(&app)?;
     let _file_guard = storage::lock(&file)?;
     let mut registry = Registry::load(&file)?;
-    let project = registry.register_for_agent(Path::new(&folder), &settings, agent_kind)?;
+    let project = registry.register_with_defaults(Path::new(&folder), &settings)?;
     crate::storage::data_location::validate_project_records(&app, &registry)?;
-    storage::write(&file, &registry)?;
-    Ok(project)
-}
-
-#[tauri::command]
-pub fn ensure_project_environment(
-    app: AppHandle,
-    state: State<'_, Projects>,
-    identifier: String,
-    agent_kind: AgentKind,
-) -> Result<Project, String> {
-    let _guard = state
-        .0
-        .try_lock()
-        .map_err(|_| "Project setup is running. Try again shortly.")?;
-    let records = crate::storage::data_location::records_directory(&app)?;
-    let file = file(&app)?;
-    let _file_guard = storage::lock(&file)?;
-    let defaults = settings::load(&settings::file(&app)?)?;
-    let mut registry = Registry::load(&file)?;
-    let environment = registry.ensure_environment(&identifier, agent_kind, &defaults)?;
-    let project = registry.environment(&identifier, &environment.environment_id)?;
-    crate::storage::data_location::validate_project_records(&app, &registry)?;
-    records.verify_at(file.parent().ok_or("Invalid project storage location.")?)?;
     storage::write(&file, &registry)?;
     Ok(project)
 }
@@ -889,9 +865,12 @@ fn selected_developer_tools() -> Option<PathBuf> {
 #[tauri::command]
 pub async fn recent_projects(app: AppHandle) -> Result<Vec<ProjectSummary>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        Ok(project_summaries(
-            Registry::load(&file(&app)?)?.project_views()?,
-        ))
+        let registry = Registry::load_after_reset(&file(&app)?, || {
+            app.state::<crate::usage_store::Runtime>()
+                .wait()
+                .map(|_| ())
+        })?;
+        Ok(project_summaries(registry.project_views()?))
     })
     .await
     .map_err(|error| error.to_string())?
@@ -916,9 +895,12 @@ pub async fn rescan_projects(
 ) -> Result<Vec<ProjectSummary>, String> {
     let lock = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let file = file(&app)?;
+        if Registry::requires_reset(&file)? {
+            app.state::<crate::usage_store::Runtime>().wait()?;
+        }
         let projects = {
             let _guard = lock.lock().map_err(|error| error.to_string())?;
-            let file = file(&app)?;
             let _file_guard = storage::lock(&file)?;
             let mut registry = Registry::load(&file)?;
             if registry.rescan_paths() {
@@ -958,6 +940,11 @@ pub async fn forget_project(
         let file = file(&app)?;
         let _file_guard = storage::lock(&file)?;
         let mut registry = Registry::load(&file)?;
+        if registry.project(&identifier)?.github_access.is_some() {
+            return Err(
+                "Revoke GitHub access in Project settings before forgetting this project.".into(),
+            );
+        }
         registry.forget_unavailable(&identifier)?;
         crate::providers::shared_chatgpt::detach_project(&app, &mut account, &identifier, false)?;
         crate::providers::shared_claude::forget_project(&app, &identifier)?;
@@ -1016,44 +1003,6 @@ pub fn read_project_preferences(
     Ok(ProjectPreferences { project, options })
 }
 
-fn affected_environments(
-    registry: &Registry,
-    selected: &Project,
-    shared_resources: bool,
-) -> Result<Vec<Project>, String> {
-    registry
-        .environments(&selected.id)?
-        .iter()
-        .filter(|target| shared_resources || target.environment_id == selected.environment_id)
-        .map(|target| registry.environment(&selected.id, &target.environment_id))
-        .collect()
-}
-
-fn require_stopped_environments(
-    brig: &Brig,
-    profiles: &Path,
-    affected: &[Project],
-) -> Result<(), String> {
-    for target in affected {
-        // Brig only reports a session reference when the query can see its profile.
-        let scoped_brig = brig.for_project(target, profiles)?;
-        let sessions = scoped_brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
-        let sandboxes = sessions["data"]["sandboxes"]
-            .as_array()
-            .ok_or("Could not read Brig environment state.")?;
-        let reference = target.reference();
-        if sandboxes
-            .iter()
-            .any(|session| session["ref"] == reference && session["state"] != "stopped")
-        {
-            return Err(format!(
-                "Stop Brig environment {reference} before changing these settings."
-            ));
-        }
-    }
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn save_project_preferences(
     app: AppHandle,
@@ -1066,6 +1015,9 @@ pub async fn save_project_preferences(
     let lock = state.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = lock.lock().map_err(|error| error.to_string())?;
+        if options.verification != settings::Verification::Require {
+            return Err("Shared project guests require image signature verification.".into());
+        }
         let name = name.trim();
         if name.is_empty() || name.chars().count() > 120 || name.chars().any(char::is_control) {
             return Err("Use a project name with 1 to 120 characters.".into());
@@ -1081,25 +1033,13 @@ pub async fn save_project_preferences(
         let mut project = registry.resolve_environment(&identifier, environment_id.as_ref())?;
         project.require_active()?;
         let previous = project.settings(defaults)?;
-        let shared_resources = options.cpus != previous.cpus
-            || options.memory_mb != previous.memory_mb
-            || options.verification != previous.verification;
-        let affected = affected_environments(&registry, &project, shared_resources)?;
-        if affected.iter().any(|target| {
-            crate::environment::EnvironmentOperation::pending(&target.environment_id)
-        }) {
-            return Err(
-                "Wait for the affected environment operations to finish before changing these settings."
-                    .into(),
-            );
-        }
+        let _operation =
+            crate::environment::EnvironmentOperation::begin(&project.id, &project.environment_id)?;
         if crate::terminal::terminal_sessions(identifier.clone())
             .iter()
             .any(|process| {
                 process.running
-                    && (shared_resources
-                        || process.environment_id.is_none()
-                        || process.belongs_to(&project))
+                    && process.belongs_to_environment(&project.id, &project.environment_id)
             })
         {
             return Err(
@@ -1107,9 +1047,10 @@ pub async fn save_project_preferences(
                     .into(),
             );
         }
-        let brig = Brig::new(&proposed)?;
-        let profiles = crate::storage::data_location::directory(&app)?.join("profiles");
-        require_stopped_environments(&brig, &profiles, &affected)?;
+        let brig = crate::environment::brig_for_project(&app, &project, &previous)?;
+        if crate::environment::listed_as_running(&brig, &project)? {
+            return Err("Stop the Brig environment before changing project settings.".into());
+        }
         project.set_preferences(name, options, &previous);
         registry.update(project.clone())?;
         storage::write(&file, &registry)?;
@@ -1125,84 +1066,12 @@ mod tests {
     use std::os::unix::fs::{symlink, PermissionsExt};
 
     #[test]
-    fn shared_settings_check_the_running_managed_claude_sibling_from_codex() {
-        let root = std::env::temp_dir().join(format!(
-            "tugboat-shared-preferences-{}-{}",
-            std::process::id(),
-            NEXT_PROBE.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::create_dir(&root).unwrap();
-        let mut registry = Registry::default();
-        let codex = registry.register(&root, "codex").unwrap();
-        let claude = registry
-            .ensure_environment(
-                &codex.id,
-                AgentKind::ClaudeCode,
-                &settings::Settings::default(),
-            )
-            .unwrap();
-        let executable = root.join("brig-fixture");
-        fs::write(
-            &executable,
-            r#"#!/bin/sh
-[ "$1:$2" = '--json:ls' ] || exit 2
-if [ -n "$BRIG_PROFILE_DIR" ]; then
-    printf '%s' "$MANAGED_INVENTORY"
-else
-    printf '%s' "$DEFAULT_INVENTORY"
-fi
-"#,
-        )
-        .unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-        let inventory = |claude_row: serde_json::Value| {
-            serde_json::json!({
-                "apiVersion": "brig.sh/v1alpha1", "kind": "SandboxList",
-                "data": {"sandboxes": [
-                    {"ref": codex.reference(), "state": "stopped"},
-                    claude_row,
-                    {"ref": "codex@unrelated", "state": "running"}
-                ]}
-            })
-            .to_string()
-        };
-        let mut brig = Brig {
-            executable,
-            environment: crate::platform::command::environment(),
-        };
-        brig.environment.insert(
-            "DEFAULT_INVENTORY".into(),
-            inventory(serde_json::json!({"sandbox":"brig-tugboat-claude", "state":"running"})),
-        );
-        brig.environment.insert(
-            "MANAGED_INVENTORY".into(),
-            inventory(serde_json::json!({"ref":claude.reference(), "state":"running"})),
-        );
-        let profiles = root.join("profiles");
-        let shared = affected_environments(&registry, &codex, true).unwrap();
-        let result = require_stopped_environments(&brig, &profiles, &shared);
-        let selected_only = affected_environments(&registry, &codex, false).unwrap();
-        assert!(require_stopped_environments(&brig, &profiles, &selected_only).is_ok());
-        brig.environment.insert(
-            "DEFAULT_INVENTORY".into(),
-            inventory(serde_json::json!({"sandbox":"brig-tugboat-claude", "state":"stopped"})),
-        );
-        brig.environment.insert(
-            "MANAGED_INVENTORY".into(),
-            inventory(serde_json::json!({"ref":claude.reference(), "state":"stopped"})),
-        );
-        assert!(require_stopped_environments(&brig, &profiles, &shared).is_ok());
-        fs::remove_dir_all(root).unwrap();
-        assert!(result.unwrap_err().contains(&claude.reference()));
-    }
-
-    #[test]
     #[cfg(target_os = "macos")]
     fn persistent_volume_identity_accepts_a_new_device_number_but_rejects_another_volume() {
         let root = std::env::temp_dir().join(format!("tugboat-volume-{}", std::process::id()));
         fs::create_dir_all(root.join("project")).unwrap();
         let mut registry = Registry::default();
-        let mut project = registry.register(&root.join("project"), "codex").unwrap();
+        let mut project = registry.register(&root.join("project")).unwrap();
         assert!(
             project.volume_uuid.is_some(),
             "the test volume must provide a UUID"
@@ -1228,7 +1097,7 @@ fi
         fs::create_dir_all(&root).unwrap();
         let file = root.join("projects.json");
         let mut registry = Registry::load(&file).unwrap();
-        let mut project = registry.register(&root, "codex").unwrap();
+        let mut project = registry.register(&root).unwrap();
         project.name = "Saved project name".into();
         project.stage = crate::projects::ProjectStage::EnvironmentReady;
         project.policy = Some(Policy {
@@ -1266,7 +1135,7 @@ fi
             .unwrap()
             .check_path()
             .unwrap();
-        assert_eq!(registry.register(&root, "codex").unwrap().id, project.id);
+        assert_eq!(registry.register(&root).unwrap().id, project.id);
         assert_eq!(registry.projects.len(), 1);
         fs::remove_dir_all(root).unwrap();
     }
@@ -1278,7 +1147,7 @@ fi
         let folder = root.join("project");
         fs::create_dir_all(&folder).unwrap();
         let mut registry = Registry::default();
-        let mut project = registry.register(&folder, "codex").unwrap();
+        let mut project = registry.register(&folder).unwrap();
         project.volume_uuid = None;
         project.device = project.device.wrapping_add(1);
         registry.update(project.clone()).unwrap();
@@ -1304,7 +1173,7 @@ fi
             std::env::temp_dir().join(format!("tugboat-reselect-remount-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         let mut registry = Registry::default();
-        let mut project = registry.register(&root, "codex").unwrap();
+        let mut project = registry.register(&root).unwrap();
         let metadata = root.metadata().unwrap();
         project.volume_uuid = None;
         project.device = project.device.wrapping_add(1);
@@ -1312,7 +1181,7 @@ fi
         unknown_creation.created = 0;
         assert!(!unknown_creation.matches_folder(&metadata, volume_uuid(&root), true));
         registry.update(project.clone()).unwrap();
-        let reopened = registry.register(&root, "codex").unwrap();
+        let reopened = registry.register(&root).unwrap();
         assert_eq!(reopened.id, project.id);
         assert_eq!(reopened.reference(), project.reference());
         assert!(reopened.last_opened_at > project.last_opened_at);
@@ -1329,8 +1198,8 @@ fi
         fs::write(root.join("project/source.txt"), "kept").unwrap();
         fs::write(root.join("guest-marker"), "kept").unwrap();
         let mut registry = Registry::load(&root.join("projects.json")).unwrap();
-        let first = registry.register(&root.join("project"), "codex").unwrap();
-        let other = registry.register(&root.join("other"), "codex").unwrap();
+        let first = registry.register(&root.join("project")).unwrap();
+        let other = registry.register(&root.join("other")).unwrap();
         assert!(registry.forget_unavailable(&first.id).is_err());
         fs::rename(root.join("project"), root.join("moved")).unwrap();
         assert_eq!(
@@ -1365,7 +1234,7 @@ fi
         let mut registry = Registry::load(&file).unwrap();
         // Both writers would read the same snapshot without the interprocess lock.
         std::thread::sleep(Duration::from_millis(100));
-        registry.register(&selected, "codex").unwrap();
+        registry.register(&selected).unwrap();
         storage::write(&file, &registry).unwrap();
     }
 
@@ -1413,23 +1282,23 @@ fi
         fs::create_dir_all(root.join("original")).unwrap();
         let file = root.join("registry.json");
         let mut registry = Registry::load(&file).unwrap();
-        let mut project = registry.register(&root.join("original"), "codex").unwrap();
+        let mut project = registry.register(&root.join("original")).unwrap();
         let first_opened = project.last_opened_at;
         project.name = "Customer billing".into();
         registry.update(project.clone()).unwrap();
-        let mut legacy = migration_tests::legacy_registry(&registry);
+        let mut legacy = serde_json::to_value(&registry).unwrap();
         legacy["projects"][0]
             .as_object_mut()
             .unwrap()
             .remove("lastOpenedAt");
         storage::write(&file, &legacy).unwrap();
         let mut registry = Registry::load(&file).unwrap();
-        let reopened = registry.register(&root.join("original"), "codex").unwrap();
+        let reopened = registry.register(&root.join("original")).unwrap();
         assert_eq!(reopened.name, "Customer billing");
         assert_eq!(reopened.id, project.id);
         assert!(reopened.last_opened_at > first_opened);
         fs::rename(root.join("original"), root.join("moved")).unwrap();
-        let moved = registry.register(&root.join("moved"), "codex").unwrap();
+        let moved = registry.register(&root.join("moved")).unwrap();
         assert_eq!(moved.name, "Customer billing");
         assert_eq!(moved.id, project.id);
         assert_eq!(moved.path, fs::canonicalize(root.join("moved")).unwrap());
@@ -1453,7 +1322,7 @@ fi
             std::env::temp_dir().join(format!("tugboat-project-options-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         let mut registry = Registry::default();
-        let mut project = registry.register(&root, "codex").unwrap();
+        let mut project = registry.register(&root).unwrap();
         let defaults = settings::Settings::default();
         project.options = Some(ProjectOptions {
             cpus: 2,
@@ -1465,6 +1334,7 @@ fi
         assert_eq!(effective.cpus, 2);
         assert_eq!(effective.memory_mb, 2048);
         assert_eq!(effective.network, settings::Network::Offline);
+        assert_eq!(effective.verification, settings::Verification::Require);
         assert_eq!(defaults.cpus, 4);
         assert_eq!(defaults.network, settings::Network::Isolated);
         project.options.as_mut().unwrap().cpus = 0;
@@ -1476,7 +1346,7 @@ fi
     #[test]
     fn environment_proof_survives_rename_and_expires_when_resources_or_plan_change() {
         let mut registry = Registry::default();
-        let mut project = registry.register(&std::env::temp_dir(), "codex").unwrap();
+        let mut project = registry.register(&std::env::temp_dir()).unwrap();
         project.stage = crate::projects::ProjectStage::EnvironmentReady;
         project.environment_verified = Some(true);
         project.environment_attempt = Some(EnvironmentAttempt {
@@ -1503,31 +1373,32 @@ fi
     }
 
     #[test]
-    fn opening_order_is_independent_of_setup_updates_and_migrates_older_records() {
+    fn opening_order_is_independent_of_setup_updates_and_handles_missing_legacy_recency() {
         let root =
             std::env::temp_dir().join(format!("tugboat-project-recency-{}", std::process::id()));
         fs::create_dir_all(root.join("first")).unwrap();
         fs::create_dir_all(root.join("second")).unwrap();
         let mut registry = Registry::load(&root.join("registry.json")).unwrap();
-        let mut first = registry.register(&root.join("first"), "codex").unwrap();
-        let second = registry.register(&root.join("second"), "codex").unwrap();
+        let mut first = registry.register(&root.join("first")).unwrap();
+        let second = registry.register(&root.join("second")).unwrap();
         assert!(opened_at(&second) > opened_at(&first));
         first.updated_at = now() + 86_400;
         first.stage = crate::projects::ProjectStage::EnvironmentReady;
         registry.update(first.clone()).unwrap();
         assert!(opened_at(&second) > opened_at(&registry.project(&first.id).unwrap()));
-        let reopened = registry.register(&root.join("first"), "codex").unwrap();
+        let reopened = registry.register(&root.join("first")).unwrap();
         assert!(opened_at(&reopened) > opened_at(&second));
-        let mut legacy = migration_tests::legacy_registry(&registry);
+        let mut legacy = serde_json::to_value(&registry).unwrap();
         for project in legacy["projects"].as_array_mut().unwrap() {
             project.as_object_mut().unwrap().remove("lastOpenedAt");
         }
         storage::write(&root.join("registry.json"), &legacy).unwrap();
         let migrated = Registry::load(&root.join("registry.json")).unwrap();
         assert!(migrated
-            .projects
+            .project_views()
+            .unwrap()
             .iter()
-            .all(|project| project.last_opened_at == Some(project.updated_at * 1000)));
+            .all(|project| opened_at(project) == project.updated_at * 1000));
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1537,7 +1408,7 @@ fi
             std::env::temp_dir().join(format!("tugboat-project-branch-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
         let mut registry = Registry::load(&root.join("registry.json")).unwrap();
-        let project = registry.register(&root, "codex").unwrap();
+        let project = registry.register(&root).unwrap();
         assert_eq!(git_branch(&project), None);
         let git = host::discover("git", None)
             .and_then(|git| git_for_metadata(git, selected_developer_tools));
@@ -1599,15 +1470,12 @@ fi
             std::env::temp_dir().join(format!("brig-spaced-projects-{}", std::process::id()));
         let folder = root.join("parent folder/sample project");
         fs::create_dir_all(&folder).unwrap();
-        let mut registry = Registry {
-            schema_version: 2,
-            projects: Vec::new(),
-        };
-        let project = registry.register(&folder, "codex").unwrap();
+        let mut registry = Registry::default();
+        let project = registry.register(&folder).unwrap();
         assert_eq!(project.path, fs::canonicalize(&folder).unwrap());
         assert_eq!(project.name, "sample project");
         project.check_guest_path().unwrap();
-        assert_eq!(registry.register(&folder, "codex").unwrap().id, project.id);
+        assert_eq!(registry.register(&folder).unwrap().id, project.id);
         for name in ["tab\tname", "line\nname", "quote'name"] {
             assert!(validate_guest_path(name).is_err());
         }
@@ -1620,25 +1488,15 @@ fi
         fs::create_dir_all(root.join("one/project")).unwrap();
         fs::create_dir_all(root.join("two/project")).unwrap();
         symlink(root.join("one/project"), root.join("alias")).unwrap();
-        let mut registry = Registry {
-            schema_version: 2,
-            projects: Vec::new(),
-        };
-        let first = registry
-            .register(&root.join("one/project"), "codex")
-            .unwrap();
-        let alias = registry.register(&root.join("alias"), "codex").unwrap();
-        let second = registry
-            .register(&root.join("two/project"), "codex")
-            .unwrap();
+        let mut registry = Registry::default();
+        let first = registry.register(&root.join("one/project")).unwrap();
+        let alias = registry.register(&root.join("alias")).unwrap();
+        let second = registry.register(&root.join("two/project")).unwrap();
         assert_eq!(first.id, alias.id);
         assert_ne!(first.label, second.label);
         assert_eq!(registry.projects.len(), 2);
         fs::rename(root.join("one/project"), root.join("moved")).unwrap();
-        assert_eq!(
-            registry.register(&root.join("moved"), "codex").unwrap().id,
-            first.id
-        );
+        assert_eq!(registry.register(&root.join("moved")).unwrap().id, first.id);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1659,16 +1517,13 @@ fi
         let root = std::env::temp_dir().join(format!("brig-long-project-{}", std::process::id()));
         let folder = root.join("a-very-long-project-name-that-must-not-lengthen-the-hvi-socket");
         fs::create_dir_all(&folder).unwrap();
-        let mut registry = Registry {
-            schema_version: 2,
-            projects: Vec::new(),
-        };
-        let project = registry.register(&folder, "codex").unwrap();
+        let mut registry = Registry::default();
+        let project = registry.register(&folder).unwrap();
         assert_eq!(project.name, folder.file_name().unwrap().to_str().unwrap());
-        assert_eq!(project.label.len(), 19);
+        assert_eq!(project.label.len(), 16);
         let socket = format!(
-            "/private/tmp/brig-bd15-mCHq6N/home/.hull/store/instances/brig-codex-{}/qmp.sock",
-            project.label
+            "/private/tmp/brig-bd15-mCHq6N/home/.hull/store/instances/brig-{}-{}/qmp.sock",
+            project.profile, project.label
         );
         assert!(socket.len() <= 103);
         fs::remove_dir_all(root).unwrap();
@@ -1690,14 +1545,12 @@ mod transition_review {
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("projects.json");
         let mut registry = Registry::default();
-        let mut project = registry.register(&root, "codex").unwrap();
+        let mut project = registry.register(&root).unwrap();
         project.stage = ProjectStage::Removing;
         project.removal = Some(Removal {
             reference: project.reference(),
             workspace: root.to_string_lossy().into(),
             had_environment: true,
-            logout: false,
-            logged_out: false,
             stopped: true,
             environment_removed: true,
             binding_detached: false,
@@ -1707,16 +1560,16 @@ mod transition_review {
         registry.update(project).unwrap();
         let mut saved = serde_json::to_value(&registry).unwrap();
         assert_eq!(
-            saved["projects"][0]["environments"][0]["removal"]["bindingDetached"],
+            saved["projects"][0]["environment"]["removal"]["bindingDetached"],
             false
         );
-        saved["projects"][0]["environments"][0]["removal"]["policyHandled"] = true.into();
+        saved["projects"][0]["environment"]["removal"]["policyHandled"] = true.into();
         crate::storage::write(&file, &saved).unwrap();
         let loaded = Registry::load(&file);
         std::fs::remove_dir_all(root).unwrap();
         if let Ok(registry) = loaded {
-            let mut removal = registry.projects[0]
-                .codex_project()
+            let mut removal = registry
+                .project(&registry.projects[0].id)
                 .unwrap()
                 .removal
                 .unwrap();

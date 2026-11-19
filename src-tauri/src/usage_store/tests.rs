@@ -45,12 +45,7 @@ impl Drop for Fixture {
 }
 
 fn environment(kind: AgentKind) -> Environment {
-    Environment::new(
-        PROJECT.into(),
-        EnvironmentId::for_agent(PROJECT, kind),
-        kind,
-    )
-    .unwrap()
+    Environment::new(PROJECT.into(), EnvironmentId::for_project(PROJECT), kind).unwrap()
 }
 
 fn record() -> SessionRecord {
@@ -110,7 +105,7 @@ fn exact_schema_and_all_fields_round_trip_after_reopen() {
                 |row| row.get::<_, i64>(0)
             )
             .unwrap(),
-        9
+        8
     );
     assert_eq!(
         store
@@ -128,6 +123,47 @@ fn exact_schema_and_all_fields_round_trip_after_reopen() {
     let reopened = Store::open(&records).unwrap();
     assert!(reopened.load_environment(&env).unwrap() == ledger);
     reopened.integrity_check().unwrap();
+}
+
+#[test]
+fn equal_native_ids_keep_separate_agent_state_and_cost_after_reopen() {
+    let fixture = Fixture::new();
+    let (records, mut store) = fixture.store();
+    let codex = environment(AgentKind::Codex);
+    let claude = environment(AgentKind::ClaudeCode);
+    assert_eq!(codex.environment_id, claude.environment_id);
+    for (target, title, cost) in [(&codex, "Codex chat", 0.25), (&claude, "Claude chat", 0.75)] {
+        let mut ledger = Ledger::default();
+        let mut session = record();
+        session.agent_kind = Some(target.agent_kind);
+        session.title = title.into();
+        session.state = SessionState::Active;
+        session.project_exclusion = None;
+        let turn = session.turns.get_mut("bucket-differs").unwrap();
+        turn.requests.truncate(1);
+        turn.requests[0].cost_usd = Some(cost);
+        ledger.sessions.insert(SESSION.into(), session);
+        store.save_environment(target, &ledger).unwrap();
+    }
+    assert!(store
+        .change_state(&claude, SESSION, SessionState::Archived)
+        .unwrap());
+    store.close().unwrap();
+    let reopened = Store::open(&records).unwrap();
+    for (target, title, state, cost) in [
+        (&codex, "Codex chat", SessionState::Active, 0.25),
+        (&claude, "Claude chat", SessionState::Archived, 0.75),
+    ] {
+        let ledger = reopened.load_environment(target).unwrap();
+        let session = &ledger.sessions[SESSION];
+        assert_eq!(session.title, title);
+        assert_eq!(session.agent_kind, Some(target.agent_kind));
+        assert_eq!(session.state, state);
+        assert_eq!(
+            session.turns["bucket-differs"].requests[0].cost_usd,
+            Some(cost)
+        );
+    }
 }
 
 #[test]
@@ -923,7 +959,7 @@ fn claude_request_owner_lookup_keeps_projects_environments_and_hidden_slots_sepa
     let other_project_id = "22222222222222222222222222222222";
     let other_project = Environment::new(
         other_project_id.into(),
-        EnvironmentId::for_agent(other_project_id, AgentKind::ClaudeCode),
+        EnvironmentId::for_project(other_project_id),
         AgentKind::ClaudeCode,
     )
     .unwrap();

@@ -36,7 +36,7 @@ fn appending_one_record_preserves_unrelated_facts_and_atomically_saves_source_lo
     let project = "22222222222222222222222222222222";
     let other = crate::usage_store::Environment::new(
         project.into(),
-        projects::EnvironmentId::for_agent(project, AgentKind::Codex),
+        projects::EnvironmentId::for_project(project),
         AgentKind::Codex,
     )
     .unwrap();

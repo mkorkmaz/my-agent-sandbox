@@ -1,14 +1,20 @@
-use crate::{agents::AgentKind, environment::CheckedProject, platform::command, projects::Project};
+use crate::{
+    agents::AgentKind,
+    environment::{managed_profile, shared_runtime, CheckedProject},
+    platform::command,
+    projects::Project,
+};
 use std::{sync::atomic::AtomicBool, time::Duration};
 
 const SCRIPT: &str = include_str!("guest_credentials.py");
 
 fn managed(checked: &CheckedProject) -> Result<(), String> {
-    if !crate::environment::managed_profile::owns(&checked.project) {
-        return Err("Shared Claude sign-in requires an environment created by Tugboat with its tugboat-claude profile.".into());
+    if checked.project.agent_kind != AgentKind::ClaudeCode
+        || !managed_profile::shared(&checked.project)
+    {
+        return Err("Shared Claude sign-in requires a verified Tugboat project guest.".into());
     }
-    // checked_environment verifies the immutable managed profile before this point.
-    Ok(())
+    shared_runtime::verify_claude(checked)
 }
 
 pub(super) fn publish(checked: &CheckedProject, bytes: Vec<u8>) -> Result<(), String> {
@@ -25,7 +31,7 @@ pub(super) fn remove_using(
     brig: &crate::platform::brig::Brig,
     project: &Project,
 ) -> Result<(), String> {
-    if !crate::environment::managed_profile::owns(project) {
+    if !managed_profile::shared(project) {
         return Err("The shared Claude copy has an unsupported profile.".into());
     }
     execute_using(brig, project, "remove", None)
@@ -99,11 +105,10 @@ pub(super) fn in_use(project: &Project) -> bool {
         .iter()
         .any(|process| {
             process.belongs_to(project)
-                && process.agent_kind == Some(AgentKind::ClaudeCode)
                 && process.running
-                && matches!(
-                    process.purpose,
-                    "claude" | "claude-resume" | "login" | "shell"
-                )
+                && matches!(process.purpose, "claude" | "claude-resume" | "login")
+                || (process.running
+                    && process.purpose == "shell"
+                    && process.belongs_to_environment(&project.id, &project.environment_id))
         })
 }

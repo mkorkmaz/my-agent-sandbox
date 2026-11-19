@@ -1,5 +1,5 @@
 use super::*;
-use crate::usage_store::{importer, SharedStore, Store};
+use crate::usage_store::{bootstrap, SharedStore, Store};
 
 fn family(watch: &Watch, name: &str) {
     let source = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -24,7 +24,7 @@ fn family(watch: &Watch, name: &str) {
     }
 }
 
-fn imported(fixture: &Fixture, watch: &Watch, ledger: &Ledger) -> (Watch, PathBuf) {
+fn seeded(fixture: &Fixture, watch: &Watch, ledger: &Ledger) -> (Watch, PathBuf) {
     let directory = fixture.0.join("records");
     fs::create_dir_all(&directory).unwrap();
     let records = crate::storage::data_location::RecordsDirectory::fixture(&directory);
@@ -40,20 +40,29 @@ fn imported(fixture: &Fixture, watch: &Watch, ledger: &Ledger) -> (Watch, PathBu
             .join(format!("{}.json", target.environment_id))
     };
     storage::write(&path, ledger).unwrap();
-    let before = fs::read(&path).unwrap();
+    let mut store = bootstrap::open_or_initialize(&records).unwrap();
+    let environment = target.usage_environment().unwrap();
+    store.save_environment(&environment, ledger).unwrap();
     if target.agent_kind == AgentKind::ClaudeCode {
-        fs::write(
-            storage::v1_backup_path(&path),
-            b"immutable previous v1 data\n",
+        reset_fixture_pricing(&store, &environment);
+    }
+    let mut sql = watch.clone();
+    sql.records_directory = Some(records);
+    sql.store = Some(SharedStore::new(store));
+    (sql, path)
+}
+
+fn reset_fixture_pricing(store: &Store, environment: &crate::usage_store::Environment) {
+    let key = crate::usage_store::codecs::environment_key(&store.connection, environment)
+        .unwrap()
+        .unwrap();
+    store
+        .connection
+        .execute(
+            "UPDATE usage_environments SET claude_pricing_version=0 WHERE environment_key=?1",
+            [key],
         )
         .unwrap();
-    }
-    importer::activate(&records).unwrap();
-    assert_eq!(fs::read(&path).unwrap(), before);
-    let mut sql = watch.clone();
-    sql.records_directory = Some(records.clone());
-    sql.store = Some(SharedStore::new(Store::open(&records).unwrap()));
-    (sql, path)
 }
 
 fn value(value: &impl Serialize) -> Value {
@@ -75,7 +84,7 @@ fn saved_project_snapshot_uses_only_recorded_usage_and_keeps_sessions_unavailabl
         }
         let current = synchronize(&legacy).unwrap().0;
         let ledger = legacy.selected_ledger().unwrap();
-        let (sql, _) = imported(&fixture, &legacy, &ledger);
+        let (sql, _) = seeded(&fixture, &legacy, &ledger);
         let store = sql.store.as_ref().unwrap();
         let target = sql.target.as_ref().unwrap().clone();
         fs::remove_dir_all(&legacy.home).unwrap();
@@ -95,7 +104,7 @@ fn saved_project_snapshot_uses_only_recorded_usage_and_keeps_sessions_unavailabl
 
         let other_id = "f".repeat(32);
         let other = environment_history::Target {
-            environment_id: projects::EnvironmentId::for_agent(&other_id, kind),
+            environment_id: projects::EnvironmentId::for_project(&other_id),
             project_id: other_id,
             agent_kind: kind,
         };
@@ -114,24 +123,16 @@ fn verified_original_folder_rename_preserves_both_agents_and_usage() {
     let renamed_path = fixture.0.join("renamed project");
     fs::create_dir(&original_path).unwrap();
     let mut registry = projects::Registry::default();
-    let original = registry.register(&original_path, "codex").unwrap();
-    registry
-        .ensure_environment(
-            &original.id,
-            AgentKind::ClaudeCode,
-            &crate::desktop::settings::Settings::default(),
-        )
-        .unwrap();
+    let original = registry.register(&original_path).unwrap();
     let records_path = fixture.0.join("records");
     fs::create_dir(&records_path).unwrap();
     let records = crate::storage::data_location::RecordsDirectory::fixture(&records_path);
-    importer::activate(&records).unwrap();
-    let store = SharedStore::new(Store::open(&records).unwrap());
+    let store = SharedStore::new(bootstrap::open_or_initialize(&records).unwrap());
     let mut watches = [AgentKind::Codex, AgentKind::ClaudeCode].map(|kind| {
         let mut watch = fixture.watch(kind);
         watch.target = Some(environment_history::Target {
             project_id: original.id.clone(),
-            environment_id: projects::EnvironmentId::for_agent(&original.id, kind),
+            environment_id: projects::EnvironmentId::for_project(&original.id),
             agent_kind: kind,
         });
         watch.records_directory = Some(records.clone());
@@ -146,11 +147,11 @@ fn verified_original_folder_rename_preserves_both_agents_and_usage() {
     assert!(original_dashboard.usage.total > 0);
 
     fs::rename(&original_path, &renamed_path).unwrap();
-    let renamed = registry.register(&renamed_path, "codex").unwrap();
+    let renamed = registry.register(&renamed_path).unwrap();
     assert_eq!(renamed.id, original.id);
     assert_eq!(renamed.reference(), original.reference());
     fs::create_dir(&original_path).unwrap();
-    let replacement = registry.register(&original_path, "codex").unwrap();
+    let replacement = registry.register(&original_path).unwrap();
     assert_ne!(replacement.id, original.id);
     let registry_file = records_path.join("projects.json");
     storage::write(&registry_file, &registry).unwrap();
@@ -186,7 +187,7 @@ fn recorded_snapshot_reflects_an_external_database_commit() {
     let legacy = fixture.watch(AgentKind::Codex);
     write_codex(&legacy);
     synchronize(&legacy).unwrap();
-    let (sql, _) = imported(&fixture, &legacy, &legacy.selected_ledger().unwrap());
+    let (sql, _) = seeded(&fixture, &legacy, &legacy.selected_ledger().unwrap());
     let store = sql.store.as_ref().unwrap();
     let target = sql.target.as_ref().unwrap().clone();
     let before = environment_history::recorded_snapshot(&[target.clone()], store).unwrap();
@@ -206,10 +207,8 @@ fn recorded_snapshot_reflects_an_external_database_commit() {
     let mut current = verified.clone();
     environment_history::retain_verified_availability(&mut current, Some(&verified));
     assert!(current.conversations[0].available);
-    current.conversations[0].environment_id = Some(crate::projects::EnvironmentId::for_agent(
-        "other-project",
-        AgentKind::Codex,
-    ));
+    current.conversations[0].environment_id =
+        Some(crate::projects::EnvironmentId::for_project("other-project"));
     environment_history::retain_verified_availability(&mut current, Some(&verified));
     assert!(!current.conversations[0].available);
     let update = RecordedDashboardUpdate {
@@ -225,15 +224,16 @@ fn recorded_snapshot_reflects_an_external_database_commit() {
 }
 
 #[test]
-fn saved_project_snapshot_combines_agent_environments_without_merging_their_sessions() {
+fn saved_project_snapshot_combines_shared_environment_usage_without_merging_agent_sessions() {
     let fixture = Fixture::new("sqlite-opening-snapshot-agents");
     let codex = fixture.watch(AgentKind::Codex);
-    let claude = fixture.watch(AgentKind::ClaudeCode);
+    let mut claude = fixture.watch(AgentKind::ClaudeCode);
+    claude.home = codex.home.clone();
     write_codex(&codex);
     write_claude(&claude);
     let codex_dashboard = synchronize(&codex).unwrap().0;
     let claude_dashboard = synchronize(&claude).unwrap().0;
-    let (sql, _) = imported(&fixture, &codex, &codex.selected_ledger().unwrap());
+    let (sql, _) = seeded(&fixture, &codex, &codex.selected_ledger().unwrap());
     let store = sql.store.as_ref().unwrap();
     let claude_target = claude.target.as_ref().unwrap().clone();
     store
@@ -252,9 +252,13 @@ fn saved_project_snapshot_combines_agent_environments_without_merging_their_sess
     assert_eq!(saved.usage, expected_usage);
     assert_eq!(saved.conversations.len(), 2);
     assert_eq!(saved.conversations[0].id, saved.conversations[1].id);
-    assert_ne!(
+    assert_eq!(
         saved.conversations[0].environment_id,
         saved.conversations[1].environment_id
+    );
+    assert_ne!(
+        saved.conversations[0].agent_kind,
+        saved.conversations[1].agent_kind
     );
     assert!(saved.conversations.iter().all(|entry| !entry.available));
     store.close().unwrap();
@@ -282,7 +286,7 @@ fn sql_public_contracts_match_both_agents_and_three_claude_fixtures() {
         let expected = synchronize(&legacy).unwrap().0;
         let ledger = legacy.selected_ledger().unwrap();
         let expected_details = usage_details::from_ledger(&ledger, CHAT).unwrap();
-        let (sql, source) = imported(&fixture, &legacy, &ledger);
+        let (sql, source) = seeded(&fixture, &legacy, &ledger);
         let source_bytes = fs::read(&source).unwrap();
         let store = sql.store.as_ref().unwrap();
         let target = sql.target.as_ref().unwrap();
@@ -395,9 +399,8 @@ fn sql_offline_claude_preparation_runs_before_dashboard_or_details_once_and_roll
             root_session_id: CHAT.into(),
             root_cwd: "/work/other".into(),
         });
-        let (sql, original) = imported(&fixture, &legacy, &raw);
+        let (sql, original) = seeded(&fixture, &legacy, &raw);
         let original_bytes = fs::read(&original).unwrap();
-        let backup = storage::v1_backup_path(&original);
         let store = sql.store.as_ref().unwrap();
         let target = sql.target.as_ref().unwrap();
         let environment = target.usage_environment().unwrap();
@@ -485,7 +488,6 @@ fn sql_offline_claude_preparation_runs_before_dashboard_or_details_once_and_roll
                 .unwrap()
         );
         assert_eq!(fs::read(&original).unwrap(), original_bytes);
-        assert_eq!(fs::read(&backup).unwrap(), b"immutable previous v1 data\n");
         store.close().unwrap();
         let reopened =
             SharedStore::new(Store::open(sql.records_directory.as_ref().unwrap()).unwrap());

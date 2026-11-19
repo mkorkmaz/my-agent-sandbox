@@ -13,6 +13,8 @@ const LIMIT: u64 = 1_048_576;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Binding {
     pub project_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment_id: Option<crate::projects::EnvironmentId>,
     pub directory: PathBuf,
     pub auth_hash: Option<String>,
     pub access_hash: Option<String>,
@@ -33,7 +35,12 @@ pub struct PendingLogin {
 
 impl Binding {
     pub fn environment_id(&self) -> crate::projects::EnvironmentId {
-        crate::projects::EnvironmentId::for_agent(&self.project_id, crate::agents::AgentKind::Codex)
+        self.environment_id.clone().unwrap_or_else(|| {
+            crate::projects::EnvironmentId::for_agent(
+                &self.project_id,
+                crate::agents::AgentKind::Codex,
+            )
+        })
     }
 
     pub fn belongs_to(&self, project: &crate::projects::Project) -> bool {
@@ -41,11 +48,18 @@ impl Binding {
             && self.project_id == project.id
             && self.environment_id() == project.environment_id
     }
+
+    pub(super) fn is_current(&self) -> bool {
+        self.environment_id.as_ref()
+            == Some(&crate::projects::EnvironmentId::for_project(
+                &self.project_id,
+            ))
+    }
 }
 
 impl PendingLogin {
     pub fn environment_id(&self) -> crate::projects::EnvironmentId {
-        crate::projects::EnvironmentId::for_agent(&self.project_id, crate::agents::AgentKind::Codex)
+        crate::projects::EnvironmentId::for_project(&self.project_id)
     }
 }
 
@@ -119,6 +133,12 @@ impl Session {
         let mut projects = std::collections::HashSet::new();
         for binding in &self.bindings {
             if binding.project_id.len() != 32
+                || (!binding.is_current()
+                    && binding.environment_id()
+                        != crate::projects::EnvironmentId::for_agent(
+                            &binding.project_id,
+                            crate::agents::AgentKind::Codex,
+                        ))
                 || !binding
                     .project_id
                     .bytes()
@@ -132,7 +152,7 @@ impl Session {
                     .directory
                     .components()
                     .any(|part| matches!(part, std::path::Component::ParentDir))
-                || !projects.insert(&binding.project_id)
+                || !projects.insert((&binding.project_id, binding.environment_id()))
                 || binding.auth_hash.as_ref().is_some_and(|hash| {
                     hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit())
                 })

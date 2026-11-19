@@ -16,7 +16,12 @@ impl Target {
         }
     }
     pub fn key(&self) -> String {
-        format!("{}|{}", self.project_id, self.environment_id)
+        format!(
+            "{}|{}|{}",
+            self.project_id,
+            self.environment_id,
+            self.agent_kind.binary()
+        )
     }
     pub fn annotate(&self, dashboard: &mut Dashboard) {
         for conversation in &mut dashboard.conversations {
@@ -104,13 +109,21 @@ pub(super) fn retain_verified_availability(recorded: &mut Dashboard, verified: O
         .flat_map(|dashboard| &dashboard.conversations)
         .map(|conversation| {
             (
-                (conversation.environment_id.clone(), conversation.id.clone()),
+                (
+                    conversation.environment_id.clone(),
+                    conversation.agent_kind,
+                    conversation.id.clone(),
+                ),
                 conversation.available,
             )
         })
         .collect();
     for conversation in &mut recorded.conversations {
-        let key = (conversation.environment_id.clone(), conversation.id.clone());
+        let key = (
+            conversation.environment_id.clone(),
+            conversation.agent_kind,
+            conversation.id.clone(),
+        );
         conversation.available &= available.get(&key).copied().unwrap_or(false);
     }
     if let Some(verified) = verified {
@@ -206,11 +219,12 @@ impl History {
         flush: bool,
     ) -> Result<(), String> {
         let _guard = self.lock.lock().map_err(|error| error.to_string())?;
-        let selected = environment.map(|environment| format!("{project}|{environment}"));
+        let selected = environment.map(|environment| format!("{project}|{environment}|"));
         let matches = |key: &str| {
-            selected
-                .as_ref()
-                .map_or_else(|| matches_project(key, project), |selected| key == selected)
+            selected.as_ref().map_or_else(
+                || matches_project(key, project),
+                |selected| key.starts_with(selected),
+            )
         };
         let mut watches = self.watches.lock().map_err(|error| error.to_string())?;
         if flush {

@@ -60,7 +60,7 @@ fn full_api_event_resume_and_quiet_contracts_match_on_both_agents_native_familie
         let expected = synchronize(&legacy).unwrap().0;
         let expected_details =
             usage_details::from_ledger(&legacy.selected_ledger().unwrap(), root_id).unwrap();
-        let (sql, original) = imported(&fixture, &legacy, &raw);
+        let (sql, original) = seeded(&fixture, &legacy, &raw);
         let original_bytes = fs::read(&original).unwrap();
         let actual = synchronize(&sql).unwrap().0;
         assert_eq!(value(&actual), value(&expected), "{name} dashboard");
@@ -271,7 +271,7 @@ fn equal_native_ids_stay_scoped_to_project_environment_and_guest() {
     let other_project = "2".repeat(32);
     let other = crate::usage_store::Environment::new(
         other_project.clone(),
-        projects::EnvironmentId::for_agent(&other_project, AgentKind::Codex),
+        projects::EnvironmentId::for_project(&other_project),
         AgentKind::Codex,
     )
     .unwrap();
@@ -328,20 +328,12 @@ fn registry_environment_removal_and_forget_leave_all_saved_sql_facts() {
     let project_path = fixture.0.join("registered-project");
     fs::create_dir(&project_path).unwrap();
     let mut registry = projects::Registry::default();
-    let project = registry.register(&project_path, "fixture-profile").unwrap();
-    registry
-        .ensure_environment(
-            &project.id,
-            AgentKind::ClaudeCode,
-            &crate::desktop::settings::Settings::default(),
-        )
-        .unwrap();
+    let project = registry.register(&project_path).unwrap();
     let before_registry = registry.clone();
     let directory = fixture.0.join("records");
     fs::create_dir(&directory).unwrap();
     let records = RecordsDirectory::fixture(&directory);
-    importer::activate(&records).unwrap();
-    let store = SharedStore::new(Store::open(&records).unwrap());
+    let store = SharedStore::new(bootstrap::open_or_initialize(&records).unwrap());
     let mut watch = fixture.watch(AgentKind::Codex);
     watch.target = Some(environment_history::Target::for_project(&project));
     watch.records_directory = Some(records.clone());

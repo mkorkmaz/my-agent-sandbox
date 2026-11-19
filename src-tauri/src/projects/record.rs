@@ -1,51 +1,54 @@
-use super::{AgentEnvironment, EnvironmentId, Environments, Project, ProjectOptions};
-use crate::{agents::AgentKind, desktop::settings};
+use super::{
+    EnvironmentAttempt, EnvironmentId, Policy, Project, ProjectOptions, ProjectStage, Removal,
+};
+use crate::{agents::AgentKind, desktop::settings::Network};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
-use std::path::PathBuf;
+use std::{collections::BTreeSet, path::PathBuf};
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Resources {
-    cpus: u16,
-    memory_mb: u32,
-    verification: settings::Verification,
+struct SharedEnvironment {
+    environment_id: EnvironmentId,
+    profile: String,
+    label: String,
+    image_ref: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    image_update: Option<super::project_image_update::Pending>,
+    network: Network,
+    policy: Option<Policy>,
+    stage: ProjectStage,
+    owns_session: bool,
+    owns_binding: bool,
+    policy_detached: bool,
+    environment_verified: Option<bool>,
+    environment_attempt: Option<EnvironmentAttempt>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    approved_plan: Option<String>,
+    removal: Option<Removal>,
 }
 
-#[derive(Eq, PartialEq)]
-enum ResourceChange {
-    Unchanged,
-    InvalidatePreparation,
-}
-
-impl ResourceChange {
-    fn between(previous: &Option<Resources>, proposed: &Option<Resources>) -> Self {
-        if previous == proposed {
-            return Self::Unchanged;
-        }
-        Self::InvalidatePreparation
-    }
-}
-
-impl Resources {
-    fn from_options(options: &ProjectOptions) -> Self {
+impl From<&Project> for SharedEnvironment {
+    fn from(project: &Project) -> Self {
         Self {
-            cpus: options.cpus,
-            memory_mb: options.memory_mb,
-            verification: options.verification.clone(),
-        }
-    }
-    fn for_network(&self, network: settings::Network) -> ProjectOptions {
-        ProjectOptions {
-            cpus: self.cpus,
-            memory_mb: self.memory_mb,
-            verification: self.verification.clone(),
-            network,
+            environment_id: project.environment_id.clone(),
+            profile: project.profile.clone(),
+            label: project.label.clone(),
+            image_ref: project.image_ref.clone(),
+            image_update: project.image_update.clone(),
+            network: project.network.clone(),
+            policy: project.policy.clone(),
+            stage: project.stage,
+            owns_session: project.owns_session,
+            owns_binding: project.owns_binding,
+            policy_detached: project.policy_detached,
+            environment_verified: project.environment_verified,
+            environment_attempt: project.environment_attempt.clone(),
+            approved_plan: project.approved_plan.clone(),
+            removal: project.removal.clone(),
         }
     }
 }
 
-// Storage owns the environments. Project is the existing API's resolved environment view.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProjectRecord {
@@ -61,13 +64,17 @@ pub struct ProjectRecord {
     created: u128,
     pub updated_at: u64,
     pub last_opened_at: Option<u64>,
-    options: Option<Resources>,
-    pub environments: Environments,
+    options: Option<ProjectOptions>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) preview: Option<super::project_preview::Approval>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) github_access: Option<super::project_github_access::Grant>,
+    environment: SharedEnvironment,
 }
 
 impl From<Project> for ProjectRecord {
     fn from(project: Project) -> Self {
-        let environments = Environments::one(AgentEnvironment::from_project(&project));
+        let environment = SharedEnvironment::from(&project);
         Self {
             id: project.id,
             name: project.name,
@@ -79,16 +86,29 @@ impl From<Project> for ProjectRecord {
             created: project.created,
             updated_at: project.updated_at,
             last_opened_at: project.last_opened_at,
-            options: project.options.as_ref().map(Resources::from_options),
-            environments,
+            options: project.options,
+            preview: project.preview,
+            github_access: project.github_access,
+            environment,
         }
     }
 }
 
 impl ProjectRecord {
-    pub fn project(&self, id: &EnvironmentId) -> Result<Project, String> {
-        let environment = self.environments.by_id(id)?;
-        Ok(Project {
+    pub(super) fn reference(&self) -> String {
+        format!("{}@{}", self.environment.profile, self.environment.label)
+    }
+
+    pub(super) fn project(&self, id: &EnvironmentId, agent: AgentKind) -> Result<Project, String> {
+        if &self.environment.environment_id != id {
+            return Err("This environment does not belong to the project.".into());
+        }
+        Ok(self.for_agent(agent))
+    }
+
+    pub(super) fn for_agent(&self, agent_kind: AgentKind) -> Project {
+        let environment = &self.environment;
+        Project {
             id: self.id.clone(),
             name: self.name.clone(),
             path: self.path.clone(),
@@ -99,83 +119,54 @@ impl ProjectRecord {
             created: self.created,
             updated_at: self.updated_at,
             last_opened_at: self.last_opened_at,
-            options: self
-                .options
-                .as_ref()
-                .map(|options| options.for_network(environment.network.clone())),
+            options: self.options.clone(),
             environment_id: environment.environment_id.clone(),
-            agent_kind: environment.agent_kind,
+            agent_kind,
             network: environment.network.clone(),
             profile: environment.profile.clone(),
             label: environment.label.clone(),
+            image_ref: environment.image_ref.clone(),
+            image_update: environment.image_update.clone(),
             policy: environment.policy.clone(),
-            stage: environment.stage.clone(),
+            stage: environment.stage,
             owns_session: environment.owns_session,
-            adopted_managed_profile: environment.adopted_managed_profile,
+            adopted_managed_profile: false,
             owns_binding: environment.owns_binding,
             policy_detached: environment.policy_detached,
             environment_verified: environment.environment_verified,
             environment_attempt: environment.environment_attempt.clone(),
+            approved_plan: environment.approved_plan.clone(),
             removal: environment.removal.clone(),
-        })
-    }
-
-    pub fn codex_project(&self) -> Result<Project, String> {
-        self.project(&self.environments.by_kind(AgentKind::Codex)?.environment_id)
-    }
-
-    pub(super) fn default_project(&self) -> Result<Project, String> {
-        if let Ok(project) = self.codex_project() {
-            return Ok(project);
+            preview: self.preview.clone(),
+            github_access: self.github_access.clone(),
         }
-        let environment = self
-            .environments
-            .iter()
-            .next()
-            .ok_or("Project has no environments.")?;
-        self.project(&environment.environment_id)
     }
 
-    pub(super) fn remove_environment(&mut self, id: &EnvironmentId) -> Result<(), String> {
-        self.environments.by_id(id)?;
-        self.environments = self
-            .environments
-            .iter()
-            .filter(|environment| &environment.environment_id != id)
-            .cloned()
-            .collect::<Vec<_>>()
-            .try_into()?;
-        Ok(())
-    }
-
-    pub(super) fn update(&mut self, project: Project) -> Result<(), String> {
-        let resources = project.options.as_ref().map(Resources::from_options);
-        let mut environment = AgentEnvironment::from_project(&project);
-        if let Some(options) = &project.options {
-            environment.network = options.network.clone();
-        }
-        let mut proposed = self.clone();
-        proposed.environments.replace(environment)?;
-        if ResourceChange::between(&proposed.options, &resources)
-            == ResourceChange::InvalidatePreparation
+    pub(super) fn update(&mut self, mut project: Project) -> Result<(), String> {
+        if self.environment.environment_id != project.environment_id
+            || self.reference() != project.reference()
         {
-            proposed
-                .environments
-                .invalidate_others(&project.environment_id);
+            return Err("The shared environment identity changed.".into());
         }
-        proposed.options = resources;
-        proposed.name = project.name;
-        proposed.path = project.path;
-        proposed.device = project.device;
-        proposed.volume_uuid = project.volume_uuid;
-        proposed.updated_at = project.updated_at;
-        proposed.last_opened_at = project.last_opened_at;
+        if let Some(options) = &project.options {
+            project.network = options.network.clone();
+        }
+        let mut proposed = Self::from(project);
+        proposed.preview = self.preview.clone();
+        proposed.github_access = self.github_access.clone();
         proposed.validate()?;
         *self = proposed;
         Ok(())
     }
 
     pub(super) fn validate(&self) -> Result<(), String> {
+        if let Some(grant) = &self.github_access {
+            grant.validate(&self.id)?;
+        }
+        if let Some(approval) = &self.preview {
+            self.project(&approval.environment_id, AgentKind::Codex)?;
+            approval.validate(&self.reference())?;
+        }
         if !self
             .previous_guest_project_names
             .iter()
@@ -183,15 +174,7 @@ impl ProjectRecord {
         {
             return Err("Invalid former guest project folder name.".into());
         }
-        for environment in self.environments.iter() {
-            if environment.environment_id
-                != EnvironmentId::for_agent(&self.id, environment.agent_kind)
-            {
-                return Err("The agent environment identity does not match this project.".into());
-            }
-            self.project(&environment.environment_id)?.validate()?;
-        }
-        Ok(())
+        self.for_agent(AgentKind::Codex).validate()
     }
 
     pub(super) fn relink_verified_folder(&mut self, path: PathBuf) {
@@ -214,10 +197,7 @@ impl ProjectRecord {
         volume: Option<[u8; 16]>,
         recover: bool,
     ) -> bool {
-        self.environments
-            .iter()
-            .next()
-            .and_then(|environment| self.project(&environment.environment_id).ok())
-            .is_some_and(|project| project.matches_folder(metadata, volume, recover))
+        self.for_agent(AgentKind::Codex)
+            .matches_folder(metadata, volume, recover)
     }
 }

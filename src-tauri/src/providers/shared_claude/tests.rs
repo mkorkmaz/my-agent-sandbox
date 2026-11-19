@@ -295,12 +295,13 @@ fn missing_bound_project_allows_claude_sign_in_only_when_its_guest_is_stopped_or
     let folder = fixture.0.join("project");
     fs::create_dir(&folder).unwrap();
     let mut registry = Registry::default();
-    let registered = registry.register(&folder, "codex").unwrap();
-    let added = registry
-        .ensure_environment(&registered.id, AgentKind::ClaudeCode, &Settings::default())
-        .unwrap();
+    let registered = registry.register(&folder).unwrap();
     let project = registry
-        .environment(&registered.id, &added.environment_id)
+        .agent_environment(
+            &registered.id,
+            &registered.environment_id,
+            AgentKind::ClaudeCode,
+        )
         .unwrap();
     fs::rename(&folder, fixture.0.join("moved")).unwrap();
 
@@ -328,4 +329,52 @@ fn missing_bound_project_allows_claude_sign_in_only_when_its_guest_is_stopped_or
         .contains("project moved"));
     assert!(check(entry("unknown")).is_err());
     assert!(check(Value::Null).is_err());
+}
+
+#[test]
+fn project_reset_retires_only_the_old_claude_binding_and_keeps_the_synthetic_account() {
+    use crate::{
+        agents::AgentKind,
+        projects::{EnvironmentId, Registry},
+    };
+    let fixture = Fixture::new();
+    let mut registry = Registry::default();
+    for name in ["reset-a", "reset-b"] {
+        fs::create_dir(fixture.0.join(name)).unwrap();
+    }
+    let first = registry.register(&fixture.0.join("reset-a")).unwrap();
+    let second = registry.register(&fixture.0.join("reset-b")).unwrap();
+    let mut old = first.clone();
+    old.agent_kind = AgentKind::ClaudeCode;
+    old.environment_id = EnvironmentId::for_agent(&first.id, AgentKind::ClaudeCode);
+    let mut session = Session::empty();
+    session.connect(credentials()).unwrap();
+    session.bindings = [&first, &second, &old]
+        .into_iter()
+        .map(|target| super::store::Binding {
+            project_id: target.id.clone(),
+            environment_id: target.environment_id.clone(),
+        })
+        .collect();
+    Store::open(fixture.records())
+        .unwrap()
+        .save(&session)
+        .unwrap();
+    for _ in 0..2 {
+        super::retire_bindings(&fixture.records(), std::slice::from_ref(&old)).unwrap();
+    }
+    let restored = Store::open(fixture.records()).unwrap().load().unwrap();
+    assert_eq!(restored.generation, session.generation);
+    assert_eq!(
+        restored.account.credentials().unwrap().account_id,
+        "synthetic-user"
+    );
+    assert_eq!(
+        restored
+            .bindings
+            .into_iter()
+            .map(|binding| binding.environment_id)
+            .collect::<Vec<_>>(),
+        vec![first.environment_id, second.environment_id]
+    );
 }

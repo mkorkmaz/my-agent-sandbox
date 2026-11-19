@@ -1,8 +1,7 @@
 -- Create only in a new staging database. Configure the connection first.
--- The importer owns BEGIN IMMEDIATE / COMMIT around DDL + store_identity.
--- Import legacy records and receipts in the next transaction on this staging file.
+-- Publish only a verified database with its records directory identity.
 PRAGMA application_id = 0x54554755; -- TUGU
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 CREATE TABLE store_identity (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -19,7 +18,7 @@ CREATE TABLE usage_environments (
         CHECK (claude_pricing_version >= 0 AND (agent_kind = 'claude-code' OR claude_pricing_version = 0)),
     warnings_json TEXT NOT NULL DEFAULT '[]'
         CHECK (json_valid(warnings_json) AND json_type(warnings_json) = 'array'),
-    UNIQUE (project_id, environment_id)
+    UNIQUE (project_id, environment_id, agent_kind)
 ) STRICT;
 
 CREATE TABLE session_groups (
@@ -133,14 +132,3 @@ CREATE TABLE session_rollups (
     has_ownership_problem INTEGER NOT NULL CHECK (has_ownership_problem IN (0, 1)),
     usage_revision TEXT NOT NULL CHECK (length(usage_revision) = 64)
 ) STRICT;
-
-CREATE TABLE legacy_imports (
-    relative_path TEXT PRIMARY KEY,
-    environment_key INTEGER NOT NULL UNIQUE REFERENCES usage_environments,
-    ledger_version INTEGER NOT NULL CHECK (ledger_version IN (1, 2)),
-    source_sha256 BLOB NOT NULL CHECK (length(source_sha256) = 32),
-    source_bytes INTEGER NOT NULL CHECK (source_bytes >= 0),
-    record_count INTEGER NOT NULL CHECK (record_count >= 0),
-    turn_count INTEGER NOT NULL CHECK (turn_count >= 0),
-    request_count INTEGER NOT NULL CHECK (request_count >= 0)
-) STRICT, WITHOUT ROWID;

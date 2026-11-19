@@ -10,6 +10,7 @@ interface StorageLocation {
   available: boolean;
   canChange: boolean;
   message: string | null;
+  projectReset?: 'cancel-move' | 'restart-required';
 }
 
 export async function initializeDataLocation(): Promise<void> {
@@ -29,17 +30,17 @@ export async function initializeDataLocation(): Promise<void> {
     setLoading(path, busy && location === null);
     setBusy(status, busy && location !== null);
     change.textContent = location?.available ? 'Change folder…' : 'Locate records folder…';
-    change.disabled = busy || !location?.canChange;
+    change.disabled = busy || !location?.canChange || !!location?.projectReset;
     restore.hidden = !location?.available || location.directory === location.defaultDirectory;
-    restore.disabled = busy;
+    restore.disabled = busy || !!location?.projectReset;
     cancel.hidden = !location?.pendingDirectory;
     cancel.disabled = busy;
-    restart.hidden = !location?.pendingDirectory && location?.available !== false;
+    restart.hidden = location?.projectReset === 'cancel-move' || (!location?.projectReset && !location?.pendingDirectory && location?.available !== false);
     restart.disabled = busy;
     hint.textContent = location?.available
       ? 'Choose an empty folder. Settings, project records, saved usage and checks move together when Tugboat restarts.'
       : 'Connect the drive and restart Tugboat, or locate your existing records folder. Your saved records are kept.';
-    if (!busy) status.textContent = [location?.message, location?.pendingDirectory ? 'Restart Tugboat to use ' + location.pendingDirectory + '. Save any setting changes before restarting.' : ''].filter(Boolean).join(' ');
+    if (!busy) status.textContent = [location?.message, location?.pendingDirectory && !location.projectReset ? 'Restart Tugboat to use ' + location.pendingDirectory + '. Save any setting changes before restarting.' : ''].filter(Boolean).join(' ');
   }
 
   async function update(action: () => Promise<StorageLocation | null>, progress: string): Promise<void> {

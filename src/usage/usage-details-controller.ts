@@ -2,14 +2,14 @@ import { invoke } from '@tauri-apps/api/core';
 import { renderUsageDetails, usageButtonId, usageDetailsStatus } from '../dashboard/dashboard';
 import { showDialog } from '../ui/dialogs';
 import { renderSkeleton, setBusy, setLoading } from '../ui/loading';
-import { conversationKey, sameProject, type Conversation, type ProjectContext } from '../projects/projects';
+import { conversationKey, sameProject, type AgentKind, type Conversation, type ProjectContext } from '../projects/projects';
 import { UsageDetailsState } from './usage-details-state';
 import type { ConversationUsageDetails } from './usage-types';
 
 interface UsageDetailsContext {
   currentProject(): ProjectContext | null;
   conversations(): Conversation[];
-  fingerprint(sessionId: string, environmentId: string | null): string;
+  fingerprint(sessionId: string, environmentId: string, agentKind: AgentKind): string;
   updateTerminalLayout(): Promise<void>;
 }
 
@@ -35,12 +35,12 @@ export function initializeUsageDetails(context: UsageDetailsContext) {
     if (!active(project, sessionId, revision)) return;
     const request = state.begin();
     if (!request) return;
-    const { fingerprint, environmentId, details: previous } = request;
+    const { fingerprint, environmentId, agentKind, details: previous } = request;
     setLoading(content, previous === null);
     setBusy(status, previous !== null);
     if (previous) status.textContent = usageDetailsStatus(previous) + ' Updating recorded usage…';
     try {
-      const details = await invoke<ConversationUsageDetails>('conversation_usage', { identifier: project.id, environmentId, sessionId });
+      const details = await invoke<ConversationUsageDetails>('conversation_usage', { identifier: project.id, environmentId, agentKind, sessionId });
       if (!active(project, sessionId, revision) || !state.unchanged(fingerprint)) return;
       if (!state.show(request, details)) return;
       renderUsageDetails(details);
@@ -70,9 +70,10 @@ export function initializeUsageDetails(context: UsageDetailsContext) {
     const selection = state.current();
     const project = context.currentProject();
     if (!dialog.open || !selection || !project) return;
-    const { sessionId, environmentId, revision } = selection;
-    if (!state.refresh(context.fingerprint(sessionId, environmentId))) return;
-    const selected = context.conversations().find(conversation => conversation.id === sessionId && (conversation.environmentId ?? null) === environmentId);
+    const { sessionId, environmentId, agentKind, revision } = selection;
+    if (!state.refresh(context.fingerprint(sessionId, environmentId, agentKind))) return;
+    const key = conversationKey({ id: sessionId, environmentId, agentKind });
+    const selected = context.conversations().find(conversation => conversationKey(conversation) === key);
     if (selected) title.textContent = selected.title;
     void load(project, sessionId, revision);
   }
@@ -80,9 +81,8 @@ export function initializeUsageDetails(context: UsageDetailsContext) {
   async function open(conversation: Conversation): Promise<void> {
     const project = context.currentProject();
     if (!project) return;
-    const sessionId = conversation.id;
-    const environmentId = conversation.environmentId ?? null;
-    const revision = state.open(project.id, sessionId, environmentId, context.fingerprint(sessionId, environmentId));
+    const { id: sessionId, environmentId, agentKind } = conversation;
+    const revision = state.open({ projectId: project.id, sessionId, environmentId, agentKind }, context.fingerprint(sessionId, environmentId, agentKind));
     title.textContent = conversation.title;
     const cached = state.details();
     if (cached) {

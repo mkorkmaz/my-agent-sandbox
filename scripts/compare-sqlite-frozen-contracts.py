@@ -45,10 +45,11 @@ fn frozen_prepare(watch: &mut Watch, base: &Path, name: &str) {
     };
     fs::create_dir_all(ledger.parent().unwrap()).unwrap();
     fs::copy(&source,&ledger).unwrap();
-    crate::usage_store::importer::activate(&records).unwrap();
+    let mut store=crate::usage_store::bootstrap::open_or_initialize(&records).unwrap();
+    store.save_environment(&target.usage_environment().unwrap(),&load_ledger(&ledger).unwrap()).unwrap();
     assert_eq!(fs::read(&source).unwrap(),fs::read(&ledger).unwrap());
     watch.records_directory=Some(records.clone());
-    watch.store=Some(crate::usage_store::SharedStore::new(crate::usage_store::Store::open(&records).unwrap()));
+    watch.store=Some(crate::usage_store::SharedStore::new(store));
     watch.ledger=ledger;
 }
 fn frozen_read(watch: &Watch) -> Ledger { watch.load().unwrap() }
@@ -166,6 +167,25 @@ def differences(left, right, path="$"):
     return [] if left == right else [{"path": path, "json": left, "sql": right}]
 
 
+def checked_trace(path, shared):
+    trace = json.loads(path.read_text())
+    scope = trace["scope"]
+    project = scope["projectId"]
+    agent = scope["agentKind"]
+    identity = f"tugboat-project-environment-v1\0{project}" if shared else f"tugboat-environment:{project}:{agent}"
+    expected = hashlib.sha256(identity.encode()).hexdigest()[:32]
+    if scope["environmentId"] != expected:
+        raise RuntimeError(f"Unexpected environment identity in {path}.")
+    scope["environmentId"] = "<verified environment>"
+    for snapshot in trace["snapshots"]:
+        for dashboard in (snapshot["dashboard"], snapshot["update"], snapshot["event"][1]):
+            for chat in dashboard["conversations"]:
+                if chat["environmentId"] != expected:
+                    raise RuntimeError(f"Unexpected conversation scope in {path}.")
+                chat["environmentId"] = scope["environmentId"]
+    return trace
+
+
 def main():
     global EVIDENCE
     parser = argparse.ArgumentParser(description=__doc__)
@@ -191,7 +211,7 @@ def main():
     base = work / "fixtures"
     base.mkdir()
     (base / ".frozen-contract-fixture").write_bytes(b"generated-full-sqlite-contract-v1")
-    record = {"status": "failed", "generatedRoot": str(base), "normalization": "Only transport sequence is fixed at1; no paths, namespaces, hashes, values or ordering are normalized."}
+    record = {"status": "failed", "generatedRoot": str(base), "normalization": "Transport sequence is fixed at 1. Environment IDs are checked against the corresponding registry rule before comparison."}
     try:
         source_copy(frozen, work / "source-json", LEGACY)
         source_copy(ROOT, work / "source-sql", SQL)
@@ -221,7 +241,7 @@ def main():
         for case in CASES:
             left_path = EVIDENCE / "json" / case / "trace.json"
             right_path = EVIDENCE / "sql" / case / "trace.json"
-            mismatches = differences(json.loads(left_path.read_text()), json.loads(right_path.read_text()))
+            mismatches = differences(checked_trace(left_path, shared=False), checked_trace(right_path, shared=True))
             results.append({"case": case, "status": "failed" if mismatches else "passed", "mismatches": mismatches,
                 "jsonSha256": digest(left_path), "sqlSha256": digest(right_path)})
         record.update({"status": "passed" if all(row["status"] == "passed" for row in results) else "failed",

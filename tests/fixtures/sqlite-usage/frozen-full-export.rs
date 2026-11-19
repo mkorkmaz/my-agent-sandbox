@@ -98,7 +98,9 @@ fn sqlite_frozen_full_contract_export() {
             change_state(&watch, root, state, |_| false).unwrap();
             snapshots.push(frozen_snapshot(&watch, root, synchronize(&watch).unwrap().0));
         }
-        frozen_export(&directory, "trace.json", &json!({"initialQuietChanged":quiet.1,
+        let target = watch.target.as_ref().unwrap();
+        let scope = json!({"projectId":target.project_id,"environmentId":target.environment_id,"agentKind":target.agent_kind});
+        frozen_export(&directory, "trace.json", &json!({"scope":scope,"initialQuietChanged":quiet.1,
             "quietEventSuppressed":true,"runningFamilyArchiveRejected":blocked,"snapshots":snapshots}));
         frozen_finish(&watch);
         // The other backend must read these exact native files and inodes.

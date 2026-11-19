@@ -20,7 +20,7 @@ test('a malformed terminal resume fails the TypeScript build', () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'tugboat-terminal-types-'));
   try {
     const file = path.join(directory, 'invalid.ts');
-    fs.writeFileSync(file, `import type { OpenTerminal } from ${JSON.stringify(path.join(root, 'src/terminal/terminal-launch'))};\ndeclare const open: OpenTerminal;\nvoid open('start_agent_session', { identifier: 'project-a', environmentId: 'environment', fingerprint: 'reviewed-plan', action: 'resume', useBrigBoundary: true }, 'Resume');\n`);
+    fs.writeFileSync(file, `import type { OpenTerminal } from ${JSON.stringify(path.join(root, 'src/terminal/terminal-launch'))};\ndeclare const open: OpenTerminal;\nvoid open('start_agent_session', { identifier: 'project-a', environmentId: 'environment', agentKind: 'codex', fingerprint: 'reviewed-plan', action: 'resume', useBrigBoundary: true }, 'Resume');\n`);
     const result = spawnSync(compiler, [...arguments_, file], { cwd: root, encoding: 'utf8', timeout: 30000 });
     assert.equal(result.error, undefined);
     assert.notEqual(result.status, 0);

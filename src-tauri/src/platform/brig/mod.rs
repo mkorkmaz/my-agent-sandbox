@@ -1,17 +1,13 @@
-use crate::{
-    agents::{AgentCommand, AgentKind},
-    desktop::settings::Settings,
-    platform::command,
-    platform::host,
-    projects::Project,
-};
+use crate::{desktop::settings::Settings, platform::command, platform::host, projects::Project};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
+mod keychain_scope;
 mod paths;
+mod shared;
 pub use paths::PlanPaths;
 
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
@@ -30,23 +26,24 @@ impl Brig {
         })
     }
 
-    pub fn without_profile_override(&self) -> Self {
-        let mut brig = self.clone();
-        brig.environment.remove("BRIG_PROFILE_DIR");
-        brig
-    }
-
     pub fn for_project(
         &self,
         project: &Project,
         profiles: &std::path::Path,
     ) -> Result<Self, String> {
-        let mut brig = self.without_profile_override();
-        if crate::environment::managed_profile::uses_profile(project) {
-            crate::environment::managed_profile::install(profiles)?;
-            brig.environment
-                .insert("BRIG_PROFILE_DIR".into(), profiles.to_string_lossy().into());
+        if !crate::environment::managed_profile::shared(project) {
+            return Err("The project does not use the managed shared Tugboat profile.".into());
         }
+        crate::environment::managed_profile::install(profiles)?;
+        let mut brig = self.clone();
+        brig.environment.extend([
+            (
+                "BRIG_PROFILE_DIR".into(),
+                profiles.to_string_lossy().into_owned(),
+            ),
+            ("BRIG_VERIFY".into(), "require".into()),
+            ("BRIG_IMAGE".into(), project.image_ref.clone()),
+        ]);
         Ok(brig)
     }
 
@@ -86,12 +83,10 @@ impl Brig {
 
     pub fn plan(&self, project: &Project, settings: &Settings) -> Result<Value, String> {
         let mut arguments = vec!["--json".into(), "plan".into()];
-        arguments.extend(settings.arguments());
-        arguments.extend([
-            project.reference(),
-            project.path.to_string_lossy().into_owned(),
-        ]);
-        self.json(&arguments, "Plan", Some(&project.path))
+        arguments.extend(self.project_arguments(project, settings)?);
+        let plan = self.json(&arguments, "Plan", Some(&project.path))?;
+        self.verify_shared_plan(project, &plan)?;
+        Ok(plan)
     }
 
     pub fn policy(&self, name: &str) -> Result<Option<Value>, String> {
@@ -120,10 +115,6 @@ impl Brig {
         Ok(Some(document))
     }
 
-    pub fn validate_agent_profile(&self, name: &str, kind: AgentKind) -> Result<(), String> {
-        kind.validate_profile(name, &self.agent_profile(name)?)
-    }
-
     pub fn agent_profile(&self, name: &str) -> Result<Value, String> {
         let output = self.checked(
             &["agent".into(), "show".into(), name.into(), "--json".into()],
@@ -132,12 +123,6 @@ impl Brig {
         let profile: Value =
             serde_json::from_str(&output.stdout).map_err(|_| "Could not read the Brig profile.")?;
         Ok(profile)
-    }
-
-    pub fn verify_agent_version(&self, kind: AgentKind, reference: String) -> Result<(), String> {
-        let arguments = kind.command(AgentCommand::Version)?.in_guest(reference);
-        let output = self.checked(&arguments, None)?;
-        kind.validate_version(&output.stdout)
     }
 }
 
@@ -190,7 +175,11 @@ pub fn validate_plan(
     let policies = data["policies"]
         .as_array()
         .ok_or("The plan policy list is missing.")?;
-    if !policies.iter().any(|name| name == &policy.name) {
+    let grant = crate::projects::project_github_access::approved_policy(project);
+    if !policies.iter().any(|name| name == &policy.name)
+        || policies.len() != 1 + usize::from(grant.is_some())
+        || grant.is_some_and(|grant| !policies.iter().any(|name| name == grant))
+    {
         return Err("The selected policy is missing from the Brig plan.".into());
     }
     PlanPaths::from_plan(plan)
@@ -237,25 +226,24 @@ pub fn validate_plan_context(
     if data["verify"]["mode"] != verification {
         return Err("Image verification was not applied to the Brig plan.".into());
     }
+    if data["verify"]["mode"] != "require"
+        || data["verify"]["policy"] != "brig"
+        || data["image"]["ref"] != project.image_ref
+    {
+        return Err(
+            "This project requires its pinned image and the default Brig signature policy.".into(),
+        );
+    }
     let credentials = data["credentials"]
         .as_array()
         .ok_or("The plan credential list is missing.")?;
-    if credentials
-        .iter()
-        .any(|credential| credential["state"] != "unresolved" && credential["state"] != "withheld")
-    {
-        return Err(
-            "The plan forwards a host credential or has an unknown credential state. Check the settings and profile."
-                .into(),
-        );
+    if !credentials.is_empty() {
+        return Err("The plan contains an unexpected host credential source.".into());
     }
     if !data["skills"].as_array().is_some_and(Vec::is_empty) {
         return Err("The plan includes unexpected host skills.".into());
     }
-    if !data["ports"].as_array().is_some_and(Vec::is_empty) {
-        return Err("This session has published host ports. Unpublish them in Brig first.".into());
-    }
-    Ok(())
+    crate::projects::project_preview::validate_plan_ports(project, &data["ports"])
 }
 
 #[cfg(test)]
@@ -288,8 +276,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("brig-plan-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let mut registry = Registry::load(&directory.join("registry.json")).unwrap();
-        let mut project = registry.register(&directory, "codex").unwrap();
-        project.label = "bd01-fixture".into();
+        let mut project = registry.register(&directory).unwrap();
         project.policy = Some(Policy {
             name: "bd01-fixture".into(),
             owned: true,
@@ -297,10 +284,12 @@ mod tests {
         });
         plan["data"]["project"]["host"] = project.path.to_string_lossy().into_owned().into();
         plan["data"]["project"]["guest"] = "/work/sample-project".into();
-        let settings = Settings {
-            verification: crate::desktop::settings::Verification::Warn,
-            ..Settings::default()
-        };
+        plan["data"]["profile"] = serde_json::json!(project.profile);
+        plan["data"]["session"] = serde_json::json!(project.label);
+        plan["data"]["verify"]["mode"] = serde_json::json!("require");
+        plan["data"]["image"]["ref"] = serde_json::json!(project.image_ref);
+        plan["data"]["credentials"] = serde_json::json!([]);
+        let settings = Settings::default();
         assert!(validate_plan(&plan, &project, &settings).is_ok());
         plan["data"]["project"]["guest"] = "/work/sample project".into();
         assert!(validate_plan(&plan, &project, &settings).is_ok());

@@ -5,12 +5,16 @@ mod directory;
 mod guest;
 mod http;
 mod login_phase;
+#[cfg(test)]
+mod proof;
 mod renewal;
 mod session_state;
 mod store;
 
 pub use account::SharedChatgpt;
 pub(crate) use credentials::Credentials;
+#[cfg(test)]
+pub(crate) use proof::with_access_copy;
 pub(crate) use renewal::RenewalRetry;
 pub(crate) use store::read_private;
 
@@ -196,17 +200,14 @@ pub fn monitor(app: AppHandle) {
             }
             let registry = crate::projects::Registry::load(&crate::projects::file(&app)?)?;
             let defaults = crate::desktop::settings::load(&crate::desktop::settings::file(&app)?)?;
-            let online = registry.projects.iter().any(|project| {
+            let online = registry.project_views()?.iter().any(|project| {
                 session
                     .bindings
                     .iter()
-                    .any(|binding| binding.project_id == project.id)
-                    && project
-                        .codex_project()
-                        .and_then(|project| project.settings(defaults.clone()))
-                        .is_ok_and(|settings| {
-                            settings.network != crate::desktop::settings::Network::Offline
-                        })
+                    .any(|binding| binding.belongs_to(project))
+                    && project.settings(defaults.clone()).is_ok_and(|settings| {
+                        settings.network != crate::desktop::settings::Network::Offline
+                    })
             });
             if online {
                 account::refresh(&app, &mut runtime, &store, &mut session, false)?;
@@ -218,6 +219,51 @@ pub fn monitor(app: AppHandle) {
             let _ = app.emit("shared-chatgpt-error", message);
         }
     });
+}
+
+pub(crate) fn retire_bindings(
+    records: &crate::storage::data_location::RecordsDirectory,
+    projects: &[crate::projects::Project],
+    old_homes: &[(&str, &std::path::Path)],
+) -> Result<(), String> {
+    use std::{fs, os::unix::fs::MetadataExt};
+    let path = records.path().join("chatgpt/session.json");
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(metadata) if metadata.is_file() && metadata.nlink() == 1 => {}
+        _ => {
+            return Err(
+                "The ChatGPT account record is unavailable or linked. Preserve it for review."
+                    .into(),
+            )
+        }
+    }
+    let store = store::Store::open(records.path())?;
+    store.verify_records(records)?;
+    let mut session = store.load()?;
+    let belongs =
+        |binding: &store::Binding| projects.iter().any(|project| binding.belongs_to(project));
+    let retired_login = session.pending_login.as_ref().is_some_and(|login| {
+        let home = login.directory.parent().and_then(std::path::Path::parent);
+        old_homes
+            .iter()
+            .any(|(project, directory)| *project == login.project_id && home == Some(*directory))
+            || session.bindings.iter().any(|binding| {
+                binding.project_id == login.project_id
+                    && belongs(binding)
+                    && home == binding.directory.parent()
+            })
+    });
+    let count = session.bindings.len();
+    session.bindings.retain(|binding| !belongs(binding));
+    if retired_login {
+        session.pending_login = None;
+    }
+    if retired_login || session.bindings.len() != count {
+        store.verify_records(records)?;
+        store.save(&session)?;
+    }
+    Ok(())
 }
 
 pub(crate) fn reconnect_records(

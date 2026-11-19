@@ -217,7 +217,7 @@ pub fn refresh_with(
 fn candidates(app: &AppHandle) -> Result<Vec<(CheckedProject, Credentials)>, String> {
     let registry = projects::Registry::load(&projects::file(app)?)?;
     let mut results = Vec::new();
-    for project in registry.codex_projects()? {
+    for project in registry.project_views()? {
         let Ok(checked) = environment::checked_project(app, &project.id, None) else {
             continue;
         };

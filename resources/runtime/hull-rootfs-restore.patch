@@ -1,0 +1,62 @@
+--- a/cmd/hull/run.go
++++ b/cmd/hull/run.go
+@@ -761,6 +761,9 @@
+ 	if overlayBlock && rootfsTypeOverride == "block" {
+ 		return errors.New("HULL_ROOTFS_MODE=overlay-block does not combine with --rootfs-type block")
+ 	}
++	if err := restoreTugboatUpper(instanceDir, instanceName, imageDigest, overlayBlock && vmmType == hypervisors.HviVmm); err != nil {
++		return err
++	}
+ 	mountRootfs := ociSpec.Annotations["com.urunc.unikernel.mountRootfs"] == "true"
+ 
+ 	if containerBoot {
+--- /dev/null
++++ b/cmd/hull/desktop_rootfs_restore.go
+@@ -0,0 +1,47 @@
++//go:build darwin
++
++package main
++
++import (
++    "fmt"
++    "os"
++    "path/filepath"
++    "strings"
++    "syscall"
++
++    "golang.org/x/sys/unix"
++)
++
++// Restore only the scoped, offline overlay saved by Tugboat. The signed image
++// and generic boot assets are still selected by the normal Brig and Hull path.
++func restoreTugboatUpper(instanceDir, instance, digest string, overlayBlock bool) error {
++    requested := os.Getenv("HULL_TUGBOAT_RESTORE_IMAGE")
++    expectedInstance := os.Getenv("HULL_TUGBOAT_RESTORE_INSTANCE")
++    if requested == "" && expectedInstance == "" {
++        return nil
++    }
++    if !overlayBlock || !strings.HasPrefix(digest, "sha256:") || digest != requested ||
++        instance != expectedInstance || filepath.Base(instanceDir) != instance {
++        return fmt.Errorf("the requested Tugboat root restore does not match this HVI image and instance")
++    }
++    root := filepath.Dir(filepath.Dir(instanceDir))
++    backup := filepath.Join(root, "tugboat-image-recovery", instance, "root.ext4")
++    resolved, err := filepath.EvalSymlinks(backup)
++    if err != nil || resolved != backup {
++        return fmt.Errorf("the private Tugboat root backup could not be verified")
++    }
++    info, err := os.Lstat(backup)
++    if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() != 16<<30 {
++        return fmt.Errorf("the private Tugboat root backup has an unsupported layout")
++    }
++    stat, ok := info.Sys().(*syscall.Stat_t)
++    if !ok || stat.Uid != uint32(os.Geteuid()) || stat.Nlink != 1 {
++        return fmt.Errorf("the private Tugboat root backup has unexpected ownership")
++    }
++    target := filepath.Join(instanceDir, "rootfs-upper.ext4")
++    if err := unix.Clonefile(backup, target, unix.CLONE_NOFOLLOW); err != nil {
++        return fmt.Errorf("clone the reviewed Tugboat root backup: %w", err)
++    }
++    fmt.Fprintln(os.Stderr, "restored reviewed Tugboat writable system disk")
++    return nil
++}

@@ -1,11 +1,13 @@
 //! Private, dataset-bound storage for usage facts. Native transcripts remain external.
+pub(crate) mod bootstrap;
+mod bounded_json;
 pub(crate) mod codecs;
 mod connection;
 mod exact_json;
 pub(crate) mod import_rollup;
-pub(crate) mod importer;
 pub(crate) mod move_support;
 mod queries;
+mod revision;
 pub(crate) mod runtime;
 mod writes;
 pub(crate) use runtime::{Runtime, SharedStore};
@@ -31,11 +33,12 @@ pub(crate) mod record_reads {
 }
 
 use crate::{agents::AgentKind, projects::EnvironmentId, usage};
+pub(crate) use connection::retired_history::retire_databases;
 pub(crate) use connection::Store;
 use serde::{Deserialize, Serialize};
 
 pub(crate) const APPLICATION_ID: i64 = 0x54554755;
-pub(crate) const SCHEMA_VERSION: i64 = 1;
+pub(crate) const SCHEMA_VERSION: i64 = 2;
 pub(crate) const CLAUDE_PRICING_VERSION: i64 = 1;
 pub(crate) const SCHEMA: &str = include_str!("migrations/001_initial.sql");
 
@@ -54,7 +57,7 @@ impl Environment {
     ) -> Result<Self, String> {
         if project_id.len() != 32
             || !project_id.bytes().all(|byte| byte.is_ascii_hexdigit())
-            || environment_id != EnvironmentId::for_agent(&project_id, agent_kind)
+            || environment_id != EnvironmentId::for_project(&project_id)
         {
             return Err("The usage environment identity is invalid.".into());
         }

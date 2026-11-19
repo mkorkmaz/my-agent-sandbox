@@ -1,7 +1,9 @@
+import type { AgentKind } from '../projects/projects';
+
 type LaunchState = 'idle' | 'checking' | 'starting' | 'published';
 
 type CheckedEnvironment = { identifier: string; environmentId: string; fingerprint: string };
-type AgentSession = CheckedEnvironment & { useBrigBoundary: boolean } & (
+type AgentSession = CheckedEnvironment & { agentKind: AgentKind; useBrigBoundary: boolean } & (
   { action: 'new-chat' | 'shell'; sessionId?: never } | { action: 'resume'; sessionId: string }
 );
 type ProjectOperation = 'git-status' | 'git-diff' | 'git-staged-diff' | 'tests' | 'doctor' | 'info' | 'policy-check' | 'logs';

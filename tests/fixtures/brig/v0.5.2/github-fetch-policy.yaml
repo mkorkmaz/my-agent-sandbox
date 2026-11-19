@@ -1,0 +1,17 @@
+apiVersion: brig.sh/v1alpha1
+kind: Policy
+metadata:
+  name: preflight-fetch
+spec:
+  egress:
+    default: deny
+  routes:
+    - name: github
+      preset: github-token
+      credential:
+        secretRef: { name: preflight-synthetic }
+      request:
+        allow:
+          methods: [GET, POST]
+          paths: [/demo/private.git/info/refs, /demo/private.git/git-upload-pack]
+          repos: [demo/private]

@@ -22,7 +22,7 @@ const FILES: &[&str] = &[
 fn environment() -> Environment {
     Environment::new(
         PROJECT.into(),
-        EnvironmentId::for_agent(PROJECT, AgentKind::Codex),
+        EnvironmentId::for_project(PROJECT),
         AgentKind::Codex,
     )
     .unwrap()

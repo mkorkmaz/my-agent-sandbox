@@ -3902,6 +3902,7 @@ dependencies = [
  "chrono",
  "core-foundation",
  "libc",
+ "regex",
  "rusqlite",
  "serde",
  "serde_json",

@@ -14,7 +14,6 @@ mod terminal;
 mod usage;
 mod usage_store;
 
-use crate::agent_sessions::codex;
 use crate::desktop::{lifecycle, menu, settings, startup};
 use crate::environment::{boundaries, preparation};
 use crate::platform::host;
@@ -106,13 +105,16 @@ fn main() {
             data_location::cancel_storage_move,
             data_location::restart_for_storage_change,
             projects::register_project,
-            projects::ensure_project_environment,
             projects::recent_projects,
             projects::rescan_projects,
             projects::open_project,
             projects::forget_project,
             projects::read_project_preferences,
             projects::save_project_preferences,
+            projects::project_preview::project_preview,
+            projects::project_preview::open_project_preview,
+            projects::project_github_access::project_github_access,
+            projects::project_image_update::project_image_update,
             conversations::saved_project_dashboard,
             conversations::recorded_project_dashboard,
             conversations::project_dashboard,
@@ -124,7 +126,6 @@ fn main() {
             environment::preview_project,
             environment::prepare_environment,
             environment::finish_environment,
-            codex::start_codex_session,
             agent_sessions::start_agent_session,
             shared_chatgpt::shared_chatgpt_status,
             shared_chatgpt::sync_project_chatgpt,
@@ -141,6 +142,8 @@ fn main() {
             boundaries::run_boundary_tests,
             boundaries::copy_inner_boundary_prompt,
             operations::start_project_operation,
+            operations::gateway_logs::read_project_gateway_logs,
+            operations::gateway_logs::copy_project_gateway_logs,
             operations::stop_project,
             operations::preview_removal,
             operations::remove_project,

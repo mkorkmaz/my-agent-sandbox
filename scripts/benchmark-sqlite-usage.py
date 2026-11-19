@@ -192,7 +192,7 @@ def run(builds, repetitions, warmups, sizes, fixture_parent, runtime_only=False,
                 if step >= warmups and (step - warmups + 1) % 25 == 0:
                     print(f"{sessions} migration: {step - warmups + 1}/{repetitions}", flush=True)
             write_json(EVIDENCE / f"raw-migration-{sessions}.json", migration)
-            metrics["migration"] = {field: describe([sample[field] for sample in migration]) for field in ["importNs", "prepareNs", "openNs"]}
+            metrics["migration"] = {field: describe([sample[field] for sample in migration]) for field in ["seedNs", "prepareNs", "openNs"]}
         if runtime_only:
             initial = json.loads((ORIGINAL_EVIDENCE / "initial-run/measurements.json").read_text())
             metrics["migration"] = initial[str(sessions)]["metrics"]["migration"]

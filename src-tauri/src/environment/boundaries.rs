@@ -562,18 +562,8 @@ pub async fn run_boundary_tests(
 
 #[tauri::command]
 pub async fn copy_inner_boundary_prompt(app: AppHandle) -> Result<(), String> {
-    let prompt = "Use your own command tool to test three boundaries in this conversation. Write a unique temporary file inside this project, verify that you created it, then remove it. Try creating a unique probe file under /etc and report whether the write was blocked. Use the command tool to make an HTTPS request to https://example.com with a maximum duration of 10 seconds. Report the target, expected result and observed result for each check. Do not change sandbox or permission settings to bypass a boundary.".as_bytes().to_vec();
-    crate::terminal::on_main(app, move || {
-        unsafe {
-            copy_text(prompt.as_ptr(), prompt.len());
-        }
-        Ok(())
-    })
-    .await
-}
-unsafe extern "C" {
-    #[link_name = "brig_terminal_copy_text"]
-    fn copy_text(bytes: *const u8, length: usize);
+    let prompt = "Use your own command tool to test three boundaries in this conversation. Write a unique temporary file inside this project, verify that you created it, then remove it. Try creating a unique probe file under /etc and report whether the write was blocked. Use the command tool to make an HTTPS request to https://example.com with a maximum duration of 10 seconds. Report the target, expected result and observed result for each check. Do not change sandbox or permission settings to bypass a boundary.";
+    crate::terminal::copy_text(app, prompt.into()).await
 }
 
 #[cfg(test)]
@@ -581,27 +571,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn boundary_reports_keep_both_environment_ids_and_preserve_the_legacy_report() {
+    fn boundary_reports_use_one_shared_environment_and_preserve_unrelated_files() {
         let root = std::env::temp_dir().join(format!(
             "tugboat-environment-reports-{}",
             std::process::id()
         ));
         fs::create_dir_all(root.join("project")).unwrap();
         let mut registry = projects::Registry::default();
-        let codex = registry.register(&root.join("project"), "codex").unwrap();
-        let added = registry
-            .ensure_environment(
-                &codex.id,
-                crate::agents::AgentKind::ClaudeCode,
-                &crate::desktop::settings::Settings::default(),
-            )
-            .unwrap();
+        let codex = registry.register(&root.join("project")).unwrap();
         let claude = registry
-            .environment(&codex.id, &added.environment_id)
+            .agent_environment(
+                &codex.id,
+                &codex.environment_id,
+                crate::agents::AgentKind::ClaudeCode,
+            )
             .unwrap();
         let legacy = root.join("boundaries").join(format!("{}.json", codex.id));
         storage::write_bytes(&legacy, b"legacy boundary evidence").unwrap();
-        for project in [&codex, &claude] {
+        let project = &codex;
+        {
             let report = Report {
                 check_version: CHECK_VERSION,
                 project_id: project.id.clone(),
@@ -616,13 +604,13 @@ mod tests {
             };
             storage::write(&report_file(&root, project), &report).unwrap();
         }
-        assert_ne!(report_file(&root, &codex), report_file(&root, &claude));
+        assert_eq!(report_file(&root, &codex), report_file(&root, &claude));
         for project in [&codex, &claude] {
             let report: Report = storage::read(&report_file(&root, project))
                 .unwrap()
                 .unwrap();
             assert_eq!(report.environment_id, project.environment_id);
-            assert_eq!(report.agent_kind, project.agent_kind);
+            assert_eq!(report.agent_kind, codex.agent_kind);
             assert_eq!(
                 report.plan_fingerprint,
                 format!("plan-{}", project.environment_id)
@@ -648,9 +636,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-canary-state-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
-        let project = projects::Registry::default()
-            .register(&root, "codex")
-            .unwrap();
+        let project = projects::Registry::default().register(&root).unwrap();
         let canary = Canary::create(&project).unwrap();
         let retained = root.join("retained-canary");
         fs::rename(&canary.outside, &retained).unwrap();

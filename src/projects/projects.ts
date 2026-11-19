@@ -3,7 +3,7 @@ import { createAgentLogo } from '../providers/agent-logo';
 
 export type ProjectStage = 'selected' | 'creating-policy' | 'policy-created' | 'attaching-policy'
   | 'editing-policy' | 'policy-detached' | 'ready' | 'environment-unverified'
-  | 'environment-starting' | 'environment-ready' | 'stopping' | 'removing';
+  | 'environment-starting' | 'environment-ready' | 'stopping' | 'removing' | 'updating-image';
 
 export interface Project {
   id: string;
@@ -13,6 +13,7 @@ export interface Project {
   path: string;
   profile: string;
   label: string;
+  imageRef: string;
   ownsBinding: boolean;
   policyDetached?: boolean;
   ownsSession: boolean;
@@ -25,18 +26,30 @@ export interface Project {
   gitBranch?: string | null;
   available?: boolean;
   environmentAttempt?: { completed: boolean; error: string | null; terminalIdentifier: number } | null;
+  approvedPlan?: string;
+  preview?: {
+    environmentId: string;
+    reference: string;
+    mapping: { hostPort: number; guestPort: number };
+    phase: 'publishing' | 'published' | 'closing';
+  } | null;
+  githubAccess?: { repository: string; name: string; phase: 'saving' | 'saved' | 'revoking' } | null;
 }
 
 export type AgentKind = Project['agentKind'];
 export function agentName(kind: AgentKind | null | undefined): string { return kind === 'claude-code' ? 'Claude Code' : 'Codex'; }
 export interface Conversation extends RecordedConversation { terminalId?: number; busy?: boolean }
-export function conversationKey(conversation: Pick<Conversation, 'id'> & { environmentId?: string | null }): string {
-  return conversation.environmentId ? conversation.environmentId + '/' + conversation.id : conversation.id;
+export function conversationKey({ id, environmentId, agentKind }: Pick<Conversation, 'id' | 'environmentId' | 'agentKind'>): string {
+  return environmentId + '/' + agentKind + '/' + id;
 }
-export function terminalMatches(status: TerminalStatus, project: Pick<Project, 'environmentId' | 'agentKind'>): boolean {
-  return status.environmentId ? status.environmentId === project.environmentId : status.purpose !== 'local' && project.agentKind === 'codex';
+export function terminalMatches(status: TerminalStatus, project: Pick<Project, 'id' | 'environmentId'>): boolean {
+  return status.projectId === project.id && status.environmentId === project.environmentId;
 }
-export function isChat(status: TerminalStatus): boolean { return ['codex', 'resume', 'claude', 'claude-resume'].includes(status.purpose); }
+export function isChat(status: TerminalStatus): status is TerminalStatus & { environmentId: string; agentKind: AgentKind } {
+  if (!status.environmentId) return false;
+  return (status.agentKind === 'codex' && ['codex', 'resume'].includes(status.purpose))
+    || (status.agentKind === 'claude-code' && ['claude', 'claude-resume'].includes(status.purpose));
+}
 
 export function isStandaloneConversation(conversation: Conversation): boolean {
   return conversation.lineage.kind !== 'subagent' && !['resolved', 'orphan', 'invalid'].includes(conversation.relationStatus);

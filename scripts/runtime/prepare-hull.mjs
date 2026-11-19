@@ -10,9 +10,10 @@ const work = path.join(root, '.build/hull-compat');
 const source = path.join(work, 'hull-' + pin.commit);
 const patch = path.join(root, 'resources/runtime/hull-spaces.patch');
 const diskToolsPatch = path.join(root, 'resources/runtime/hull-disk-tools.patch');
+const rootRestorePatch = path.join(root, 'resources/runtime/hull-rootfs-restore.patch');
 const hash = file => createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const noSign = process.argv.includes('--no-sign');
-const identity = JSON.stringify({ ...pin, patch: hash(patch), diskToolsPatch: hash(diskToolsPatch), signing: noSign ? 'none' : 'ad-hoc' });
+const identity = JSON.stringify({ ...pin, patch: hash(patch), diskToolsPatch: hash(diskToolsPatch), rootRestorePatch: hash(rootRestorePatch), signing: noSign ? 'none' : 'ad-hoc' });
 const binary = path.join(work, 'bin/hull');
 const buildFile = path.join(work, 'bin/build.json');
 const marker = path.join(work, 'prepared.json');
@@ -29,7 +30,8 @@ function savedBuild() {
 const build = savedBuild();
 const cached = fs.existsSync(marker) && fs.readFileSync(marker, 'utf8') === identity
   && fs.existsSync(binary) && build?.binarySha256 === hash(binary)
-  && build.patchSha256 === hash(patch) && build.diskToolsPatchSha256 === hash(diskToolsPatch);
+  && build.patchSha256 === hash(patch) && build.diskToolsPatchSha256 === hash(diskToolsPatch)
+  && build.rootRestorePatchSha256 === hash(rootRestorePatch);
 if (cached && !test) process.exit(0);
 fs.mkdirSync(path.join(work, 'downloads'), { recursive: true });
 async function archive(url, checksum, name) {
@@ -50,9 +52,11 @@ if (!cached) {
   await archive(pin.go.url, pin.go.sha256, 'go.tar.gz');
   execFileSync('/usr/bin/patch', ['--batch', '-p1', '-i', patch], { cwd: source, stdio: 'inherit' });
   execFileSync('/usr/bin/patch', ['--batch', '-p1', '-i', diskToolsPatch], { cwd: source, stdio: 'inherit' });
+  execFileSync('/usr/bin/patch', ['--batch', '-p1', '-i', rootRestorePatch], { cwd: source, stdio: 'inherit' });
 }
 fs.copyFileSync(path.join(root, 'tests/native/hull_spaces_test.go'), path.join(source, 'cmd/hull/desktop_spaces_test.go'));
 fs.copyFileSync(path.join(root, 'tests/native/hull_disk_tools_test.go'), path.join(source, 'cmd/hull/desktop_disk_tools_test.go'));
+fs.copyFileSync(path.join(root, 'tests/native/hull_rootfs_restore_test.go'), path.join(source, 'cmd/hull/desktop_rootfs_restore_test.go'));
 const go = path.join(work, 'go/bin/go');
 const environment = { ...process.env, GOTOOLCHAIN: 'local', GOCACHE: path.join(work, 'go-cache'), GOPATH: path.join(work, 'go-path'), CGO_ENABLED: '0', GOOS: 'darwin', GOARCH: 'arm64' };
 const options = { cwd: source, env: environment, stdio: 'inherit' };
@@ -66,7 +70,7 @@ if (!cached) {
   const flags = ['-s', '-w', '-X', info + '.gitCommit=' + pin.commit, '-X', info + '.gitCommitTime=' + pin.commitTime, '-X', info + '.gitDescribe=v0.1.0-0-g7e50ac3', '-X', info + '.gitModified=true'].join(' ');
   execFileSync(go, ['build', '-mod=readonly', '-buildvcs=false', '-trimpath', '-ldflags', flags, '-o', binary, './cmd/hull'], options);
   if (!noSign) execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', binary], { stdio: 'inherit' });
-  fs.writeFileSync(buildFile, JSON.stringify({ ...pin, modified: true, patchSha256: hash(patch), diskToolsPatchSha256: hash(diskToolsPatch), binarySha256: hash(binary) }, null, 2) + '\n');
+  fs.writeFileSync(buildFile, JSON.stringify({ ...pin, modified: true, patchSha256: hash(patch), diskToolsPatchSha256: hash(diskToolsPatch), rootRestorePatchSha256: hash(rootRestorePatch), binarySha256: hash(binary) }, null, 2) + '\n');
   fs.writeFileSync(marker, identity);
   console.log('Prepared hull ' + pin.version + ' with ' + pin.variant + '.');
 }

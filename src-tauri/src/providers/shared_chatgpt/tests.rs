@@ -33,23 +33,41 @@ impl Fixture {
 
     fn project(&self, name: &str) -> crate::environment::CheckedProject {
         let path = self.0.join(name);
-        let home = self.0.join(format!("{name}-home"));
         fs::create_dir(&path).unwrap();
-        fs::create_dir(&home).unwrap();
         let executable = self.0.join(format!("{name}-brig"));
-        fs::write(&executable, "#!/bin/sh\nif [ \"$1\" = agent ]; then printf '%s' '{\"env\":[],\"volumes\":[],\"files\":[]}'; exit 0; fi\nprintf '%s' '{\"apiVersion\":\"brig.sh/v1alpha1\",\"kind\":\"SandboxList\",\"data\":{\"sandboxes\":[]}}'\n").unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-        let project = crate::projects::Registry::default()
-            .register(&path, "codex")
+        let mut project = crate::projects::Registry::default()
+            .register(&path)
             .unwrap();
+        project.stage = crate::projects::ProjectStage::EnvironmentReady;
+        let mut environment = crate::platform::command::environment();
+        environment.insert(
+            "BRIG_STATE_DIR".into(),
+            self.0.to_string_lossy().into_owned(),
+        );
+        environment.insert(
+            "FIXTURE_PROFILE".into(),
+            crate::environment::managed_profile::expected_definition().to_string(),
+        );
+        let brig = crate::platform::brig::Brig {
+            executable,
+            environment,
+        };
+        let home = brig.shared_project_home(&project).unwrap();
+        fs::create_dir_all(&home).unwrap();
+        fs::write(
+            &brig.executable,
+            r#"#!/bin/sh
+if [ "$1" = agent ]; then printf '%s' "$FIXTURE_PROFILE"; exit 0; fi
+printf '%s' '{"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[]}}'
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&brig.executable, fs::Permissions::from_mode(0o700)).unwrap();
         let plan = json!({"data":{"home":{"host":home,"guest":"/root"},"project":{"guest":format!("/work/{name}")}}});
         crate::environment::CheckedProject {
             project,
             settings: crate::desktop::settings::Settings::default(),
-            brig: crate::platform::brig::Brig {
-                executable,
-                environment: crate::platform::command::environment(),
-            },
+            brig,
             paths: crate::platform::brig::PlanPaths::from_plan(&plan).unwrap(),
             plan,
             fingerprint: "fixture".into(),
@@ -195,6 +213,7 @@ fn damaged_future_and_invalid_binding_records_are_preserved() {
     }
     let mut state = Session::default();
     state.bindings.push(Binding {
+        environment_id: None,
         project_id: "a".repeat(32),
         directory: PathBuf::from("/tmp/../../outside/.codex"),
         auth_hash: None,
@@ -841,26 +860,14 @@ fn custom_profiles_and_replaced_staging_directories_are_preserved() {
     .unwrap();
     assert!(super::guest::directory(&checked)
         .unwrap_err()
-        .contains("custom credential location"));
+        .contains("guest layout"));
 }
 
 #[test]
-fn a_custom_named_standard_codex_profile_receives_the_shared_access_copy() {
+fn the_verified_shared_profile_receives_the_chatgpt_access_copy() {
     let fixture = Fixture::new();
     let (store, _) = fixture.records();
-    let mut checked = fixture.project("custom-name");
-    checked.project.profile = "team-codex".into();
-    fs::write(&checked.brig.executable, r#"#!/bin/sh
-if [ "$1" = agent ]; then
-    printf '%s' '{"name":"team-codex","kind":"agent","binary":"codex","env":[],"volumes":[],"files":[]}'
-    exit 0
-fi
-printf '%s' '{"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[]}}'
-"#).unwrap();
-    checked
-        .brig
-        .validate_agent_profile("team-codex", crate::agents::AgentKind::Codex)
-        .unwrap();
+    let checked = fixture.project("shared");
     let directory = super::guest::directory(&checked).unwrap();
     let mut session = Session::default();
     session.credentials = Some(Credentials::parse(credential_value("account-a"), true).unwrap());
@@ -892,7 +899,7 @@ fn custom_codex_credential_locations_still_fail_without_changing_existing_record
         .unwrap();
         assert!(super::guest::directory(&checked)
             .unwrap_err()
-            .contains("custom credential location"));
+            .contains("guest layout"));
         assert_eq!(
             fs::read_to_string(directory.join("auth.json")).unwrap(),
             "synthetic existing sign-in"
@@ -905,10 +912,10 @@ fn custom_codex_credential_locations_still_fail_without_changing_existing_record
 }
 
 #[test]
-fn project_migration_keeps_legacy_account_and_pending_login_bound_only_to_codex() {
+fn provider_records_use_the_shared_environment_and_codex_agent_projection() {
     let fixture = Fixture::new();
-    let (store, records) = fixture.records();
-    let checked = fixture.project("migrate-project");
+    let (store, _) = fixture.records();
+    let checked = fixture.project("shared-project");
     let directory = super::guest::directory(&checked).unwrap();
     let mut session = Session::default();
     session.generation = 7;
@@ -921,27 +928,8 @@ fn project_migration_keeps_legacy_account_and_pending_login_bound_only_to_codex(
     let before = fs::read(&account_file).unwrap();
     let mut registry = crate::projects::Registry::default();
     registry.projects.push(checked.project.clone().into());
-    let project_file = fixture.0.join("records/projects.json");
-    crate::storage::write(
-        &project_file,
-        &crate::projects::migration_tests::legacy_registry(&registry),
-    )
-    .unwrap();
-    crate::projects::migrate(&project_file, &records).unwrap();
-    let mut migrated = crate::projects::Registry::load(&project_file).unwrap();
-    let codex = migrated.project(&checked.project.id).unwrap();
-    let environment = migrated
-        .ensure_environment(
-            &codex.id,
-            crate::agents::AgentKind::ClaudeCode,
-            &crate::desktop::settings::Settings::default(),
-        )
-        .unwrap();
-    let claude = migrated
-        .environment(&codex.id, &environment.environment_id)
-        .unwrap();
-    crate::storage::write(&project_file, &migrated).unwrap();
-    assert_eq!(fs::read(&account_file).unwrap(), before);
+    let [codex, claude] = registry.agent_views(&checked.project.id).unwrap();
+    assert_eq!(codex.environment_id, claude.environment_id);
     let mut restored = store.load().unwrap();
     assert_eq!(restored.generation, 7);
     assert_eq!(
@@ -979,7 +967,7 @@ fn an_existing_codex_process_blocks_credential_adoption_without_changing_files()
     let inventory = fixture.0.join("inventory.json");
     let info = fixture.0.join("info.json");
     fs::write(&inventory,serde_json::to_vec(&json!({"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[{"ref":checked.project.reference(),"state":"running"}]}})).unwrap()).unwrap();
-    fs::write(&info,serde_json::to_vec(&json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":checked.project.profile,"session":checked.project.label,"project":{"host":checked.project.path},"workspace":checked.plan["data"]["home"]["host"]}})).unwrap()).unwrap();
+    fs::write(&info,serde_json::to_vec(&json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":checked.project.profile,"session":checked.project.label,"sandbox":format!("brig-{}-{}", checked.project.profile, checked.project.label),"project":{"host":checked.project.path},"workspace":checked.plan["data"]["home"]["host"]}})).unwrap()).unwrap();
     checked.brig.environment.insert(
         "FIXTURE_INVENTORY".into(),
         inventory.to_string_lossy().into_owned(),
@@ -989,6 +977,23 @@ fn an_existing_codex_process_blocks_credential_adoption_without_changing_files()
         .environment
         .insert("FIXTURE_INFO".into(), info.to_string_lossy().into_owned());
     fs::write(&checked.brig.executable,"#!/bin/sh\nif [ \"$1\" = sh ]; then printf busy; exit 0; fi\nif [ \"$2\" = ls ]; then cat \"$FIXTURE_INVENTORY\"; exit 0; fi\ncat \"$FIXTURE_INFO\"\n").unwrap();
+    let runtime = fixture.0.join("hull");
+    let state = json!({"id": format!("brig-{}-{}", checked.project.profile, checked.project.label),
+        "status":"running", "backend":"hvi", "imageDigest":checked.project.image_ref.split_once('@').unwrap().1});
+    fs::write(
+        &runtime,
+        format!(
+            "#!/bin/sh
+/bin/echo '{state}'
+"
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&runtime, fs::Permissions::from_mode(0o700)).unwrap();
+    checked.brig.environment.insert(
+        "BRIG_RUNTIME_BIN".into(),
+        runtime.to_string_lossy().into_owned(),
+    );
     let mut session = Session::default();
     assert!(super::account::adopt(
         &store,
@@ -1332,6 +1337,7 @@ fn recheck_failed_guest_cleanup_preserves_retry_receipts_in_memory() {
         let dir = fixture.0.join(index.to_string());
         fs::create_dir(&dir).unwrap();
         session.bindings.push(Binding {
+            environment_id: None,
             project_id: format!("{index:032x}"),
             identity: super::guest::identity(&dir).unwrap(),
             directory: dir.clone(),
@@ -1345,4 +1351,91 @@ fn recheck_failed_guest_cleanup_preserves_retry_receipts_in_memory() {
     }
     assert!(super::guest::cleanup(&mut session).is_err());
     assert_eq!(session.bindings.len(), 2);
+}
+
+#[test]
+fn project_reset_keeps_account_and_current_receipts_and_never_republishes_to_old_homes() {
+    use crate::{agents::AgentKind, projects::EnvironmentId};
+    use std::path::Path;
+    let fixture = Fixture::new();
+    let first = fixture.project("reset-first").project;
+    let peer = fixture.project("reset-peer").project;
+    let records = crate::storage::data_location::RecordsDirectory::fixture(&fixture.0);
+    let mut old = first.clone();
+    old.environment_id = EnvironmentId::for_agent(&first.id, AgentKind::Codex);
+    let old_home = fixture.0.join("old-home");
+    let old_directory = old_home.join(".codex");
+    let current = fixture.0.join("current-home/.codex");
+    for directory in [&old_directory, &current] {
+        fs::create_dir_all(directory).unwrap();
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let binding = |project: &crate::projects::Project, directory: &Path| Binding {
+        project_id: project.id.clone(),
+        environment_id: Some(project.environment_id.clone()),
+        directory: directory.into(),
+        auth_hash: None,
+        access_hash: None,
+        pending: true,
+        identity: super::guest::identity(directory).unwrap(),
+    };
+    let mut staged = Session::default();
+    staged.credentials =
+        Some(Credentials::parse(credential_value("synthetic-account"), true).unwrap());
+    staged.generation = 4;
+    staged.bindings = vec![
+        binding(&old, &old_directory),
+        binding(&first, &current),
+        Binding {
+            project_id: peer.id.clone(),
+            environment_id: None,
+            directory: fixture.0.join("unavailable-peer/.codex"),
+            auth_hash: None,
+            access_hash: None,
+            pending: true,
+            identity: (0, 0),
+        },
+    ];
+    let nonce = "a".repeat(32);
+    staged.pending_login = Some(super::store::PendingLogin {
+        project_id: first.id.clone(),
+        nonce: nonce.clone(),
+        directory: old_home.join(".tugboat-chatgpt-login").join(nonce),
+        identity: (0, 0),
+        imported: false,
+        cancelled: false,
+    });
+    Store::open(&fixture.0).unwrap().save(&staged).unwrap();
+    for _ in 0..2 {
+        super::retire_bindings(
+            &records,
+            std::slice::from_ref(&old),
+            &[(first.id.as_str(), old_home.as_path())],
+        )
+        .unwrap();
+    }
+    let store = Store::open(&fixture.0).unwrap();
+    let mut restored = store.load().unwrap();
+    assert_eq!(restored.generation, 4);
+    assert_eq!(
+        restored.credentials.as_ref().unwrap().account().unwrap(),
+        "synthetic-account"
+    );
+    assert!(restored.pending_login.is_none());
+    assert_eq!(restored.bindings.len(), 2);
+    assert!(restored
+        .bindings
+        .iter()
+        .any(|binding| binding.belongs_to(&first)));
+    assert!(restored
+        .bindings
+        .iter()
+        .any(|binding| binding.project_id == peer.id));
+    super::guest::publish(&store, &mut restored).unwrap();
+    assert!(!old_directory.join("auth.json").exists());
+    assert!(current.join("auth.json").is_file());
+    assert!(restored
+        .bindings
+        .iter()
+        .any(|binding| binding.project_id == peer.id && binding.pending));
 }

@@ -1,73 +1,10 @@
 use super::{preview as environment_preview, *};
 use std::sync::{Arc, Mutex};
 
-pub(super) fn select(
-    registry: &Registry,
-    identifier: &str,
-    environment: Option<&EnvironmentId>,
-) -> Result<Vec<Project>, String> {
-    if let Some(environment) = environment {
-        return Ok(vec![registry.environment(identifier, environment)?]);
-    }
-    registry
-        .environments(identifier)?
-        .iter()
-        .map(|environment| registry.environment(identifier, &environment.environment_id))
-        .collect()
-}
-
-pub(super) fn snapshots(
-    app: &AppHandle,
-    targets: &[Project],
-) -> Result<Vec<(Project, RemovalPreview)>, String> {
-    targets
-        .iter()
-        .map(|project| {
-            let settings = project.settings(settings::load(&settings::file(app)?)?)?;
-            let brig = environment::brig_for_project(app, project, &settings)?;
-            Ok((project.clone(), environment_preview(&brig, project)?))
-        })
-        .collect()
-}
-
-pub(super) fn preview(app: &AppHandle, targets: &[Project]) -> Result<RemovalPreview, String> {
-    combine(&snapshots(app, targets)?)
-}
-
-pub(super) fn combine(snapshots: &[(Project, RemovalPreview)]) -> Result<RemovalPreview, String> {
-    let (first, _) = snapshots
-        .first()
-        .ok_or("No agent environments remain in this project.")?;
-    if snapshots.len() == 1 {
-        return Ok(snapshots[0].1.clone());
-    }
-    let descriptions: Vec<_> = snapshots
-        .iter()
-        .map(|(_, preview)| format!("{}\n{}", preview.reference, preview.description))
-        .collect();
-    let previews: Vec<_> = snapshots
-        .iter()
-        .map(|(_, preview)| preview.clone())
-        .collect();
-    let fingerprint = brig::fingerprint(
-        &serde_json::json!({"projectId": first.id, "name":first.name, "environments":previews}),
-    )?;
-    Ok(RemovalPreview {
-        reference: first.name.clone(),
-        workspace: snapshots.iter().map(|(_, preview)| preview.workspace.as_str()).collect::<Vec<_>>().join("\n"),
-        description: format!("Remove all {} agent environments from this project. Project files will be preserved.\n\n{}", snapshots.len(), descriptions.join("\n\n")),
-        fingerprint,
-        external: snapshots.iter().any(|(_, preview)| preview.external),
-        has_environment: snapshots.iter().any(|(_, preview)| preview.has_environment),
-        running: snapshots.iter().any(|(_, preview)| preview.running),
-        logout: None,
-        environment_id: None,
-        profile: None,
-        label: None,
-        policy: None,
-        owns_binding: false,
-        environments: previews,
-    })
+pub(super) fn preview(app: &AppHandle, project: &Project) -> Result<RemovalPreview, String> {
+    let settings = project.settings(settings::load(&settings::file(app)?)?)?;
+    let brig = environment::brig_for_project(app, project, &settings)?;
+    environment_preview(&brig, project)
 }
 
 pub(super) fn begin(
@@ -75,23 +12,14 @@ pub(super) fn begin(
     lock: Arc<Mutex<()>>,
     target: &Project,
     expected: &str,
-    logout: bool,
 ) -> Result<(), RemovalError> {
-    let operation = (target.agent_kind == crate::agents::AgentKind::ClaudeCode)
-        .then(|| {
-            app.state::<crate::agent_sessions::Accounts>()
-                .operation(target)
-        })
-        .transpose()?;
-    let _claude_guard = operation
-        .as_ref()
-        .map(|operation| operation.blocking_lock());
+    let operation = app.state::<crate::agent_sessions::Accounts>().operation(target)?;
+    let _claude_guard = operation.blocking_lock();
     let shared = app
         .state::<crate::providers::shared_chatgpt::SharedChatgpt>()
         .0
         .clone();
-    let _codex_guard =
-        (target.agent_kind == crate::agents::AgentKind::Codex).then(|| shared.blocking_lock());
+    let _codex_guard = shared.blocking_lock();
     let _guard = lock.lock().map_err(|error| error.to_string())?;
     let file = projects::file(app)?;
     let _file_guard = storage::lock(&file)?;
@@ -100,20 +28,13 @@ pub(super) fn begin(
     let brig = environment::brig_for_project(app, &project, &settings)?;
     let current = environment_preview(&brig, &project)?;
     current.check_fingerprint(expected)?;
-    if logout && !current.has_environment && project.removal.is_none() {
-        return Err("No guest environment exists to sign out of."
-            .to_owned()
-            .into());
-    }
     project.stage = crate::projects::ProjectStage::Removing;
     project.environment_verified = Some(false);
     project.environment_attempt = None;
     project.removal.get_or_insert(projects::Removal {
         reference: project.reference(),
         workspace: current.workspace,
-        logout,
         had_environment: current.has_environment,
-        logged_out: false,
         stopped: false,
         environment_removed: false,
         binding_detached: false,
@@ -129,31 +50,23 @@ pub(super) fn finish(
     lock: Arc<Mutex<()>>,
     target: &Project,
 ) -> Result<String, String> {
+    let operation = app.state::<crate::agent_sessions::Accounts>().operation(target)?;
+    let _claude_guard = operation.blocking_lock();
     let shared = app
         .state::<crate::providers::shared_chatgpt::SharedChatgpt>()
         .0
         .clone();
-    let mut account =
-        (target.agent_kind == crate::agents::AgentKind::Codex).then(|| shared.blocking_lock());
+    let mut account = shared.blocking_lock();
     let _guard = lock.lock().map_err(|error| error.to_string())?;
     let file = projects::file(app)?;
     let project = Registry::load(&file)?.environment(&target.id, &target.environment_id)?;
     let settings = project.settings(settings::load(&settings::file(app)?)?)?;
     let brig = environment::brig_for_project(app, &project, &settings)?;
+    crate::projects::project_github_access::revoke_for_removal(&brig, &file, &project, &settings)?;
+    let project = Registry::load(&file)?.environment(&target.id, &target.environment_id)?;
     let current = environment_preview(&brig, &project)?;
-    let logout = project
-        .removal
-        .as_ref()
-        .ok_or("Removal progress is missing. Refresh its preview.")?
-        .logout;
-    if !logout {
-        if let Some(account) = account.as_mut() {
-            crate::providers::shared_chatgpt::detach_project(app, account, &project.id, false)?;
-        }
-        if project.agent_kind == crate::agents::AgentKind::ClaudeCode {
-            crate::providers::shared_claude::detach_environment(app, &brig, &project, false)?;
-        }
-    }
+    crate::providers::shared_chatgpt::detach_project(app, &mut account, &project.id, true)?;
+    crate::providers::shared_claude::detach_environment(app, &brig, &project, false)?;
     crate::conversations::unobserve_environment(app, &project.id, &project.environment_id)?;
     let result = continue_removal_with(
         &brig,
@@ -162,30 +75,6 @@ pub(super) fn finish(
         &project.environment_id,
         &current.fingerprint,
         &project.reference(),
-        logout,
-        |brig, project| {
-            if project.agent_kind == crate::agents::AgentKind::ClaudeCode
-                && crate::providers::shared_claude::detach_environment(
-                    app,
-                    brig,
-                    project,
-                    current.running,
-                )?
-            {
-                return Ok(());
-            }
-            if let Some(account) = account.as_mut() {
-                if crate::providers::shared_chatgpt::detach_project(
-                    app,
-                    account,
-                    &project.id,
-                    true,
-                )? {
-                    return Ok(());
-                }
-            }
-            guest_logout(brig, project)
-        },
     )?;
     Ok(result)
 }

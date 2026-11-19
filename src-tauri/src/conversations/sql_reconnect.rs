@@ -36,7 +36,7 @@ pub(crate) fn fixture_history(
     let project = "1".repeat(32);
     let target = environment_history::Target {
         project_id: project.clone(),
-        environment_id: projects::EnvironmentId::for_agent(&project, AgentKind::Codex),
+        environment_id: projects::EnvironmentId::for_project(&project),
         agent_kind: AgentKind::Codex,
     };
     let watch = Watch {

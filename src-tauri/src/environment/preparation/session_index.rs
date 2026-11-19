@@ -2,10 +2,10 @@ use crate::platform::brig::Brig;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Component, Components, Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 const MAX_INDEX_BYTES: u64 = 1024 * 1024;
 
@@ -13,32 +13,9 @@ const MAX_INDEX_BYTES: u64 = 1024 * 1024;
 struct SessionEntry {
     sandbox: Option<String>,
     project: Option<PathBuf>,
-}
-
-#[derive(Default)]
-pub(super) struct SessionIndex(HashMap<String, SessionEntry>);
-
-impl SessionIndex {
-    pub(super) fn read(brig: &Brig) -> Self {
-        read_entries(brig).map(Self).unwrap_or_default()
-    }
-
-    pub(super) fn excludes(&self, reference: &str, sandbox: &str, selected: &Path) -> bool {
-        let Some(entry) = self.0.get(reference) else {
-            return false;
-        };
-        if sandbox.is_empty() || entry.sandbox.as_deref() != Some(sandbox) {
-            return false;
-        }
-        let Some(saved) = entry
-            .project
-            .as_deref()
-            .filter(|path| valid_project_path(path))
-        else {
-            return false;
-        };
-        !paths_may_match(saved, selected)
-    }
+    home: Option<PathBuf>,
+    #[serde(default)]
+    ephemeral: bool,
 }
 
 fn index_path(brig: &Brig) -> Option<PathBuf> {
@@ -53,116 +30,162 @@ fn index_path(brig: &Brig) -> Option<PathBuf> {
     Some(Path::new(home).join(".brig/sessions.json"))
 }
 
-fn read_entries(brig: &Brig) -> Option<HashMap<String, SessionEntry>> {
-    let input = OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(index_path(brig)?)
-        .ok()?;
-    if !input.metadata().ok()?.is_file() {
-        return None;
+fn decode_entries(input: File) -> Result<HashMap<String, SessionEntry>, String> {
+    if !input
+        .metadata()
+        .map_err(|error| error.to_string())?
+        .is_file()
+    {
+        return Err("The Brig session index is not a regular file.".into());
     }
     let mut bytes = Vec::new();
     input
         .take(MAX_INDEX_BYTES + 1)
         .read_to_end(&mut bytes)
-        .ok()?;
+        .map_err(|error| error.to_string())?;
     if bytes.len() as u64 > MAX_INDEX_BYTES {
-        return None;
+        return Err("The Brig session index exceeds the size limit.".into());
     }
-    serde_json::from_slice(&bytes).ok()
+    serde_json::from_slice(&bytes).map_err(|error| error.to_string())
 }
 
-fn valid_project_path(path: &Path) -> bool {
-    path.is_absolute()
-        && path.file_name().is_some()
-        && !path.as_os_str().as_encoded_bytes().contains(&0)
-        && !path.components().any(|part| part == Component::ParentDir)
+pub(crate) struct GuestHomes {
+    pub(crate) directory: PathBuf,
+    entries: HashMap<String, SessionEntry>,
 }
 
-fn paths_may_match(saved: &Path, selected: &Path) -> bool {
-    let saved = comparable_components(saved);
-    let selected = comparable_components(selected);
-    saved.clone().count() == selected.clone().count()
-        && saved
-            .zip(selected)
-            .all(|(saved, selected)| names_may_match(saved.as_os_str(), selected.as_os_str()))
-}
+impl GuestHomes {
+    pub(crate) fn read(brig: &Brig) -> Result<Self, String> {
+        use std::{fs, os::unix::fs::MetadataExt};
+        let path = index_path(brig).ok_or("The Brig state directory is unknown.")?;
+        let state = path
+            .parent()
+            .ok_or("The Brig state directory is unknown.")?;
+        match fs::canonicalize(state) {
+            Ok(path) if path == state => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let parent = state
+                    .parent()
+                    .ok_or("The Brig state directory is unknown.")?;
+                if fs::canonicalize(parent).ok().as_deref() != Some(parent)
+                    || fs::symlink_metadata(state).is_ok()
+                {
+                    return Err(
+                        "The Brig state directory changed or contains a symbolic link.".into(),
+                    );
+                }
+            }
+            _ => {
+                return Err("The Brig state directory changed or contains a symbolic link.".into())
+            }
+        }
+        let input = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+            .open(&path);
+        let entries = match input {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => HashMap::new(),
+            Err(error) => return Err(error.to_string()),
+            Ok(input) => {
+                let metadata = input.metadata().map_err(|error| error.to_string())?;
+                if metadata.uid() != unsafe { libc::geteuid() }
+                    || metadata.mode() & 0o077 != 0
+                    || metadata.nlink() != 1
+                {
+                    return Err(
+                        "The Brig session index must be a private file owned by the current user."
+                            .into(),
+                    );
+                }
+                decode_entries(input)?
+            }
+        };
+        Ok(Self {
+            directory: state.join("homes"),
+            entries,
+        })
+    }
 
-fn comparable_components(path: &Path) -> Components<'_> {
-    // Brig can record a path through these macOS system aliases. Compare the
-    // names without opening any part of a remembered project path.
-    let mut parts = path.components();
-    parts.next();
-    #[cfg(target_os = "macos")]
-    {
-        let mut suffix = parts.clone();
-        if suffix
-            .next()
-            .is_some_and(|part| part.as_os_str().eq_ignore_ascii_case("private"))
-            && suffix.clone().next().is_some_and(|part| {
-                ["etc", "tmp", "var"]
-                    .iter()
-                    .any(|alias| part.as_os_str().eq_ignore_ascii_case(alias))
+    pub(crate) fn owned_sandbox(
+        &self,
+        project: &crate::projects::Project,
+    ) -> Result<Option<String>, String> {
+        if !project.owns_session || project.adopted_managed_profile {
+            return Ok(None);
+        }
+        let Some(entry) = self
+            .entries
+            .get(&project.reference())
+            .filter(|entry| entry.ephemeral)
+        else {
+            return Ok(None);
+        };
+        let sandbox = entry
+            .sandbox
+            .as_deref()
+            .filter(|name| {
+                name.starts_with("brig-") && Path::new(name).file_name() == Some(OsStr::new(name))
             })
+            .ok_or("The Brig session has an invalid sandbox name.")?;
+        if entry.project.as_deref() != Some(project.path.as_path())
+            || entry.home.as_deref() != Some(self.directory.join(sandbox).as_path())
         {
-            return suffix;
+            return Err("The Brig guest home does not match the retired project.".into());
         }
+        Ok(Some(sandbox.into()))
     }
-    parts
-}
 
-#[cfg(target_os = "macos")]
-fn names_may_match(saved: &OsStr, selected: &OsStr) -> bool {
-    use core_foundation::base::{CFComparisonResult, TCFType};
-    use core_foundation::string::{
-        kCFCompareCaseInsensitive, kCFCompareNonliteral, CFString, CFStringCompare,
-    };
-
-    if saved == selected {
-        return true;
+    pub(crate) fn registered_home(&self, project: &crate::projects::Project) -> Option<PathBuf> {
+        let saved = self.entries.get(&project.reference())?;
+        if saved.project.as_deref() != Some(project.path.as_path()) {
+            return None;
+        }
+        saved
+            .home
+            .as_ref()
+            .filter(|path| {
+                path.is_absolute() && !path.components().any(|part| part == Component::ParentDir)
+            })
+            .cloned()
     }
-    let Some((saved, selected)) = saved.to_str().zip(selected.to_str()) else {
-        return true;
-    };
-    let saved = CFString::new(saved);
-    let selected = CFString::new(selected);
-    // The two CFStrings keep the references alive for the duration of this call.
-    let comparison = unsafe {
-        CFStringCompare(
-            saved.as_concrete_TypeRef(),
-            selected.as_concrete_TypeRef(),
-            kCFCompareCaseInsensitive | kCFCompareNonliteral,
-        )
-    };
-    comparison == CFComparisonResult::EqualTo
-}
 
-#[cfg(not(target_os = "macos"))]
-fn names_may_match(saved: &OsStr, selected: &OsStr) -> bool {
-    saved == selected
-}
-
-#[cfg(all(test, target_os = "macos"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn macos_spellings_can_match_without_opening_their_paths() {
-        for (saved, selected) in [
-            ("/TMP/CAFÉ", "/private/tmp/Cafe\u{301}"),
-            ("/var/Projects/A", "/private/var/projects/a"),
-            ("/private/etc/PROJECT", "/etc/project"),
-            ("/Volumes/Café/A", "/Volumes/CAFE\u{301}/a"),
-        ] {
-            assert!(paths_may_match(Path::new(saved), Path::new(selected)));
+    pub(crate) fn protect_shared_home(&self, reference: &str, home: &Path) -> Result<(), String> {
+        for (key, entry) in &self.entries {
+            if key == reference {
+                continue;
+            }
+            for other in [entry.home.as_deref(), entry.project.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                let resolved = match std::fs::canonicalize(other) {
+                    Ok(path) => path,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => other.into(),
+                    Err(error) => return Err(error.to_string()),
+                };
+                if [other, resolved.as_path()]
+                    .iter()
+                    .any(|other| home.starts_with(other) || other.starts_with(home))
+                {
+                    return Err("Another Brig session uses the retired guest home. Its files were preserved.".into());
+                }
+            }
         }
-        for (saved, selected) in [
-            ("/Volumes/Café/project", "/Volumes/Café 2/project"),
-            ("/var-other/project", "/private/var-other/project"),
-            ("/tmp/Project/member", "/private/tmp/Project"),
-        ] {
-            assert!(!paths_may_match(Path::new(saved), Path::new(selected)));
+        Ok(())
+    }
+
+    pub(crate) fn verify_retired_home(
+        &self,
+        project: &crate::projects::Project,
+        sandbox: &str,
+    ) -> Result<(), String> {
+        if self.entries.contains_key(&project.reference())
+            && self.owned_sandbox(project)?.as_deref() != Some(sandbox)
+        {
+            return Err(
+                "The retired Brig session changed after review. Its home was preserved.".into(),
+            );
         }
+        self.protect_shared_home(&project.reference(), &self.directory.join(sandbox))
     }
 }

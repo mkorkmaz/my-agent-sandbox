@@ -1,7 +1,7 @@
 use super::Action;
 use crate::{
     agents::{AgentCommand, AgentKind, SessionId},
-    environment::{self, CheckedProject},
+    environment::{shared_runtime, CheckedProject},
 };
 use serde::Deserialize;
 
@@ -13,17 +13,9 @@ struct Authentication {
 
 pub(super) fn signed_in(checked: &CheckedProject) -> Result<bool, String> {
     // Brig 0.5.2 keeps `exec` for plain output; `sh` allocates a guest terminal.
-    let mut arguments = vec![
-        "exec".into(),
-        checked.project.reference(),
-        "--".into(),
-        "claude".into(),
-    ];
-    arguments.extend(
-        AgentKind::ClaudeCode
-            .command(AgentCommand::LoginStatus)?
-            .in_profile(),
-    );
+    let arguments = AgentKind::ClaudeCode
+        .command(AgentCommand::LoginStatus)?
+        .in_output(checked.project.reference());
     let output = checked.brig.run(&arguments, Some(&checked.project.path))?;
     read_authentication(&output)
 }
@@ -71,15 +63,12 @@ pub(super) fn arguments(
         mode,
         "Prepare the selected Claude environment first.",
     )?;
-    if action == Action::Shell {
-        return admission.prepare(vec!["sh".into(), checked.project.reference()]);
-    }
-    if action == Action::Login {
-        return Err(
-            "Connect the provider in Settings, Providers. Sign-in does not require a project."
-                .into(),
-        );
-    }
+    let require_session = || session.ok_or("Choose a Claude chat session ID.");
+    let command = match action {
+        Action::Shell => return admission.prepare(vec!["sh".into(), checked.project.reference()]),
+        Action::NewChat => AgentCommand::NewChat(Some(require_session()?)),
+        Action::Resume => AgentCommand::Resume(require_session()?),
+    };
     admission.online(
         &checked.settings.network,
         "Claude sign-in and chats are unavailable in offline mode.",
@@ -98,7 +87,7 @@ pub(super) fn arguments(
             "exec".into(),
             checked.project.reference(),
             "--".into(),
-            "claude".into(),
+            shared_runtime::program(AgentKind::ClaudeCode).into(),
             "--help".into(),
         ],
         None,
@@ -112,17 +101,10 @@ pub(super) fn arguments(
                 .into(),
         );
     }
-    let session = session.ok_or("Choose a Claude chat session ID.")?;
-    let command = match action {
-        Action::NewChat => AgentCommand::NewChat(Some(session)),
-        Action::Resume => AgentCommand::Resume(session),
-        _ => return Err("Unsupported Claude chat operation.".into()),
-    };
     admission.capabilities()?;
-    admission.prepare(environment::run_arguments(
-        checked,
-        &AgentKind::ClaudeCode.command(command)?.in_profile(),
-    ))
+    let command = AgentKind::ClaudeCode.command(command)?;
+    let arguments = shared_runtime::interactive(&checked.project, command);
+    admission.prepare(arguments)
 }
 
 #[cfg(test)]

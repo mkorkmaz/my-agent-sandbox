@@ -5,7 +5,6 @@ mod session_id;
 
 pub use command::GuestCommand;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 pub use session_id::SessionId;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -18,6 +17,7 @@ pub enum AgentKind {
 pub enum AgentCommand<'a> {
     Version,
     LoginStatus,
+    #[cfg(test)]
     Logout,
     NewChat(Option<&'a SessionId>),
     Resume(&'a SessionId),
@@ -31,22 +31,6 @@ impl AgentKind {
         }
     }
 
-    pub fn validate_profile(self, name: &str, profile: &Value) -> Result<(), String> {
-        if profile["name"] != name
-            || profile["kind"] != "agent"
-            || profile["binary"] != self.binary()
-        {
-            return Err(format!(
-                "Select an agent profile that runs {}.",
-                self.binary()
-            ));
-        }
-        if self == Self::ClaudeCode {
-            claude::validate_profile(profile)?;
-        }
-        Ok(())
-    }
-
     pub fn command(self, command: AgentCommand<'_>) -> Result<GuestCommand, String> {
         match self {
             Self::Codex => codex::command(command, codex::Boundary::Brig),
@@ -54,6 +38,7 @@ impl AgentKind {
         }
     }
 
+    #[cfg(test)]
     pub fn validate_version(self, output: &str) -> Result<(), String> {
         let version = match self {
             Self::Codex => output.trim().strip_prefix("codex-cli "),
@@ -69,6 +54,7 @@ impl AgentKind {
     }
 }
 
+#[cfg(test)]
 fn valid_version(version: &str) -> bool {
     let core = version.split(['-', '+']).next().unwrap_or_default();
     let parts: Vec<_> = core.split('.').collect();

@@ -1,8 +1,5 @@
 use super::*;
 use serde_json::json;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::PathBuf;
 
 const SESSION: &str = "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf";
 
@@ -19,56 +16,6 @@ fn agent_kinds_have_stable_wire_names() {
     );
     for unsupported in ["ClaudeCode", "openai", "anthropic", "shell", ""] {
         assert!(serde_json::from_value::<AgentKind>(json!(unsupported)).is_err());
-    }
-}
-
-#[test]
-fn custom_profile_names_work_but_program_kind_and_identity_must_match() {
-    for (kind, binary, name) in [
-        (AgentKind::Codex, "codex", "team-codex"),
-        (AgentKind::ClaudeCode, "claude", "tugboat-claude"),
-    ] {
-        let profile = json!({"name":name,"kind":"agent","binary":binary});
-        assert!(kind.validate_profile(name, &profile).is_ok());
-        for (field, value) in [
-            ("name", json!("another-profile")),
-            ("kind", json!("service")),
-            ("binary", json!("sh")),
-            ("binary", json!(null)),
-            ("name", json!(42)),
-        ] {
-            let mut invalid = profile.clone();
-            invalid[field] = value;
-            assert!(kind.validate_profile(name, &invalid).is_err(), "{field}");
-        }
-        assert!(kind.validate_profile(name, &json!({})).is_err());
-    }
-}
-
-#[test]
-fn literal_claude_credentials_are_rejected_without_exposing_the_value() {
-    for name in [
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "GH_TOKEN",
-        "GITHUB_TOKEN",
-    ] {
-        let mut profile = json!({"name":"custom-claude","kind":"agent","binary":"claude","env":[{"name":name,"value":"synthetic-private-value"}]});
-        let error = AgentKind::ClaudeCode
-            .validate_profile("custom-claude", &profile)
-            .unwrap_err();
-        assert!(error.contains("literal host credential"));
-        assert!(!error.contains("synthetic-private-value"));
-        profile["deny"] = json!([name]);
-        assert!(AgentKind::ClaudeCode
-            .validate_profile("custom-claude", &profile)
-            .is_ok());
-        profile["deny"] = json!([]);
-        profile["env"][0]["value"] = "".into();
-        assert!(AgentKind::ClaudeCode
-            .validate_profile("custom-claude", &profile)
-            .is_ok());
     }
 }
 
@@ -101,14 +48,19 @@ fn codex_account_status_logout_and_version_commands_keep_the_file_store() {
     let cases = [
         (
             AgentCommand::Version,
-            vec!["sh", "custom@a", "codex", "--version"],
+            vec![
+                "sh",
+                "custom@a",
+                crate::environment::shared_runtime::program(AgentKind::Codex),
+                "--version",
+            ],
         ),
         (
             AgentCommand::LoginStatus,
             vec![
                 "sh",
                 "custom@a",
-                "codex",
+                crate::environment::shared_runtime::program(AgentKind::Codex),
                 "-c",
                 "cli_auth_credentials_store=\"file\"",
                 "login",
@@ -120,7 +72,7 @@ fn codex_account_status_logout_and_version_commands_keep_the_file_store() {
             vec![
                 "sh",
                 "custom@a",
-                "codex",
+                crate::environment::shared_runtime::program(AgentKind::Codex),
                 "-c",
                 "cli_auth_credentials_store=\"file\"",
                 "logout",
@@ -198,7 +150,14 @@ fn claude_commands_match_the_live_cli_contract_and_require_a_new_session_id() {
             .command(request)
             .unwrap()
             .in_guest("tugboat-claude@a".into());
-        assert_eq!(&command[..3], &["sh", "tugboat-claude@a", "claude"]);
+        assert_eq!(
+            &command[..3],
+            &[
+                "sh",
+                "tugboat-claude@a",
+                crate::environment::shared_runtime::program(AgentKind::ClaudeCode)
+            ]
+        );
         assert_eq!(&command[3..], expected);
         assert!(!command
             .iter()
@@ -237,85 +196,5 @@ fn version_checks_accept_captured_program_responses_and_reject_wrong_programs() 
         .is_err());
     assert!(AgentKind::ClaudeCode
         .validate_version("codex-cli 0.167.0")
-        .is_err());
-}
-
-struct StubBrig {
-    directory: PathBuf,
-    brig: crate::platform::brig::Brig,
-}
-
-impl StubBrig {
-    fn new() -> Self {
-        let directory = std::env::temp_dir().join(format!("agent-contract-{}", std::process::id()));
-        fs::create_dir(&directory).unwrap();
-        let executable = directory.join("brig");
-        fs::write(
-            &executable,
-            r#"#!/bin/sh
-case "$1" in
-agent) cat "$0.profile" ;;
-sh) cat "$0.version"; exit "$(cat "$0.exit")" ;;
-*) exit 2 ;;
-esac
-"#,
-        )
-        .unwrap();
-        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-        Self {
-            directory,
-            brig: crate::platform::brig::Brig {
-                executable,
-                environment: crate::platform::command::environment(),
-            },
-        }
-    }
-}
-
-impl Drop for StubBrig {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.directory).unwrap();
-    }
-}
-
-#[test]
-fn brig_boundary_checks_the_profile_and_the_actual_guest_version_response() {
-    let fixture = StubBrig::new();
-    fs::write(
-        fixture.directory.join("brig.profile"),
-        r#"{"name":"custom","kind":"agent","binary":"claude"}"#,
-    )
-    .unwrap();
-    assert!(fixture
-        .brig
-        .validate_agent_profile("custom", AgentKind::ClaudeCode)
-        .is_ok());
-    assert!(fixture
-        .brig
-        .validate_agent_profile("custom", AgentKind::Codex)
-        .is_err());
-    fs::write(fixture.directory.join("brig.profile"), "invalid JSON").unwrap();
-    assert!(fixture
-        .brig
-        .validate_agent_profile("custom", AgentKind::ClaudeCode)
-        .is_err());
-    fs::write(
-        fixture.directory.join("brig.version"),
-        "2.1.318 (Claude Code)\n",
-    )
-    .unwrap();
-    fs::write(fixture.directory.join("brig.exit"), "0").unwrap();
-    assert!(fixture
-        .brig
-        .verify_agent_version(AgentKind::ClaudeCode, "custom@a".into())
-        .is_ok());
-    assert!(fixture
-        .brig
-        .verify_agent_version(AgentKind::Codex, "custom@a".into())
-        .is_err());
-    fs::write(fixture.directory.join("brig.exit"), "1").unwrap();
-    assert!(fixture
-        .brig
-        .verify_agent_version(AgentKind::ClaudeCode, "custom@a".into())
         .is_err());
 }

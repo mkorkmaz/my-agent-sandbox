@@ -95,16 +95,30 @@
     <section id="projects" aria-labelledby="projects-heading">
       <h2 id="projects-heading">Projects and environments</h2>
 
+      <article id="adr-022">
+        <h3>ADR-022 · Give each project one shared Brig environment</h3>
+        <p>This decision replaces the per-agent environment model in <a href="#adr-004">ADR-004</a> and the historical import in <a href="#adr-015">ADR-015</a>.</p>
+        <dl>
+          <dt>Decision</dt>
+          <dd>The project derives one environment ID and owns its verified Brig reference, image digest, guest home, lifecycle, and network policy. Both agents can use the same files and guest processes. The chat identity includes the agent kind and native session ID.</dd>
+          <dt>Reason</dt>
+          <dd>One guest keeps common project work available to either agent and gives the user one project plan to review. The app keeps renewable provider sign-in on the Mac.</dd>
+          <dt>Consequence</dt>
+          <dd>Codex and Claude launch and resume independently within the shared guest. Stop ends both agents’ guest processes. Reopening an approved unchanged plan reuses its identity. Existing registrations keep their paths and start with empty history after verified retirement of former Tugboat-owned storage.</dd>
+        </dl>
+        <p class="source"><a href="../src-tauri/src/projects/record.rs">Project record</a> · <a href="../src-tauri/profiles/tugboat-project.yaml">Shared Brig profile</a> · <a href="../src-tauri/src/usage_store/migrations/001_initial.sql">Usage keys</a> · <a href="../src-tauri/src/projects/operations/retired_history.rs">Reset and recovery</a></p>
+      </article>
+
       <article id="adr-004">
         <h3>ADR-004 · Register a folder once and identify each agent environment separately</h3>
-        <p>A project record keeps a stable ID and folder identity. The registry checks the volume, inode, and creation time when matching a folder. It derives an environment ID from the project ID and agent kind. A project supports one Codex environment and one Claude Code environment.</p>
+        <p>Superseded by <a href="#adr-022">ADR-022</a>. This decision originally assigned one environment to each agent of a registered folder.</p>
         <dl>
           <dt>Recorded reason</dt>
           <dd>The user can work on the same folder with either agent. Each agent needs its own guest home, policy, lifecycle, and chat history. Disk remounts must preserve the connection to the original project.</dd>
           <dt>Consequence</dt>
           <dd>CPU count, memory, and image verification are project settings. Network mode, policy, and preparation state belong to each environment. Changing shared resources invalidates preparation for the other environment. A different folder at the saved path fails the identity check. Two agents can use the same native chat ID in distinct environments.</dd>
         </dl>
-        <p class="source">Source files · <a href="../PRODUCT.md">Project requirements</a> · <a href="../src-tauri/src/projects/mod.rs">Folder identity and registry</a> · <a href="../src-tauri/src/projects/record.rs">Shared resources</a> · <a href="../src-tauri/src/projects/agent_environment.rs">Environment ownership</a> · <a href="../src-tauri/src/projects/environment_id.rs">Environment identity</a></p>
+        <p class="source">Source files · <a href="../src-tauri/src/projects/mod.rs">Folder identity and registry</a> · <a href="../src-tauri/src/projects/transition.rs">Former registry decoder</a></p>
       </article>
 
       <article id="adr-005">
@@ -152,7 +166,7 @@
           <dt>Consequence</dt>
           <dd>Removal saves its progress through optional guest sign-out, environment removal, binding cleanup, policy cleanup, and record removal. A retry checks the live target again. Shared or externally changed policies survive cleanup. <strong>Forget</strong> removes the project registration and retains its project files, guest resources, and saved usage. A confirmed environment removal can remove its guest home.</dd>
         </dl>
-        <p class="source">Source files · <a href="../src-tauri/src/environment/preparation/selection.rs">Adoption choices</a> · <a href="../src-tauri/src/projects/operations/removal_target.rs">Preview scope</a> · <a href="../src-tauri/src/projects/removal.rs">Removal checkpoints</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Cleanup and recovery</a> · <a href="../src-tauri/src/projects/mod.rs">Forget operation</a></p>
+        <p class="source">Source files · <a href="../src-tauri/src/environment/preparation/mod.rs">Current project preparation</a> · <a href="../src-tauri/src/projects/operations/removal_target.rs">Preview scope</a> · <a href="../src-tauri/src/projects/removal.rs">Removal checkpoints</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Cleanup and recovery</a> · <a href="../src-tauri/src/projects/mod.rs">Forget operation</a></p>
       </article>
     </section>
 
@@ -168,13 +182,13 @@
           <dt>Consequence</dt>
           <dd>Shared Codex sign-in requires the standard guest credential directory. New chats disable the shared Codex daemon to avoid retaining earlier credentials. Managed Claude guests receive an access copy in memory through the guest helper. The helper preserves independent connector records. Project removal preserves the host accounts. Shared sign-out checks active sessions for the affected provider.</dd>
         </dl>
-        <p class="source">Source files · <a href="../README.md">Shared account behavior</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">Codex guest eligibility</a> · <a href="../src-tauri/src/providers/shared_chatgpt/credentials.rs">Codex access copy</a> · <a href="../src-tauri/profiles/tugboat-claude.yaml">Claude memory and persistent mounts</a> · <a href="../src-tauri/src/providers/shared_claude/guest_credentials.py">Claude guest update</a></p>
+        <p class="source">Source files · <a href="../README.md">Shared account behavior</a> · <a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">Codex guest eligibility</a> · <a href="../src-tauri/src/providers/shared_chatgpt/credentials.rs">Codex access copy</a> · <a href="../src-tauri/profiles/tugboat-project.yaml">Shared guest mounts</a> · <a href="../src-tauri/src/providers/shared_claude/guest_credentials.py">Claude guest update</a></p>
       </article>
 
       <article id="adr-010">
         <h3>ADR-010 · Run browser authorization from the Mac</h3>
         <p>The account command starts a native sign-in attempt for the selected provider. ChatGPT uses device authorization. Claude uses Proof Key for Code Exchange (PKCE) and a temporary loopback callback. Rust opens the provider page, verifies the response, exchanges credentials, and saves the account.</p>
-        <p>Project session commands retain the legacy login rejection and direct the caller to Settings. They do not create guest sign-in attempts. Recovery still cancels saved unfinished guest attempts and finishes publication for saved imported credentials.</p>
+        <p>Provider sign-in starts from Settings. The shared provider records own cancellation and account publication.</p>
         <dl>
           <dt>Recorded reason</dt>
           <dd>Settings must let a user connect before adding a project or starting a guest. The authorization attempt has its own lifetime, including cancellation.</dd>
@@ -242,14 +256,14 @@
 
       <article id="adr-015">
         <h3>ADR-015 · Activate the SQLite writer only after verifying the legacy import</h3>
-        <p>SQLite schema 1, legacy JSON ledger schemas 1 and 2, and the records directory marker have separate version numbers. On migration, Tugboat inventories sources, retains required immutable backups, and imports into a private staging database. It checks parity and source hashes, publishes the database, then advances the directory marker to version 2.</p>
+        <p>Superseded by <a href="#adr-022">ADR-022</a>. This decision documents the original SQLite activation that imported saved JSON ledgers.</p>
         <dl>
           <dt>Reason (inferred)</dt>
           <dd>Restarting between publication steps must preserve a recoverable dataset. Enabling the new writer before validation could accept incomplete facts or lose a later update.</dd>
           <dt>Consequence</dt>
           <dd>After activation, SQLite owns new writes. Original JSON files can be older than the database. An absent, damaged, or mismatched active database blocks usage access. Recovery requires the verified active dataset or a matching SQLite backup. A marker change or a legacy ledger alone cannot recover later SQL writes.</dd>
         </dl>
-        <p class="source">Source files · <a href="../src-tauri/src/usage_store/importer/mod.rs">Activation order</a> · <a href="../src-tauri/src/usage_store/importer/inventory.rs">Input inventory and backups</a> · <a href="../src-tauri/src/usage_store/importer/tests.rs">Interrupted imports</a> · <a href="../src-tauri/src/usage_store/mod.rs">SQLite version</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Directory marker</a></p>
+        <p class="source">Source files · <a href="../src-tauri/src/usage_store/bootstrap.rs">Current activation</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Directory marker</a></p>
       </article>
 
       <article id="adr-016">

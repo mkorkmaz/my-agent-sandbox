@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { flush, deferred, project, plan, sessionDashboard, providerLogin, interfaceHarness } from './frontend-harness.mjs';
+import { flush, deferred, project, plan, fixtureConversationKey, sessionDashboard, providerLogin, interfaceHarness } from './frontend-harness.mjs';
 
 test('a missing terminal hides its native surface and shows a timed status error', async () => {
   let expire;
@@ -137,7 +137,7 @@ test('ending a terminal shows a loader and restores the control after failure', 
 
 test('double launch creates one Codex process and navigation returns to that process', async () => {
   let finishStart;
-  const terminal = { identifier: 42, projectId: project.id, purpose: 'codex', running: true, exitCode: null };
+  const terminal = { identifier: 42, projectId: project.id, environmentId: project.environmentId, agentKind: project.agentKind, purpose: 'codex', running: true, exitCode: null };
   const harness = await interfaceHarness({ start_agent_session: () => new Promise(resolve => { finishStart = () => { harness.setTerminal(terminal); resolve(42); }; }) });
   await harness.ready;
   harness.element('choose-folder').click(); await flush();
@@ -165,7 +165,7 @@ test('failed auxiliary launch hides the previous native surface and preserves Co
   assert.match(harness.element('folder-error').textContent, /Simulated process failure/);
   assert.ok(harness.calls.some(call => call.command === 'terminal_layout' && call.args.identifier === 1 && !call.args.layout.visible));
   assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 0);
-  harness.element('sidebar-session-list').querySelector('[data-session-id="' + project.environmentId + '/terminal-1"]').click(); await flush();
+  harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey('terminal-1') + '"]').click(); await flush();
   assert.equal(harness.element('terminal-panel').hidden, false);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 1);
   assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 1);
@@ -216,11 +216,11 @@ test('a saved session opens alongside a new chat and each sidebar row returns to
   await harness.ready;
   harness.element('choose-folder').click(); await flush();
   harness.element('start-codex').click(); await flush();
-  harness.element('sidebar-session-list').querySelector('[data-session-id="' + conversation.id + '"]').click(); await flush();
+  harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(conversation.id) + '"]').click(); await flush();
   assert.equal(harness.element('folder-error').hidden, true);
   assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 2);
   assert.equal(harness.terminals.size, 2);
-  for (const [session, identifier] of [[project.environmentId + '/terminal-1', 1], [conversation.id, 2], [project.environmentId + '/terminal-1', 1]]) {
+  for (const [session, identifier] of [[fixtureConversationKey('terminal-1'), 1], [fixtureConversationKey(conversation.id), 2], [fixtureConversationKey('terminal-1'), 1]]) {
     harness.element('sidebar-session-list').querySelector('[data-session-id="' + session + '"]').click(); await flush();
     assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, identifier);
     assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, session);
@@ -264,11 +264,11 @@ test('parallel new chats keep their identities, report agent activity, and close
   harness.handlers.project_dashboard = () => sessionDashboard([second, first]);
   harness.setTerminal({ ...harness.terminals.get(2), conversationId: second.id, busy: true });
   await harness.listeners.get('terminal-sessions-changed')({ payload: project.id }); await flush();
-  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, project.environmentId + '/' + second.id);
+  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, fixtureConversationKey(second.id));
   harness.setTerminal({ ...harness.terminals.get(1), conversationId: first.id, busy: false });
   harness.listeners.get('project-usage-updated')({ payload: [project.id, sessionDashboard([second, first])] });
   await harness.listeners.get('terminal-sessions-changed')({ payload: project.id }); await flush();
-  const row = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + id + '"]');
+  const row = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(id) + '"]');
   assert.equal(harness.element('sidebar-session-list').children.length, 2);
   assert.ok(row(second.id).querySelector('.session-activity'));
   assert.match(row(second.id).getAttribute('aria-label'), /agent working/);
@@ -296,13 +296,13 @@ test('project navigation keeps chats reachable from the sidebar while other proj
   harness.element('start-codex').click(); await flush();
   harness.element('hide-terminal').click(); await flush();
   harness.element('start-codex').click(); await flush();
-  harness.element('sidebar-session-list').querySelector('[data-session-id="' + project.environmentId + '/terminal-1"]').click(); await flush();
+  harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey('terminal-1') + '"]').click(); await flush();
   harness.element('project-navigation').click(); await flush();
   harness.element('recent-project-list').querySelector('[data-project-id="project-b"]').click(); await flush();
   harness.element('start-codex').click(); await flush();
   harness.element('project-navigation').click(); await flush();
   harness.element('recent-project-list').querySelector('[data-project-id="project-a"]').click(); await flush();
-  harness.element('sidebar-session-list').querySelector('[data-session-id="' + project.environmentId + '/terminal-1"]').click(); await flush();
+  harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey('terminal-1') + '"]').click(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 1);
   assert.equal(harness.terminals.size, 3);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 0);
@@ -315,7 +315,7 @@ test('a delayed terminal response cannot reverse the latest sidebar selection', 
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([first, second]) });
   await harness.ready;
   harness.element('choose-folder').click(); await flush();
-  const select = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + id + '"]').click();
+  const select = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(id) + '"]').click();
   select(first.id); await flush(); select(second.id); await flush();
   const list = harness.handlers.terminal_sessions;
   let release;
@@ -325,7 +325,7 @@ test('a delayed terminal response cannot reverse the latest sidebar selection', 
   select(second.id); await flush();
   release(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 2);
-  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, second.id);
+  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, fixtureConversationKey(second.id));
   harness.dom.window.close();
 });
 
@@ -336,14 +336,14 @@ test('ending one chat cannot hide a different chat selected while closing', asyn
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([first, second]), terminal_close: ({ identifier }) => new Promise(resolve => { finishClose = () => { harness.terminals.delete(identifier); resolve(); }; }) });
   await harness.ready;
   harness.element('choose-folder').click(); await flush();
-  const select = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + id + '"]').click();
+  const select = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(id) + '"]').click();
   select(first.id); await flush(); select(second.id); await flush(); select(first.id); await flush();
   harness.element('close-terminal').click(); await flush();
   select(second.id); await flush();
   finishClose(); await flush();
   assert.equal(harness.element('terminal-panel').hidden, false);
   assert.deepEqual([...harness.terminals.keys()], [2]);
-  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, second.id);
+  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, fixtureConversationKey(second.id));
   harness.dom.window.close();
 });
 
@@ -415,7 +415,7 @@ test('an already running chat stays reachable while the plan is checked', async 
     preview_project: () => checking.promise,
   });
   await harness.ready;
-  harness.setTerminal({ identifier: 42, projectId: project.id, environmentId: project.environmentId, purpose: 'codex', running: true, exitCode: null, conversationId: conversation.id, busy: false });
+  harness.setTerminal({ identifier: 42, projectId: project.id, environmentId: project.environmentId, agentKind: project.agentKind, purpose: 'codex', running: true, exitCode: null, conversationId: conversation.id, busy: false });
   harness.element('recent-project-list').querySelector('.recent-project').click(); await flush();
   const live = harness.element('sidebar-session-list').querySelector('button');
   assert.equal(live.disabled, false);
@@ -490,16 +490,15 @@ test('local and guest actions explain a conflicting process without entering the
 
 for (const action of ['new-chat', 'resume']) {
   test(`Guest terminal identifies a conflicting Claude ${action} chat and allows a retry`, async t => {
-    const claude = { ...project, agentKind: 'claude-code', environmentId: 'b'.repeat(32), profile: 'tugboat-claude' };
-    const conversation = { id: '1a5bc5b5-af21-432d-bf07-e2218dd9f9bf', title: 'Saved Claude chat', updatedAt: 1000, environmentId: claude.environmentId, agentKind: claude.agentKind };
+    const conversation = { id: '1a5bc5b5-af21-432d-bf07-e2218dd9f9bf', title: 'Saved Claude chat', updatedAt: 1000, environmentId: project.environmentId, agentKind: 'claude-code' };
     const harness = await interfaceHarness({
-      register_project: () => claude,
       project_dashboard: () => sessionDashboard(action === 'resume' ? [conversation] : []),
-      read_project_preferences: () => ({ project: claude, options: { cpus: 4, memoryMb: 4096, verification: 'require', network: 'isolated' } }),
     });
     t.after(() => harness.dom.window.close());
     await harness.ready;
     harness.element('choose-folder').click(); await flush();
+    harness.element('agent-choice').value = 'claude-code';
+    harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change')); await flush();
     const launch = action === 'resume' ? harness.element('sidebar-session-list').querySelector('button') : harness.element('start-codex');
     launch.click(); await flush();
     assert.equal([...harness.terminals.values()][0]?.purpose, action === 'resume' ? 'claude-resume' : 'claude');
@@ -528,7 +527,7 @@ test('matching local and guest actions restore their own terminal only', async (
   for (const [button, purpose] of [['start-terminal', 'local'], ['guest-shell', 'shell']]) {
     const harness = await interfaceHarness();
     await harness.ready; harness.element('choose-folder').click(); await flush();
-    harness.setTerminal({ identifier: 70, projectId: project.id, purpose, running: true, exitCode: null, conversationId: null, busy: false });
+    harness.setTerminal({ identifier: 70, projectId: project.id, ...(purpose === 'shell' ? { environmentId: project.environmentId, agentKind: project.agentKind } : {}), purpose, running: true, exitCode: null, conversationId: null, busy: false });
     await harness.listeners.get('terminal-sessions-changed')({ payload: project.id });
     harness.element('project-settings-button').click(); await flush();
     harness.element(button).click(); await flush();

@@ -5,11 +5,15 @@ import { listen } from '@tauri-apps/api/event';
 import './style.css';
 import { initializeHost } from './settings/host';
 import { initializeSettings, initializeSettingsTabs, selectSettingsTab } from './settings/settings';
-import { renderProjects, renderConversations, renderTerminals, isStandaloneConversation, standaloneConversations, terminalCaption, terminalNames, conversationKey, terminalMatches, agentName, isChat, sameProject, sameProjectView, type Conversation, type Project, type ProjectContext, type TerminalStatus } from './projects/projects';
+import { renderProjects, renderConversations, renderTerminals, isStandaloneConversation, standaloneConversations, terminalCaption, terminalNames, conversationKey, terminalMatches, agentName, isChat, sameProject, sameProjectView, type AgentKind, type Conversation, type Project, type ProjectContext, type TerminalStatus } from './projects/projects';
 import { createAgentLogo } from './providers/agent-logo';
 import { prepareProject, renderPlan, type Plan } from './projects/preparation';
 import { initializeBoundaryTests, resetBoundaryChoice, useBrigBoundary } from './projects/boundaries';
-import { initializeOperations } from './projects/operations';
+import { initializeOperations, renderStopImpact } from './projects/operations';
+import { initializeGatewayLogs } from './projects/gateway-logs';
+import { initializeProjectPreview } from './projects/project-preview';
+import { initializeProjectGitHubAccess } from './projects/project-github-access';
+import { initializeProjectImageUpdate } from './projects/project-image-update';
 import { initializeProjectPolicy } from './projects/project-policy';
 import { renderDashboard, emptyUsage, savedSessionsStatus, type Dashboard, type SessionState } from './dashboard/dashboard';
 import { showDialog } from './ui/dialogs';
@@ -68,7 +72,6 @@ let pendingProjectSettingsRefresh = false;
 let pendingProjectRecovery: ProjectContext | null = null;
 let sharedChatgpt: ChatgptAccount | null = null;
 let claudeAccount: ClaudeAccount | null = null;
-const agentSelection = new RequestState();
 let accountSyncKey: string | null = null;
 let accountConnectionError: string | null = null;
 const accountSync = new RequestState();
@@ -78,6 +81,10 @@ const conversationChange = new RequestState();
 let resetPolicyDetails = () => {};
 let resetBoundaryDetails = () => {};
 let resetOperationDetails = () => {};
+let resetGatewayLogs = () => {};
+let resetProjectPreview = () => {};
+let resetGitHubAccess = () => {};
+let projectImageUpdate: ReturnType<typeof initializeProjectImageUpdate> | null = null;
 let terminalIdentifier: number | null = null;
 const terminalLaunch = new TerminalLaunch();
 let pendingEnvironmentKey: string | null = null;
@@ -128,21 +135,22 @@ function resetProjectDetails(): void {
   element<HTMLFieldSetElement>('project-preference-fields').disabled = true;
   for (const id of ['project-name', 'project-cpus', 'project-memory']) element<HTMLInputElement>(id).value = '';
   for (const id of ['project-verification', 'project-network']) element<HTMLSelectElement>(id).value = '';
-  resetPolicyDetails(); resetBoundaryDetails(); resetOperationDetails();
+  resetPolicyDetails(); resetBoundaryDetails(); resetOperationDetails(); resetGatewayLogs(); resetProjectPreview(); resetGitHubAccess();
+  projectImageUpdate?.reset();
   finishProjectRecordRefresh();
 }
 
 function environmentReady(): boolean { return appData.selectedProject?.stage === 'environment-ready' && selectedPlanFingerprint !== null && !planRequests.pending(); }
 function canStartChat(): boolean {
   const context = projectContext();
-  if (appData.selectedProject?.agentKind === 'claude-code') return environmentReady() && claudeAccount?.status()?.state === 'signed-in';
+  if (newChatAgent() === 'claude-code') return environmentReady() && claudeAccount?.status()?.state === 'signed-in';
   return environmentReady() && !accountSync.pending() && sharedChatgpt?.status()?.state === 'signed-in'
     && connectedAccountProject === [context?.id, context?.epoch, context?.fingerprint].join('|');
 }
 
 async function syncProjectAccount(): Promise<void> {
   const context = projectContext();
-  if (!context || appData.selectedProject?.agentKind !== 'codex' || sharedChatgpt?.status()?.state !== 'signed-in' || !environmentReady() || accountSync.pending()) return;
+  if (!context || newChatAgent() !== 'codex' || sharedChatgpt?.status()?.state !== 'signed-in' || !environmentReady() || accountSync.pending()) return;
   const key = [context.id, context.epoch, context.fingerprint, sharedChatgpt.status()?.generation].join('|');
   if (accountSyncKey === key) return;
   accountSyncKey = key; const request = accountSync.begin(); connectedAccountProject = null;
@@ -176,26 +184,39 @@ function planFeedback(message: string | null, retry = false, busy = false): void
 }
 
 function environmentFeedback(message: string | null = null): void {
+  if (!selectedPlanFingerprint && !message && !environmentBoot.pending(appData.selectedProject)) return;
   if (appData.selectedProject?.stage === 'environment-ready') { planFeedback(null); return; }
   if (message) { planRetryAction = 'environment'; planFeedback(message, true); return; }
   if (appData.selectedProject?.stage === 'environment-starting') {
     planFeedback('Starting the project environment with your saved settings…', false, true); return;
   }
-  const error = appData.selectedProject?.environmentAttempt?.error;
-  if (error) { planRetryAction = 'environment'; planFeedback(error, true); return; }
   if (appData.selectedProject?.stage === 'ready' && selectedPlanFingerprint) {
-    planRetryAction = 'environment'; planFeedback('The project environment is stopped.', true);
-    element('retry-project-plan').textContent = 'Start environment';
+    if (appData.selectedProject.approvedPlan === selectedPlanFingerprint) {
+      const error = appData.selectedProject.environmentAttempt?.error;
+      if (error) { planRetryAction = 'environment'; planFeedback(error, true); return; }
+      planRetryAction = 'environment'; planFeedback('The project environment is stopped.', true);
+      element('retry-project-plan').textContent = 'Start environment';
+      return;
+    }
+    planFeedback('Review the sharing and execution plan in Project settings before starting the environment.');
   }
 }
 
 async function ensureSelectedEnvironment(): Promise<void> {
-  if (!appData.selectedProject || !selectedPlanFingerprint || !['ready', 'environment-starting'].includes(appData.selectedProject.stage) || appData.selectedProject.policyDetached) return;
+  if (!appData.selectedProject || !selectedPlanFingerprint || appData.selectedProject.approvedPlan !== selectedPlanFingerprint || !['ready', 'environment-starting'].includes(appData.selectedProject.stage) || appData.selectedProject.policyDetached) return;
   if (appData.terminals.some(status => appData.selectedProject && terminalMatches(status, appData.selectedProject) && status.running && (isChat(status) || ['login', 'shell'].includes(status.purpose)))) {
     planFeedback('End running sessions to apply the saved environment settings.'); return;
   }
   planFeedback('Starting the project environment with your saved settings…', false, true);
   await openTerminal('prepare_environment', { identifier: appData.selectedProject.id, environmentId: appData.selectedProject.environmentId, fingerprint: selectedPlanFingerprint }, 'Starting project environment…');
+}
+
+async function startApprovedEnvironment(): Promise<void> {
+  if (selectedPlanFingerprint && appData.selectedProject?.approvedPlan === selectedPlanFingerprint) {
+    await ensureSelectedEnvironment();
+    return;
+  }
+  environmentFeedback();
 }
 
 function currentTerminal(): TerminalStatus | null {
@@ -207,17 +228,20 @@ function currentTerminal(): TerminalStatus | null {
 }
 
 function chatConversationId(status: TerminalStatus): string | null {
-  const conversation = selectedConversations().find(conversation => conversation.id === status.conversationId && (status.environmentId ? conversation.environmentId === status.environmentId || (!conversation.environmentId && status.agentKind !== 'claude-code') : !conversation.agentKind || conversation.agentKind === 'codex'));
-  if (!conversation) return status.conversationId ? conversationKey({ id: status.conversationId, environmentId: status.environmentId }) : null;
+  if (!isChat(status) || !status.conversationId || status.projectId !== appData.selectedProject?.id) return null;
+  const key = conversationKey({ ...status, id: status.conversationId });
+  const conversations = selectedConversations();
+  const conversation = conversations.find(conversation => conversationKey(conversation) === key);
+  if (!conversation) return key;
   if (conversation.relationStatus === 'resolved') {
-    const root = selectedConversations().find(root => root.id === conversation.rootSessionId && root.environmentId === conversation.environmentId && isStandaloneConversation(root));
+    const root = conversations.find(root => root.id === conversation.rootSessionId && root.environmentId === conversation.environmentId && root.agentKind === conversation.agentKind && isStandaloneConversation(root));
     return root ? conversationKey(root) : null;
   }
-  return isStandaloneConversation(conversation) ? conversationKey(conversation) : null;
+  return isStandaloneConversation(conversation) ? key : null;
 }
 
 function renderSessionSidebar(): void {
-  const chats = appData.terminals.filter(status => status.running && isChat(status));
+  const chats = appData.terminals.filter(isChat).filter(status => status.running);
   const rows = standaloneConversations(selectedConversations(), 'active').map(conversation => {
     const terminal = chats.find(status => chatConversationId(status) === conversationKey(conversation));
     return { ...conversation, available: terminal ? true : conversation.available, terminalId: terminal?.identifier, busy: terminal?.busy };
@@ -226,10 +250,21 @@ function renderSessionSidebar(): void {
     if (rows.some(row => row.terminalId === terminal.identifier)) continue;
     const conversationId = chatConversationId(terminal);
     const saved = selectedConversations().find(conversation => conversationKey(conversation) === conversationId);
-    rows.unshift({ ...(saved ?? { id: conversationId ? terminal.conversationId! : 'terminal-' + terminal.identifier, environmentId: terminal.environmentId ?? null, agentKind: terminal.agentKind ?? 'codex', usageAvailable: terminal.agentKind !== 'claude-code', title: (terminal.conversationId && !conversationId ? agentName(terminal.agentKind) + ' process ' : 'New Chat ') + terminal.identifier, updatedAt: Date.now(), state: 'active' as const, available: true, usage: emptyUsage, warning: null, lineage: { kind: 'unknown' as const, parentSessionId: null, agentPath: null, nickname: null, sourceVersion: null, lineageVersion: 1 as const }, relationStatus: 'unknown' as const, rootSessionId: null, subagentCount: 0, familyUsage: emptyUsage, coverage: 'unknown' as const, usageRevision: 'pending-terminal-' + terminal.identifier }), available: true, terminalId: terminal.identifier, busy: terminal.busy });
+    const conversation: Conversation = saved ?? {
+      id: (conversationId && terminal.conversationId) || 'terminal-' + terminal.identifier,
+      environmentId: terminal.environmentId,
+      agentKind: terminal.agentKind,
+      title: (terminal.conversationId && !conversationId ? agentName(terminal.agentKind) + ' process ' : 'New Chat ') + terminal.identifier,
+      updatedAt: Date.now(), state: 'active', available: true, warning: null,
+      lineage: { kind: 'unknown', parentSessionId: null, agentPath: null, nickname: null, sourceVersion: null, lineageVersion: 1 },
+      relationStatus: 'unknown', rootSessionId: null, subagentCount: 0,
+      usageAvailable: terminal.agentKind === 'codex', usage: emptyUsage, familyUsage: emptyUsage,
+      coverage: 'unknown', usageRevision: 'pending-terminal-' + terminal.identifier,
+    };
+    rows.unshift({ ...conversation, available: true, terminalId: terminal.identifier, busy: terminal.busy });
   }
   const selected = appData.terminals.find(status => status.identifier === terminalIdentifier);
-  selectedConversationId = (selected ? chatConversationId(selected) : null) ?? (selected && isChat(selected) ? conversationKey({ id: 'terminal-' + selected.identifier, environmentId: selected.environmentId }) : null);
+  selectedConversationId = selected && isChat(selected) ? chatConversationId(selected) ?? conversationKey({ ...selected, id: 'terminal-' + selected.identifier }) : null;
   renderConversations(rows, selectedConversationId, resumeConversation);
   renderTerminals(appData.terminals, terminalIdentifier, returnToTerminal);
   if (chats.length) element('session-list-status').hidden = true;
@@ -239,7 +274,7 @@ async function refreshTerminals(projectId = appData.selectedProject?.id): Promis
   if (!projectId) return;
   const request = (terminalListRequests.get(projectId) ?? 0) + 1;
   terminalListRequests.set(projectId, request);
-  const result = await invoke<TerminalStatus[]>('terminal_sessions', { projectId });
+  const result = (await invoke<TerminalStatus[]>('terminal_sessions', { projectId })).filter(status => status.projectId === projectId);
   if (request !== terminalListRequests.get(projectId)) return;
   if (appData.selectedProject?.id !== projectId && !appData.projects.some(project => project.id === projectId)) return;
   const projectTerminals = new Map(appDataStore.getState().projectTerminals);
@@ -260,6 +295,8 @@ async function refreshTerminals(projectId = appData.selectedProject?.id): Promis
 }
 
 function updateTerminalActions(): void {
+  renderStopImpact(appData.selectedProject, appData.terminals, selectedConversations());
+  projectImageUpdate?.render();
   environmentBoot.render(appData.selectedProject, terminalIdentifier, terminalVisibility() === 'visible');
   const terminalRunning = appData.terminals.some(terminal => terminal.running);
   element('close-terminal').textContent = appData.terminals.find(terminal => terminal.identifier === terminalIdentifier)?.running ? 'Close terminal' : 'Close output';
@@ -267,12 +304,12 @@ function updateTerminalActions(): void {
   element<HTMLButtonElement>('close-terminal').disabled = closing;
   setBusy(element('close-terminal'), closing);
   projectView.classList.toggle('has-live-terminal', terminalRunning);
-  element<HTMLButtonElement>('start-codex').disabled = !canStartChat() || terminalLaunch.blocksChanges() || agentSelection.pending() || projectSelection.pending() || folderChoice.pending() || preparingSelected();
+  element<HTMLButtonElement>('start-codex').disabled = !canStartChat() || terminalLaunch.blocksChanges() || projectSelection.pending() || folderChoice.pending() || preparingSelected();
   element<HTMLButtonElement>('start-codex').title = 'New Chat';
 }
 
 async function syncMenus(): Promise<void> {
-  const busy = folderChoice.pending() || projectSelection.pending() || preparingSelected() || terminalLaunch.blocksChanges() || agentSelection.pending();
+  const busy = folderChoice.pending() || projectSelection.pending() || preparingSelected() || terminalLaunch.blocksChanges();
   chooseFolderButton.disabled = busy;
   element<HTMLSelectElement>('agent-choice').disabled = terminalLaunch.blocksChanges() || projectSelection.pending() || folderChoice.pending();
   element<HTMLButtonElement>('start-codex').disabled = busy || !canStartChat();
@@ -338,9 +375,8 @@ function showTerminalStatus(message: string): void {
   label.removeAttribute('aria-label');
   const status = appData.terminals.find(status => status.identifier === terminalIdentifier);
   if (!status || !isChat(status)) return;
-  const kind = status.agentKind ?? (status.purpose.startsWith('claude') ? 'claude-code' : 'codex');
-  label.prepend(createAgentLogo(kind));
-  label.setAttribute('aria-label', agentName(kind) + ': ' + message);
+  label.prepend(createAgentLogo(status.agentKind));
+  label.setAttribute('aria-label', agentName(status.agentKind) + ': ' + message);
 }
 
 function renderProjectLists(): void {
@@ -558,14 +594,14 @@ async function changeConversationState(conversation: Conversation, state: Sessio
   const projectId = context.id;
   renderSessionDashboard();
   try {
-    await invoke('change_conversation_state', { identifier: projectId, environmentId: conversation.environmentId, sessionId: conversation.id, state });
+    await invoke('change_conversation_state', { identifier: projectId, environmentId: conversation.environmentId, agentKind: conversation.agentKind, sessionId: conversation.id, state });
     if (sameProject(projectContext(), context)) { folderError.hidden = true; await refreshConversations(); }
   } catch (error) { if (sameProject(projectContext(), context)) showFolderError(String(error)); }
   finally { if (conversationChange.accepts(request)) { conversationChange.finish(request); renderSessionDashboard(); if (sameProject(projectContext(), context) && !document.querySelector('dialog[open]')) document.querySelector<HTMLButtonElement>('[data-session-state="' + sessionView + '"]')?.focus(); } }
 }
-function selectedUsageFingerprint(sessionId: string, environmentId: string | null): string {
+function selectedUsageFingerprint(sessionId: string, environmentId: string, agentKind: AgentKind): string {
   const children = new Map<string, Conversation[]>();
-  const scoped = selectedConversations().filter(conversation => (conversation.environmentId ?? null) === environmentId);
+  const scoped = selectedConversations().filter(conversation => conversation.environmentId === environmentId && conversation.agentKind === agentKind);
   const nodesById = new Map(scoped.map(conversation => [conversation.id, conversation]));
   for (const conversation of scoped) {
     const parent = conversation.lineage.parentSessionId;
@@ -585,71 +621,48 @@ function selectedUsageFingerprint(sessionId: string, environmentId: string | nul
   return JSON.stringify([usageRecordRevision, sessionId, nodes.map(conversation => [conversation.id, conversation.usageRevision, conversation.relationStatus, conversation.rootSessionId, conversation.coverage, conversation.title, conversation.updatedAt, conversation.available, conversation.warning, conversation.subagentCount, conversation.lineage.kind, conversation.lineage.parentSessionId, conversation.lineage.agentPath, conversation.lineage.nickname, conversation.lineage.sourceVersion, conversation.lineage.lineageVersion, conversation.usage, conversation.familyUsage])]);
 }
 
-async function selectAgent(kind: Project['agentKind'], prepare = true, expectedEnvironment?: string | null): Promise<void> {
-  if (!appData.selectedProject || terminalLaunch.blocksChanges()) return;
-  const previousContext = projectContext()!;
-  const projectId = appData.selectedProject.id, request = agentSelection.begin(); void syncMenus();
-  try {
-    const project = await invoke<Project>('ensure_project_environment', { identifier: projectId, agentKind: kind });
-    if (appData.selectedProject?.id !== projectId || !agentSelection.accepts(request)) return;
-    if (project.agentKind !== kind || (expectedEnvironment && project.environmentId !== expectedEnvironment)) throw new Error('This chat belongs to another environment. Refresh the project list.');
-    await hideTerminal(); closeProjectDialogs();
-    terminalIdentifier = null; appData.selectedProject = project; ++projectEpoch; planRequests.invalidate();
-    pendingProjectRecovery = null;
-    selectedPlanFingerprint = null; appData.plan = null; resetProjectDetails(); resetBoundaryChoice();
-    connectedAccountProject = null; accountSyncKey = null; accountConnectionError = null;
-    element<HTMLSelectElement>('agent-choice').value = kind;
-    const reference = element('project-reference');
-    reference.textContent = project.profile + '@' + project.label;
-    reference.title = reference.textContent;
-    folderError.hidden = true; updateCodexActions();
-    if (!prepare) { await refreshSelectedPlan(); return; }
-    await prepareSelectedProject();
-    if (appData.selectedProject?.id === projectId && appData.selectedProject.environmentId === project.environmentId) await ensureSelectedEnvironment();
-  } catch (error) {
-    if (appData.selectedProject?.id === projectId && agentSelection.accepts(request)) {
-      element<HTMLSelectElement>('agent-choice').value = appData.selectedProject.agentKind;
-      showFolderError(String(error));
-      if (sameProject(projectContext(), previousContext)) void ensureSelectedEnvironment().then(
-        () => {
-          if (!sameProject(projectContext(), previousContext)) return;
-          showFolderError(String(error));
-          if (selectedPlanFingerprint) void refreshConversations();
-        },
-        failure => { if (sameProject(projectContext(), previousContext)) showFolderError(String(error) + ' ' + String(failure)); },
-      );
-    }
-  }
-  finally { if (agentSelection.accepts(request)) { agentSelection.finish(request); updateCodexActions(); void syncMenus(); } }
+function newChatAgent(): AgentKind {
+  return element<HTMLSelectElement>('agent-choice').value as AgentKind;
 }
-element<HTMLSelectElement>('agent-choice').addEventListener('change', event => {
-  const kind = (event.target as HTMLSelectElement).value as Project['agentKind'];
-  void selectAgent(kind);
+
+element<HTMLSelectElement>('agent-choice').addEventListener('change', () => {
+  updateCodexActions();
 });
 
 async function resumeConversation(conversation: Conversation): Promise<void> {
-  if (!appData.selectedProject || terminalLaunch.blocksChanges() || projectSelection.pending() || !isStandaloneConversation(conversation)) return;
-  const terminal = appData.terminals.find(status => status.running && (status.identifier === conversation.terminalId || chatConversationId(status) === conversationKey(conversation)));
+  if (!appData.selectedProject || appData.selectedProject.environmentId !== conversation.environmentId || terminalLaunch.blocksChanges() || projectSelection.pending() || !isStandaloneConversation(conversation)) return;
+  const projectId = appData.selectedProject.id;
+  const key = conversationKey(conversation);
+  const terminal = appData.terminals.find(status => status.running && status.projectId === projectId && isChat(status) && (
+    chatConversationId(status) === key
+    || (status.identifier === conversation.terminalId && conversationKey({ ...status, id: 'terminal-' + status.identifier }) === key)
+  ));
   if (terminal) {
     showView('project');
     folderError.hidden = true;
     await returnToTerminal(terminal.identifier);
     return;
   }
-  const projectId = appData.selectedProject.id;
-  if ((conversation.agentKind ?? 'codex') !== appData.selectedProject.agentKind || (conversation.environmentId && conversation.environmentId !== appData.selectedProject.environmentId)) await selectAgent(conversation.agentKind ?? 'codex', false, conversation.environmentId);
-  if (appData.selectedProject?.id !== projectId || (conversation.environmentId && appData.selectedProject.environmentId !== conversation.environmentId)) return;
+  const request = ++terminalViewRequest;
+  const current = () => request === terminalViewRequest && appData.selectedProject?.id === projectId
+    && appData.selectedProject.environmentId === conversation.environmentId;
+  if (!current()) return;
   showView('project');
   if (preparingSelected()) { showFolderError('Wait for this environment setup to finish.'); return; }
-  if (appData.selectedProject.stage !== 'environment-ready') {
+  if (appData.selectedProject?.stage === 'updating-image') {
+    showFolderError('Finish the guest image update before resuming this chat.');
+    await showProjectSettings();
+    return;
+  }
+  if (appData.selectedProject?.stage !== 'environment-ready') {
     showFolderError('Prepare the environment before resuming this session.');
     await showProjectSettings();
     element('prepare-environment').focus();
     return;
   }
   if (!selectedPlanFingerprint) await refreshSelectedPlan();
-  if (appData.selectedProject?.id !== projectId || !selectedPlanFingerprint) return;
-  await openTerminal('start_agent_session', { identifier: projectId, environmentId: appData.selectedProject.environmentId, fingerprint: selectedPlanFingerprint, action: 'resume', sessionId: conversation.id, useBrigBoundary: appData.selectedProject.agentKind === 'claude-code' || useBrigBoundary() }, conversation.title);
+  if (!current() || !selectedPlanFingerprint) return;
+  await openTerminal('start_agent_session', { identifier: projectId, environmentId: conversation.environmentId, agentKind: conversation.agentKind, fingerprint: selectedPlanFingerprint, action: 'resume', sessionId: conversation.id, useBrigBoundary: conversation.agentKind === 'claude-code' || useBrigBoundary() }, conversation.title);
 }
 
 async function selectProject(project: Project, recordOpen = false): Promise<void> {
@@ -698,7 +711,6 @@ async function applySelectedProject(project: Project): Promise<void> {
   element('project-description').hidden = true;
   element('project-meta').hidden = false;
   chooseFolderButton.hidden = true;
-  element<HTMLSelectElement>('agent-choice').value = project.agentKind;
   element('project-settings-button').hidden = false;
   element('project-dashboard').hidden = false;
   const path = element('selected-folder');
@@ -721,16 +733,29 @@ async function finishOpeningProject(project: Project, epoch: number): Promise<vo
   try {
     if (!appDataStore.getState().projectTerminals.has(project.id)) await refreshTerminals();
     if (!current()) return;
+    if (project.stage === 'updating-image') {
+      showPendingImageUpdate();
+      return;
+    }
     const status = currentTerminal();
     const preview = status?.running || (project.policy?.fingerprint && !project.policyDetached && ['ready', 'environment-ready'].includes(project.stage));
     if (preview) await refreshSelectedPlan();
     if (!preview) await prepareSelectedProject();
     if (!current()) return;
     updateCodexActions();
-    if (!agentSelection.pending()) await ensureSelectedEnvironment();
+    await startApprovedEnvironment();
     if (!current()) return;
     if (current() && (!dashboardState.loaded() || dashboardState.current()?.sessionAvailability === 'unverified')) void refreshConversations();
   } catch (error) { if (current()) showFolderError(String(error)); }
+}
+
+function showPendingImageUpdate(): void {
+  planRequests.invalidate();
+  selectedPlanFingerprint = null;
+  appData.plan = null;
+  for (const id of ['sharing-plan', 'prepare-environment', 'refresh-plan']) element(id).hidden = true;
+  planFeedback('Continue the guest image update in Project settings.');
+  updateCodexActions();
 }
 
 async function hideTerminal(): Promise<void> {
@@ -747,7 +772,7 @@ async function returnToTerminal(identifier?: number, preserveDialogs = false): P
   await refreshTerminals();
   const status = identifier === undefined ? currentTerminal() : appData.terminals.find(status => status.identifier === identifier);
   if (!status || appData.selectedProject?.id !== projectId || request !== terminalViewRequest) return;
-  if ((status.environmentId && status.environmentId !== appData.selectedProject.environmentId) || (!status.environmentId && status.purpose !== 'local' && appData.selectedProject.agentKind !== 'codex')) await selectAgent(status.agentKind ?? 'codex', false, status.environmentId);
+  if (status.projectId !== projectId || (status.environmentId && !terminalMatches(status, appData.selectedProject))) return;
   if (status.purpose === 'environment' && status.running && appData.selectedProject?.stage === 'environment-starting') environmentBoot.begin(appData.selectedProject, status.identifier);
   await hideTerminal();
   if (appData.selectedProject?.id !== projectId || request !== terminalViewRequest) return;
@@ -765,8 +790,7 @@ async function returnToTerminal(identifier?: number, preserveDialogs = false): P
 
 async function refreshSelectedPlan(): Promise<void> {
   if (!appData.selectedProject) return;
-  const id = appData.selectedProject.id;
-  const environmentId = appData.selectedProject.environmentId;
+  const { id, environmentId } = appData.selectedProject;
   const request = planRequests.begin();
   const previousFingerprint = selectedPlanFingerprint;
   selectedPlanFingerprint = null;
@@ -801,12 +825,11 @@ async function refreshSelectedPlan(): Promise<void> {
   } finally { if (planRequests.accepts(request)) { planRequests.finish(request); updateCodexActions(); void syncMenus(); } finishPendingRecordPlanRefresh(); }
 }
 
-async function prepareSelectedProject(chosenReference: string | null = null): Promise<void> {
+async function prepareSelectedProject(): Promise<void> {
   if (appData.selectedProject === null) return;
   const project = appData.selectedProject;
   const existing = preparingEnvironments.get(preparationKey(project));
-  if (existing && chosenReference !== null) { planFeedback('Wait for this environment setup to finish.'); return; }
-  const work = existing ?? prepareProject(project, chosenReference);
+  const work = existing ?? prepareProject(project);
   preparingEnvironments.set(preparationKey(project), work);
   selectedPlanFingerprint = null;
   appData.plan = null;
@@ -816,7 +839,6 @@ async function prepareSelectedProject(chosenReference: string | null = null): Pr
   void syncMenus();
   element('preparation-status').textContent = 'Preparing Brig project configuration…';
   element('retry-preparation').hidden = true;
-  element('session-candidates').hidden = true;
   element('sharing-plan').hidden = true;
   element('codex-actions').hidden = true;
   element('prepare-environment').hidden = true;
@@ -829,11 +851,11 @@ async function prepareSelectedProject(chosenReference: string | null = null): Pr
     selectedPlanFingerprint = result.fingerprint;
     planRequests.finish(request);
     planRetryAction = 'prepare';
-    planFeedback(result.plan ? null : result.message, !result.plan && !result.candidates.length && result.project.stage === 'environment-unverified');
+    planFeedback(result.plan ? null : result.message, !result.plan && result.project.stage === 'environment-unverified');
     const reference = element('project-reference');
     reference.textContent = result.project.profile + '@' + result.project.label;
     reference.title = reference.textContent;
-    element('managed-environment').textContent = agentName(result.project.agentKind) + ' · ' + reference.textContent;
+    element('managed-environment').textContent = 'Shared Brig environment · ' + reference.textContent;
     element('preparation-status').textContent = result.message ?? 'Brig configuration ready.';
     if (result.plan) {
       appData.plan = result.plan;
@@ -841,11 +863,6 @@ async function prepareSelectedProject(chosenReference: string | null = null): Pr
       element('prepare-environment').hidden = false;
       element('refresh-plan').hidden = false;
       updateCodexActions();
-    }
-    if (result.candidates.length) {
-      const choice = element<HTMLSelectElement>('session-choice');
-      choice.replaceChildren(...result.candidates.map(reference => { const option = document.createElement('option'); option.value = reference; option.textContent = reference; return option; }));
-      element('session-candidates').hidden = false;
     }
   } catch (error) {
     if (appData.selectedProject?.id !== project.id || appData.selectedProject.environmentId !== project.environmentId || !planRequests.accepts(request)) return;
@@ -862,15 +879,14 @@ function updateCodexActions(): void {
   element('project-overview').hidden = appData.selectedProject === null;
   element('project-setup').hidden = ready || planRequests.pending() || projectSelection.pending() || preparingSelected()
     || appData.selectedProject?.stage === 'environment-starting' || selectedPlanFingerprint !== null;
-  element<HTMLButtonElement>('start-codex').disabled = !canStartChat() || terminalLaunch.blocksChanges() || agentSelection.pending() || projectSelection.pending() || folderChoice.pending() || preparingSelected();
-  const claude = appData.selectedProject?.agentKind === 'claude-code';
+  element<HTMLButtonElement>('start-codex').disabled = !canStartChat() || terminalLaunch.blocksChanges() || projectSelection.pending() || folderChoice.pending() || preparingSelected();
+  const claude = newChatAgent() === 'claude-code';
   const accountBusy = !claude && accountSync.pending() && environmentReady();
   element('project-account-feedback').hidden = !environmentReady() || canStartChat() || accountBusy;
   element('project-account-status').textContent = claude ? claudeAccount?.status()?.message ?? 'Connect your shared Claude account in Settings, Providers.' : accountConnectionError ?? (accountSync.pending()
     ? 'Connecting the shared ChatGPT account…' : sharedChatgpt?.status()?.message ?? 'Checking the shared ChatGPT account…');
   setBusy(element('project-account-status'), !claude && accountSync.pending());
   setWorkspaceStatus('project-account', accountBusy ? element('project-account-status').textContent : null, 'project-dashboard');
-  element('codex-boundary-options').hidden = claude;
   claudeAccount?.select();
   element<HTMLButtonElement>('guest-shell').disabled = !environmentReady() || terminalLaunch.blocksChanges() || projectSelection.pending() || folderChoice.pending() || preparingSelected();
   sharedChatgpt?.updateAvailability();
@@ -880,11 +896,13 @@ function updateCodexActions(): void {
 for (const [id, action, caption] of [['start-codex', 'new-chat', 'New Chat'], ['guest-shell', 'shell', 'Guest terminal']] as const) {
   element(id).addEventListener('click', () => {
     if (appData.selectedProject === null || selectedPlanFingerprint === null) return;
-    void openTerminal('start_agent_session', { identifier: appData.selectedProject.id, environmentId: appData.selectedProject.environmentId, fingerprint: selectedPlanFingerprint, action, useBrigBoundary: appData.selectedProject.agentKind === 'claude-code' || useBrigBoundary() }, caption);
+    const { id, environmentId } = appData.selectedProject;
+    const agentKind = action === 'new-chat' ? newChatAgent() : 'codex';
+    void openTerminal('start_agent_session', { identifier: id, environmentId, agentKind, fingerprint: selectedPlanFingerprint, action, useBrigBoundary: agentKind === 'claude-code' || useBrigBoundary() }, caption);
   });
 }
 element('project-provider-settings').addEventListener('click', () => {
-  showView('settings'); selectSettingsTab('providers'); element(appData.selectedProject?.agentKind === 'claude-code' ? 'claude-account-heading' : 'shared-chatgpt-heading').focus();
+  showView('settings'); selectSettingsTab('providers'); element(newChatAgent() === 'claude-code' ? 'claude-account-heading' : 'shared-chatgpt-heading').focus();
 });
 
 function showView(view: 'project' | 'settings' | 'help'): void {
@@ -1024,7 +1042,7 @@ function renderProjectPreferences(value: ProjectPreferences, previous: ProjectPr
 }
 
 function projectPlanInputs(project: Project): string {
-  return JSON.stringify([project.path, project.profile, project.label, project.network, project.options, project.policy, project.policyDetached, project.ownsBinding]);
+  return JSON.stringify([project.path, project.profile, project.label, project.imageRef, project.network, project.options, project.policy, project.policyDetached, project.ownsBinding, project.preview, project.githubAccess]);
 }
 
 function finishPendingRecordPlanRefresh(): void {
@@ -1063,7 +1081,15 @@ async function refreshSelectedProjectRecords(settingsChanged = false): Promise<v
     element('project-reference').textContent = result.project.profile + '@' + result.project.label;
     element('project-reference').title = element('project-reference').textContent;
     renderProjectLists(); updateCodexActions();
-    if (planChanged && (selectedPlanFingerprint || planRequests.pending())) {
+    if (result.project.stage === 'updating-image') {
+      showPendingImageUpdate();
+      return;
+    }
+    if (selected.stage === 'updating-image') {
+      await refreshSelectedPlan();
+      if (!sameProject(projectContext(), context)) return;
+      if (selectedPlanFingerprint) void refreshConversations();
+    } else if (planChanged && (selectedPlanFingerprint || planRequests.pending())) {
       pendingRecordPlanRefresh = context;
       finishPendingRecordPlanRefresh();
     }
@@ -1100,7 +1126,10 @@ async function showProjectSettings(returnFocusId = 'project-settings-button'): P
     setLoading(element('project-preference-fields'), true);
     element('project-preferences-status').textContent = 'Loading project settings…';
   }
-  element('managed-environment').textContent = agentName(appData.selectedProject.agentKind) + ' · ' + appData.selectedProject.profile + '@' + appData.selectedProject.label;
+  element('managed-environment').textContent = 'Shared Brig environment · ' + appData.selectedProject.profile + '@' + appData.selectedProject.label;
+  renderStopImpact(appData.selectedProject, appData.terminals, selectedConversations());
+  element<HTMLDetailsElement>('sharing-plan').open = !environmentReady();
+  if (appData.selectedProject.stage === 'updating-image') element<HTMLDetailsElement>('project-image-update').open = true;
   showDialog(projectSettingsDialog, returnFocusId); await updateTerminalLayout();
   if (!sameProjectView(projectContext(), context) || !projectPreferences.accepts(request) || !projectSettingsDialog.open) return;
   const cached = appDataStore.getState().projectPreferences.get(projectPreferencesKey(appData.selectedProject!));
@@ -1148,7 +1177,7 @@ element<HTMLFormElement>('project-preferences').addEventListener('submit', async
     projectPreferences.saved(request, saved);
     rememberProjectPreferences(saved);
     appData.selectedProject = project; element('project-heading').textContent = project.name; element('project-heading').title = project.name;
-    await prepareSelectedProject(); await ensureSelectedEnvironment(); updateCodexActions(); await refreshProjects();
+    await prepareSelectedProject(); await startApprovedEnvironment(); updateCodexActions(); await refreshProjects();
     if (sameProjectView(projectContext(), context) && projectPreferences.accepts(request)) element('project-preferences-status').textContent = 'Project settings saved.';
   } catch (error) { if (sameProjectView(projectContext(), context) && projectPreferences.accepts(request)) element('project-preferences-status').textContent = String(error); }
   finally { if (sameProjectView(projectContext(), context) && projectPreferences.accepts(request)) { projectPreferences.finish(request); setBusy(element('save-project-preferences'), false); fields.disabled = false; finishProjectRecordRefresh(); } }
@@ -1236,14 +1265,15 @@ settingsNavigation.addEventListener('click', () => showView('settings'));
 helpNavigation.addEventListener('click', () => showView('help'));
 chooseFolderButton.addEventListener('click', () => { void chooseFolder(); });
 document.defaultView!.addEventListener('focus', rescanVisibleProjectLibrary);
-async function retryProjectSetup(action: 'prepare' | 'preview' | 'environment', chosenReference: string | null = null): Promise<void> {
+async function retryProjectSetup(action: 'prepare' | 'preview' | 'environment'): Promise<void> {
   const context = projectContext();
   if (!context) return;
   try {
-    if (action === 'prepare') await prepareSelectedProject(chosenReference);
+    if (action === 'prepare') await prepareSelectedProject();
     if (action === 'preview') await refreshSelectedPlan();
-    if (!sameProject(projectContext(), context) || agentSelection.pending()) return;
-    await ensureSelectedEnvironment();
+    if (!sameProject(projectContext(), context)) return;
+    if (action === 'environment') await ensureSelectedEnvironment();
+    if (action !== 'environment') await startApprovedEnvironment();
     if (sameProject(projectContext(), context) && selectedPlanFingerprint) void refreshConversations();
   } catch (error) {
     if (sameProject(projectContext(), context)) {
@@ -1255,7 +1285,6 @@ async function retryProjectSetup(action: 'prepare' | 'preview' | 'environment', 
 element('retry-preparation').addEventListener('click', () => { void retryProjectSetup('prepare'); });
 element('retry-project-plan').addEventListener('click', () => { void retryProjectSetup(planRetryAction); });
 element('resume-removal').addEventListener('click', async () => { await showProjectSettings('resume-removal'); element('preview-removal').click(); });
-element('adopt-session').addEventListener('click', () => { void retryProjectSetup('prepare', element<HTMLSelectElement>('session-choice').value); });
 element('refresh-plan').addEventListener('click', () => { void refreshSelectedPlan(); });
 element('hide-terminal').addEventListener('click', async () => { await hideTerminal(); element('project-heading').focus(); });
 element('prepare-environment').addEventListener('click', () => {
@@ -1298,7 +1327,7 @@ async function openTerminal(...[command, arguments_, caption, foreground = true]
   }
   if (!current()) { await finishTerminalLaunch(); void syncMenus(); return; }
   const sessionId = command === 'start_agent_session' && arguments_.action === 'resume' ? arguments_.sessionId : null;
-  const existingChat = sessionId === null ? undefined : appData.terminals.find(status => status.running && terminalMatches(status, appData.selectedProject!) && status.conversationId === sessionId);
+  const existingChat = command === 'start_agent_session' && sessionId !== null ? appData.terminals.find(status => status.running && isChat(status) && terminalMatches(status, project) && status.agentKind === arguments_.agentKind && status.conversationId === sessionId) : undefined;
   const purpose = command === 'terminal_start' ? 'local' : command === 'prepare_environment' ? 'environment' : command === 'start_agent_session' ? arguments_.action : arguments_.operation;
   const launchingChat = command === 'start_agent_session' && (arguments_.action === 'new-chat' || arguments_.action === 'resume');
   const blocking = command === 'start_project_operation' ? undefined : appData.terminals.find(status => status.running
@@ -1508,6 +1537,22 @@ const startup = new StartupSequence();
 await startup.run('window', () => invoke('frontend_ready'));
 await startup.run('controllers', () => {
 resetBoundaryDetails = initializeBoundaryTests(projectContext);
+resetProjectPreview = initializeProjectPreview(projectContext);
+resetGitHubAccess = initializeProjectGitHubAccess(projectContext);
+projectImageUpdate = initializeProjectImageUpdate(
+  projectContext,
+  () => terminalLaunch.blocksChanges() || appData.terminals.some(terminal => terminal.running && terminal.projectId === appData.selectedProject?.id),
+  async context => {
+    if (sameProject(projectContext(), context)) await refreshSelectedProjectRecords();
+  },
+);
+resetGatewayLogs = initializeGatewayLogs(() => {
+  const project = appData.selectedProject;
+  return project ? { ...projectContext()!, reference: project.profile + '@' + project.label } : null;
+});
+appDataStore.subscribe(({ selectedProject: project }, { selectedProject: previous }) => {
+  if (project?.profile !== previous?.profile || project?.label !== previous?.label || project?.network !== previous?.network) resetGatewayLogs();
+});
 resetPolicyDetails = initializeProjectPolicy(() => appData.selectedProject ? { ...projectContext()!, project: appData.selectedProject } : null, async (project, detached) => {
   appData.selectedProject = project;
   updateCodexActions();

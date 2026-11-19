@@ -24,7 +24,7 @@ interface TelemetryStatus { recorded: string | null; effective: string; message:
 function input(id: string): HTMLInputElement { return document.getElementById(id) as HTMLInputElement; }
 function select(id: string): HTMLSelectElement { return document.getElementById(id) as HTMLSelectElement; }
 
-export function selectSettingsTab(name: 'general' | 'agent-profile' | 'providers' | 'system-checks'): void {
+export function selectSettingsTab(name: 'general' | 'providers' | 'system-checks'): void {
   for (const tab of document.querySelectorAll<HTMLButtonElement>('#settings-tabs [role="tab"]')) {
     const selected = tab.id === 'settings-tab-' + name;
     tab.setAttribute('aria-selected', String(selected));
@@ -58,11 +58,8 @@ function renderTelemetry(status: TelemetryStatus): void {
 function settingsFields(settings: Settings): Record<string, string> {
   return {
     'cli-path': settings.cliPath ?? '',
-    'codex-profile': settings.codex.profile,
-    'claude-code-profile': settings.claudeCode.profile,
     'cpu-count': String(settings.cpus),
     'memory-mb': String(settings.memoryMb),
-    'image-verification': settings.verification,
     'network-preference': settings.network,
     'allowed-hosts': settings.codex.allowedHosts.join('\n'),
     'claude-code-allowed-hosts': settings.claudeCode.allowedHosts.join('\n'),
@@ -89,11 +86,12 @@ export async function initializeSettings(): Promise<void> {
   catch { document.getElementById('application-version')!.textContent = 'Unavailable'; }
   finally { setLoading(document.getElementById('application-version')!, false); }
   const form = document.getElementById('brig-settings') as HTMLFormElement;
-  const statuses = ['settings-status', 'agent-profile-status'].map(id => document.getElementById(id)!);
-  const saves = ['save-settings', 'save-agent-profile'].map(id => document.getElementById(id) as HTMLButtonElement);
-  const fields = ['settings-fields', 'agent-profile-fields'].map(id => document.getElementById(id) as HTMLFieldSetElement);
+  const status = document.getElementById('settings-status')!;
+  const save = document.getElementById('save-settings') as HTMLButtonElement;
+  const fields = document.getElementById('settings-fields') as HTMLFieldSetElement;
   function setStatus(message: string, busy = false): void {
-    for (const status of statuses) { status.textContent = message; status.hidden = busy; }
+    status.textContent = message;
+    status.hidden = busy;
     setWorkspaceStatus('settings-save', busy ? message : null, 'settings-view');
   }
   const state = new FormState<Settings>();
@@ -115,7 +113,7 @@ export async function initializeSettings(): Promise<void> {
       if (!state.replace(settings)) return;
       renderSettings(state.current()!, previous);
       updateNetworkHint();
-      for (const fieldset of fields) fieldset.disabled = false;
+      fields.disabled = false;
       const telemetry = await invoke<TelemetryStatus>('telemetry_status');
       if (revision === settingsReadRevision) acceptTelemetry(telemetry);
     } catch (error) { if (revision === settingsReadRevision) setStatus(String(error)); }
@@ -130,11 +128,11 @@ export async function initializeSettings(): Promise<void> {
     renderSettings(state.current()!, null);
     acceptTelemetry(await invoke<TelemetryStatus>('telemetry_status'));
   } catch (error) { state.fail(initialRead); setStatus(String(error)); }
-  finally { state.finish(initialRead); for (const fieldset of fields) setLoading(fieldset, false); if (pendingSettingsRead) { pendingSettingsRead = false; void refreshSettings(); } }
+  finally { state.finish(initialRead); setLoading(fields, false); if (pendingSettingsRead) { pendingSettingsRead = false; void refreshSettings(); } }
   const network = select('network-preference');
   const networkHint = document.getElementById('network-hint')!;
   function updateNetworkHint(): void {
-    const guest = network.value === 'offline' ? 'Offline blocks guest command traffic. Sign-in and online Codex and Claude Code sessions are unavailable.' : 'Brig/hvi allows guest command traffic only to destinations permitted by the policy.';
+    const guest = network.value === 'offline' ? 'Offline blocks guest command traffic and online chats. Provider sign-in uses the Mac connection.' : 'Brig/hvi allows guest command traffic only to destinations permitted by the policy.';
     networkHint.textContent = guest + ' Hosted Codex tools, including web search, have a separate scope. Tugboat does not read or set the web search mode.';
   }
   network.addEventListener('change', updateNetworkHint);
@@ -153,23 +151,23 @@ export async function initializeSettings(): Promise<void> {
     const submission = state.submit();
     if (!submission) return;
     ++settingsReadRevision;
-    for (const save of saves) { save.disabled = true; setBusy(save, true); }
+    save.disabled = true;
+    setBusy(save, true);
     setStatus('Saving settings…', true);
     const settings: Settings = {
       ...submission.value,
       schemaVersion: 2,
       cliPath: input('cli-path').value.trim() || null,
       codex: {
-        profile: input('codex-profile').value.trim(),
+        profile: submission.value.codex.profile,
         allowedHosts: [...new Set((document.getElementById('allowed-hosts') as HTMLTextAreaElement).value.split('\n').map(value => value.trim()).filter(Boolean))],
       },
       claudeCode: {
-        profile: input('claude-code-profile').value.trim(),
+        profile: submission.value.claudeCode.profile,
         allowedHosts: [...new Set((document.getElementById('claude-code-allowed-hosts') as HTMLTextAreaElement).value.split('\n').map(value => value.trim()).filter(Boolean))],
       },
       cpus: input('cpu-count').valueAsNumber,
       memoryMb: input('memory-mb').valueAsNumber,
-      verification: select('image-verification').value as Settings['verification'],
       network: network.value as Settings['network'],
       telemetry: input('telemetry-preference').checked,
     };
@@ -181,10 +179,11 @@ export async function initializeSettings(): Promise<void> {
     } catch (error) { state.fail(submission.revision); setStatus(String(error)); }
     finally {
       state.finish(submission.revision);
-      for (const save of saves) { setBusy(save, false); save.disabled = false; }
-      saves.find(save => !save.closest('[hidden]'))?.focus();
+      setBusy(save, false);
+      save.disabled = false;
+      if (!save.closest('[hidden]')) save.focus();
       if (pendingSettingsRead) { pendingSettingsRead = false; void refreshSettings(); }
     }
   });
-  for (const fieldset of fields) fieldset.disabled = state.current() === null;
+  fields.disabled = state.current() === null;
 }

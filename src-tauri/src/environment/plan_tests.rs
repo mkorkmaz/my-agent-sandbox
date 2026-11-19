@@ -18,11 +18,8 @@ impl Fixture {
         ));
         fs::create_dir_all(root.join("project")).unwrap();
         let root = fs::canonicalize(root).unwrap();
-        let mut project = Registry::default()
-            .register(&root.join("project"), "codex")
-            .unwrap();
+        let mut project = Registry::default().register(&root.join("project")).unwrap();
         let policy = json!({"apiVersion":"brig.sh/v1alpha1","kind":"Policy","metadata":{"name":"bd01-fixture"},"spec":{"egress":{"default":"deny"}}});
-        project.label = "bd01-fixture".into();
         project.stage = crate::projects::ProjectStage::Ready;
         project.policy = Some(Policy {
             name: "bd01-fixture".into(),
@@ -30,10 +27,15 @@ impl Fixture {
             fingerprint: Some(brig::fingerprint(&policy).unwrap()),
         });
         fs::write(root.join("policy.json"), policy.to_string()).unwrap();
+        fs::write(
+            root.join("profile.json"),
+            managed_profile::expected_definition().to_string(),
+        )
+        .unwrap();
         let executable = root.join("brig");
         fs::write(&executable, r#"#!/bin/sh
 case "$1:$2" in
-agent:show) printf '%s' '{"name":"codex","kind":"agent","binary":"codex"}';;
+agent:show) /bin/cat "$FIXTURE_ROOT/profile.json";;
 policy:show) /bin/cat "$FIXTURE_ROOT/policy.json";;
 --json:plan) /bin/cat "$FIXTURE_ROOT/plan.json";;
 --json:ls) printf '%s' '{"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[]}}';;
@@ -51,23 +53,32 @@ esac
         .unwrap();
         let mut plan: Value = serde_json::from_str(fixture["stdout"].as_str().unwrap()).unwrap();
         plan["data"]["project"]["host"] = json!(self.project.path);
-        plan["data"]["home"]["host"] = json!(self.root.join("uncreated-home"));
+        plan["data"]["home"]["host"] = json!(self.home());
+        plan["data"]["profile"] = json!(self.project.profile);
+        plan["data"]["session"] = json!(self.project.label);
+        plan["data"]["verify"]["mode"] = json!("require");
+        plan["data"]["image"]["ref"] = json!(self.project.image_ref);
+        plan["data"]["credentials"] = json!([]);
         plan
+    }
+
+    fn home(&self) -> PathBuf {
+        self.root.join("tugboat-project-homes").join(format!(
+            "{}-{}",
+            self.project.environment_id, self.project.label
+        ))
     }
 
     fn checked(&self, plan: &Value, expected: Option<&str>) -> Result<CheckedProject, String> {
         fs::write(self.root.join("plan.json"), plan.to_string()).unwrap();
         let brig = Brig {
             executable: self.root.join("brig"),
-            environment: std::collections::BTreeMap::from([(
-                "FIXTURE_ROOT".into(),
-                self.root.to_string_lossy().into_owned(),
-            )]),
+            environment: ["FIXTURE_ROOT", "BRIG_STATE_DIR"]
+                .into_iter()
+                .map(|name| (name.into(), self.root.to_string_lossy().into_owned()))
+                .collect(),
         };
-        let settings = Settings {
-            verification: crate::desktop::settings::Verification::Warn,
-            ..Settings::default()
-        };
+        let settings = Settings::default();
         check_environment(
             brig,
             self.project.clone(),
@@ -131,26 +142,27 @@ fn checked_paths_keep_the_raw_plan_and_its_fingerprint_including_additive_fields
     let mut plan = fixture.plan();
     plan["data"]["futureField"] = json!({"kept":"verbatim"});
     let bytes = serde_json::to_vec(&plan).unwrap();
-    let profile = json!({"name":"codex","kind":"agent","binary":"codex"});
+    let profile = managed_profile::expected_definition();
     let fingerprint = plan_fingerprint(&plan, &fixture.project, &profile).unwrap();
     let checked = fixture.checked(&plan, Some(&fingerprint)).unwrap();
     assert_eq!(serde_json::to_vec(&checked.plan).unwrap(), bytes);
     assert_eq!(checked.fingerprint, fingerprint);
-    assert_eq!(checked.paths.host_home, fixture.root.join("uncreated-home"));
+    assert_eq!(checked.paths.host_home, fixture.home());
     assert_eq!(
         checked.paths.guest_project,
         PathBuf::from("/work/örnek proje")
     );
     assert!(!checked.paths.host_home.exists());
-    for (field, key, value) in [
-        ("home", "host", json!(fixture.root.join("changed-home"))),
-        ("project", "guest", json!("/work/changed project")),
-    ] {
-        let mut changed = plan.clone();
-        changed["data"][field][key] = value;
-        assert_eq!(
-            fixture.checked(&changed, Some(&fingerprint)).err().unwrap(),
-            "The execution plan changed. Review it and start again."
-        );
-    }
+    let mut different_home = plan.clone();
+    different_home["data"]["home"]["host"] = json!(fixture.root.join("changed-home"));
+    assert!(fixture
+        .checked(&different_home, Some(&fingerprint))
+        .err()
+        .unwrap()
+        .contains("persistent guest home"));
+    plan["data"]["project"]["guest"] = json!("/work/changed project");
+    assert_eq!(
+        fixture.checked(&plan, Some(&fingerprint)).err().unwrap(),
+        "The execution plan changed. Review it and start again."
+    );
 }

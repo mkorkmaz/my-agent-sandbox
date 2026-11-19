@@ -1,7 +1,8 @@
-import type { ConversationUsageDetails } from './usage-types';
+import type { Conversation, ConversationUsageDetails } from './usage-types';
 import { createStore } from 'zustand/vanilla';
 
-type UsageSelection = { projectId: string; sessionId: string; environmentId: string | null; fingerprint: string; revision: number };
+type UsageTarget = Pick<Conversation, 'environmentId' | 'agentKind'> & { projectId: string; sessionId: string };
+type UsageSelection = UsageTarget & { fingerprint: string; revision: number };
 type UsageRequest = UsageSelection & { attempt: number };
 type UsageLoad = { phase: 'empty' | 'failed-empty' }
   | { phase: 'loading'; request: UsageRequest }
@@ -16,9 +17,9 @@ export class UsageDetailsState {
   private get state(): UsageView { return this.data.getState().state; }
   private set state(state: UsageView) { this.data.setState({ state }); }
 
-  open(projectId: string, sessionId: string, environmentId: string | null, fingerprint: string): number {
+  open(target: UsageTarget, fingerprint: string): number {
     const revision = ++this.ordering.view;
-    const selection = { projectId, sessionId, environmentId, fingerprint, revision };
+    const selection = { ...target, fingerprint, revision };
     const cached = this.data.getState().cached.get(this.key(selection));
     const load: UsageLoad = cached?.fingerprint === fingerprint ? { phase: 'ready', details: cached.details } : { phase: 'empty' };
     this.state = { phase: 'open', selection, load };
@@ -53,7 +54,7 @@ export class UsageDetailsState {
 
   show(request: UsageRequest, details: ConversationUsageDetails): boolean {
     if (!this.active(request) || !this.unchanged(request.fingerprint) || this.state.phase === 'closed') return false;
-    if (details.sessionId !== request.sessionId || !details.agents.some(agent => agent.sessionId === request.sessionId)) {
+    if (details.agentKind !== request.agentKind || details.sessionId !== request.sessionId || !details.agents.some(agent => agent.sessionId === request.sessionId)) {
       throw new Error('The recorded usage response does not match this session. Refresh the session list and try again.');
     }
     const cached = new Map(this.data.getState().cached);
@@ -80,12 +81,13 @@ export class UsageDetailsState {
     if (this.state.phase === 'closed' || !('request' in this.state.load)) return false;
     return this.accepts(request.sessionId, request.revision)
       && this.state.selection.environmentId === request.environmentId
+      && this.state.selection.agentKind === request.agentKind
       && this.state.load.request.attempt === request.attempt;
   }
 
   clearCache(): void { this.data.setState({ cached: new Map() }); }
 
-  private key(selection: Pick<UsageSelection, 'projectId' | 'environmentId' | 'sessionId'>): string {
-    return JSON.stringify([selection.projectId, selection.environmentId, selection.sessionId]);
+  private key(selection: UsageTarget): string {
+    return JSON.stringify([selection.projectId, selection.environmentId, selection.agentKind, selection.sessionId]);
   }
 }

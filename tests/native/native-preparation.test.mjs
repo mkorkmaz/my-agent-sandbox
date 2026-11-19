@@ -30,7 +30,8 @@ function fixture(context, tool, { testMode = true, goAvailable = true, failTest 
   }
   write('.build/hull-compat/downloads/go.tar.gz', archive);
   write('resources/runtime/hull-spaces.patch', 'fixture patch');
-  for (const name of ['hull_spaces_test.go', 'hull_disk_tools_test.go', 'brig_disk_tools_test.go']) write(`tests/native/${name}`, 'fixture test');
+  write('resources/runtime/hull-rootfs-restore.patch', fs.readFileSync(path.join(root, 'resources/runtime/hull-rootfs-restore.patch')));
+  for (const name of ['hull_spaces_test.go', 'hull_disk_tools_test.go', 'hull_rootfs_restore_test.go', 'brig_disk_tools_test.go']) write(`tests/native/${name}`, 'fixture test');
   if (goAvailable) write('.build/hull-compat/go/bin/go', 'fixture Go');
   const commands = path.join(workspace, 'commands.jsonl');
   const run = (argumentsList = [...(testMode ? ['--test'] : []), ...(noSign ? ['--no-sign'] : [])]) => spawnSync(process.execPath, [
@@ -91,6 +92,21 @@ test('cold Brig test mode requests test-only hull preparation when Go is absent'
   const prepare = commands().find(command => command.binary === process.execPath);
   assert.deepEqual(prepare.argumentsList.slice(1), ['--test']);
   assert.ok(commands().every(command => command.binary !== '/usr/bin/codesign'));
+});
+
+test('Hull rebuilds when the writable-root recovery patch changes', macOnly, context => {
+  const { result, run, commands, workspace } = fixture(context, 'hull', { testMode: false });
+  assert.equal(result.status, 0, result.stderr);
+  const patch = path.join(workspace, 'resources/runtime/hull-rootfs-restore.patch');
+  const manifest = path.join(workspace, '.build/hull-compat/bin/build.json');
+  const digest = () => createHash('sha256').update(fs.readFileSync(patch)).digest('hex');
+  const recorded = () => JSON.parse(fs.readFileSync(manifest, 'utf8')).rootRestorePatchSha256;
+  assert.ok(commands().some(command => command.binary === '/usr/bin/patch' && command.argumentsList.includes(fs.realpathSync(patch))));
+  assert.equal(recorded(), digest());
+  fs.appendFileSync(patch, '\n');
+  assert.equal(run().status, 0);
+  assert.equal(commands().filter(command => command.argumentsList[0] === 'build').length, 2);
+  assert.equal(recorded(), digest());
 });
 
 test('Brig no-sign preparation forwards its mode when Go requires hull preparation', macOnly, context => {

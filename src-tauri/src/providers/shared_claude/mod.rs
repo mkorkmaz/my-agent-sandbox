@@ -225,6 +225,38 @@ pub(crate) fn detach_environment(
     Ok(true)
 }
 
+pub(crate) fn retire_bindings(
+    records: &crate::storage::data_location::RecordsDirectory,
+    projects: &[crate::projects::Project],
+) -> Result<(), String> {
+    use std::{fs, os::unix::fs::MetadataExt};
+    let path = records.path().join("claude/session.json");
+    match fs::symlink_metadata(&path) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Ok(metadata) if metadata.is_file() && metadata.nlink() == 1 => {}
+        _ => {
+            return Err(
+                "The Claude account record is unavailable or linked. Preserve it for review."
+                    .into(),
+            )
+        }
+    }
+    let store = store::Store::open(records.clone())?;
+    let mut session = store.load()?;
+    let count = session.bindings.len();
+    session.bindings.retain(|binding| {
+        !projects.iter().any(|project| {
+            project.agent_kind == crate::agents::AgentKind::ClaudeCode
+                && binding.project_id == project.id
+                && binding.environment_id == project.environment_id
+        })
+    });
+    if session.bindings.len() != count {
+        store.save(&session)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn forget_project(app: &AppHandle, project_id: &str) -> Result<(), String> {
     let state = app.state::<SharedClaude>();
     let mut runtime = state.0.blocking_lock();

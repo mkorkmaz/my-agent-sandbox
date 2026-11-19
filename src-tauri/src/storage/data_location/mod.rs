@@ -71,11 +71,30 @@ pub struct LocationStatus {
     available: bool,
     can_change: bool,
     message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_reset: Option<ProjectReset>,
 }
 
 enum LocationNotice {
     Failure(String),
     ReconnectionVerified,
+    ProjectReset(ProjectReset),
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum ProjectReset {
+    CancelMove,
+    RestartRequired,
+}
+
+impl ProjectReset {
+    fn message(self) -> &'static str {
+        match self {
+            Self::CancelMove => "Cancel the pending folder change before restarting Tugboat to reset the project environments.",
+            Self::RestartRequired => "Restart Tugboat to finish the one-time project environment reset.",
+        }
+    }
 }
 
 struct SavedLocation {
@@ -802,10 +821,17 @@ impl DataLocation {
                         &location.directory_id,
                         MarkerState::Complete,
                     )
-                    .and_then(|_| finish_move(&mut location, &pointer, &default_directory));
+                    .and_then(|_| {
+                        if matches!(location.phase(), MovePhase::Pending(pending) if pending.kind == ChangeKind::Move)
+                            && crate::projects::Registry::requires_reset(&location.directory.join("projects.json"))?
+                        {
+                            return Ok(Some(LocationNotice::ProjectReset(ProjectReset::CancelMove)));
+                        }
+                        let change = finish_move(&mut location, &pointer, &default_directory)?;
+                        Ok((change == Some(ChangeKind::Locate)).then_some(LocationNotice::ReconnectionVerified))
+                    });
                     saved.notice = match restored {
-                        Ok(Some(ChangeKind::Locate)) => Some(LocationNotice::ReconnectionVerified),
-                        Ok(_) => None,
+                        Ok(notice) => notice,
                         Err(error) => Some(LocationNotice::Failure(format!(
                             "Could not finish moving records. {error}"
                         ))),
@@ -834,6 +860,7 @@ impl DataLocation {
             |records| records.verify().is_ok(),
         );
         let message = match &saved.notice {
+            Some(LocationNotice::ProjectReset(reset)) => Some(reset.message().into()),
             Some(LocationNotice::Failure(error)) => Some(error.clone()),
             _ if !available => Some("The records folder is unavailable. Connect its drive and restart Tugboat, or locate the folder below.".into()),
             Some(LocationNotice::ReconnectionVerified) => Some("Records folder reconnected. Tugboat verified your original records.".into()),
@@ -860,7 +887,43 @@ impl DataLocation {
             available,
             can_change: self._lease.is_some(),
             message,
+            project_reset: match saved.notice {
+                Some(LocationNotice::ProjectReset(reset)) => Some(reset),
+                _ => None,
+            },
         })
+    }
+
+    fn require_project_reset_ready(&self) -> Result<(), String> {
+        let saved = self.saved.lock().map_err(|error| error.to_string())?;
+        if let Some(LocationNotice::ProjectReset(reset)) = saved.notice {
+            return Err(reset.message().into());
+        }
+        Ok(())
+    }
+
+    fn cancel_move(&self) -> Result<LocationStatus, String> {
+        if self._lease.is_none() {
+            return Err(
+                "Another Tugboat instance is using these records. Close it before changing the folder."
+                    .into(),
+            );
+        }
+        let mut saved = self.saved.lock().map_err(|error| error.to_string())?;
+        if saved.reconnected.is_some() {
+            return Err("Restart Tugboat to finish the verified records reconnection.".into());
+        }
+        let mut location = saved
+            .location
+            .clone()
+            .ok_or("The records location is unavailable.")?;
+        location.pending = None;
+        storage::write(&self.pointer, &location)?;
+        saved.location = Some(location);
+        saved.notice = matches!(saved.notice, Some(LocationNotice::ProjectReset(_)))
+            .then_some(LocationNotice::ProjectReset(ProjectReset::RestartRequired));
+        drop(saved);
+        self.status()
     }
 
     fn pending_reconnect(&self) -> Result<Option<RecordsDirectory>, String> {
@@ -1141,10 +1204,16 @@ pub fn validate_project_records(
 #[tauri::command]
 pub fn storage_location(app: AppHandle) -> Result<LocationStatus, String> {
     let mut status = app.state::<DataLocation>().status()?;
-    if let Some(error) = app.state::<crate::usage_store::Runtime>().failure() {
-        status.message = Some(error);
+    if status.project_reset.is_none() {
+        if let Some(error) = app.state::<crate::usage_store::Runtime>().failure() {
+            status.message = Some(error);
+        }
     }
     Ok(status)
+}
+
+pub(crate) fn require_project_reset_ready(app: &AppHandle) -> Result<(), String> {
+    app.state::<DataLocation>().require_project_reset_ready()
 }
 
 #[tauri::command]
@@ -1200,27 +1269,7 @@ pub async fn change_storage_location(
 
 #[tauri::command]
 pub fn cancel_storage_move(app: AppHandle) -> Result<LocationStatus, String> {
-    let state = app.state::<DataLocation>();
-    if state._lease.is_none() {
-        return Err(
-            "Another Tugboat instance is using these records. Close it before changing the folder."
-                .into(),
-        );
-    }
-    let mut saved = state.saved.lock().map_err(|error| error.to_string())?;
-    if saved.reconnected.is_some() {
-        return Err("Restart Tugboat to finish the verified records reconnection.".into());
-    }
-    let mut location = saved
-        .location
-        .clone()
-        .ok_or("The records location is unavailable.")?;
-    location.pending = None;
-    storage::write(&state.pointer, &location)?;
-    saved.location = Some(location);
-    saved.notice = None;
-    drop(saved);
-    state.status()
+    app.state::<DataLocation>().cancel_move()
 }
 
 #[tauri::command]
@@ -1470,7 +1519,7 @@ mod tests {
             ("settings.json", b"{\"profile\":\"codex\"}".as_slice()),
             (
                 "projects.json",
-                b"{\"schemaVersion\":1,\"projects\":[]}".as_slice(),
+                b"{\"schemaVersion\":3,\"projects\":[]}".as_slice(),
             ),
             (
                 "projects.json.v1.backup",
@@ -1495,7 +1544,7 @@ mod tests {
             ),
             ("boundaries/project.json", b"{\"passed\":true}".as_slice()),
             (
-                "profiles/tugboat-claude.yaml",
+                "profiles/tugboat-project.yaml",
                 b"managed profile".as_slice(),
             ),
             (
@@ -1508,76 +1557,34 @@ mod tests {
     }
 
     #[test]
-    fn records_moves_keep_both_environment_ledgers_and_migration_backups() {
-        let (root, default, legacy) = fixture("agent-environments");
+    fn records_moves_keep_one_shared_project_and_its_private_records() {
+        let (root, default, legacy) = fixture("shared-environment");
         let location = DataLocation::open(default.clone(), legacy.clone());
         create_directory(&root.join("project")).unwrap();
         create_directory(&root.join("drive")).unwrap();
         let mut registry = crate::projects::Registry::default();
-        let project = registry
-            .register(&root.join("project"), "saved-codex")
-            .unwrap();
-        let project_file = default.join("projects.json");
+        let project = registry.register(&root.join("project")).unwrap();
+        storage::write(&default.join("projects.json"), &registry).unwrap();
         storage::write(
-            &project_file,
-            &crate::projects::migration_tests::legacy_registry(&registry),
+            &default.join("settings.json"),
+            &crate::desktop::settings::Settings::default(),
         )
         .unwrap();
-        storage::write(&default.join("settings.json"),&serde_json::json!({"schemaVersion":1,"profile":"saved-codex","allowedHosts":["private.example"]})).unwrap();
-        let records = RecordsDirectory {
-            directory: default.clone(),
-            id: location
-                .saved
-                .lock()
-                .unwrap()
-                .location
-                .as_ref()
-                .unwrap()
-                .directory_id
-                .clone(),
-        };
-        crate::desktop::settings::migrate(&default.join("settings.json"), &records).unwrap();
-        crate::projects::migrate(&project_file, &records).unwrap();
-        registry = crate::projects::Registry::load(&project_file).unwrap();
-        let added = registry
-            .ensure_environment(
-                &project.id,
-                crate::agents::AgentKind::ClaudeCode,
-                &crate::desktop::settings::Settings::default(),
-            )
-            .unwrap();
-        let claude = registry
-            .environment(&project.id, &added.environment_id)
-            .unwrap();
-        storage::write(&project_file, &registry).unwrap();
-        let codex_ledger = project.ledger_file(&default).unwrap();
-        let claude_ledger = claude.ledger_file(&default).unwrap();
-        storage::write(
-            &codex_ledger,
-            &serde_json::json!({"saved":"codex","costUsd":0.1234}),
+        storage::write_bytes(
+            &default.join("profiles/tugboat-project.yaml"),
+            b"synthetic managed profile",
         )
         .unwrap();
-        storage::write(
-            &claude_ledger,
-            &serde_json::json!({"saved":"claude","state":"archived"}),
-        )
-        .unwrap();
-        fs::write(
-            storage::v1_backup_path(&codex_ledger),
-            b"original immutable ledger",
+        storage::write_bytes(
+            &default.join("chatgpt/session.json"),
+            b"synthetic private provider record",
         )
         .unwrap();
         let relative = [
-            PathBuf::from("projects.json"),
-            PathBuf::from("settings.json"),
-            PathBuf::from("projects.json.v1.backup"),
-            PathBuf::from("settings.json.v1.backup"),
-            codex_ledger.strip_prefix(&default).unwrap().to_owned(),
-            claude_ledger.strip_prefix(&default).unwrap().to_owned(),
-            storage::v1_backup_path(&codex_ledger)
-                .strip_prefix(&default)
-                .unwrap()
-                .to_owned(),
+            "projects.json",
+            "settings.json",
+            "profiles/tugboat-project.yaml",
+            "chatgpt/session.json",
         ];
         let originals: Vec<_> = relative
             .iter()
@@ -1592,16 +1599,99 @@ mod tests {
             assert_eq!(fs::read(target.join(path)).unwrap(), bytes);
             assert!(!default.join(path).exists());
         }
-        assert_eq!(
-            crate::projects::Registry::load(&target.join("projects.json"))
-                .unwrap()
-                .environments(&project.id)
-                .unwrap()
-                .iter()
-                .count(),
-            2
-        );
+        let registry = crate::projects::Registry::load(&target.join("projects.json")).unwrap();
+        let [codex, claude] = registry.agent_views(&project.id).unwrap();
+        assert_eq!(codex.environment_id, project.environment_id);
+        assert_eq!(claude.environment_id, project.environment_id);
+        assert_eq!(codex.reference(), claude.reference());
         drop(reopened);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn an_old_pending_move_can_be_cancelled_before_shared_projects_are_published() {
+        use crate::{desktop::settings::Settings, platform::brig::Brig, projects::Registry};
+        let (root, default, legacy) = fixture("pending-move-project-reset");
+        let source = root.join("project");
+        let target = root.join("drive");
+        create_directory(&source).unwrap();
+        create_directory(&target).unwrap();
+        fs::write(source.join("kept"), b"project work").unwrap();
+        let location = DataLocation::open(default.clone(), legacy.clone());
+        let mut registry = Registry::default();
+        let project = registry.register(&source).unwrap();
+        let former = serde_json::json!({
+            "schemaVersion": 2,
+            "projects": [crate::projects::registry_tests::former_record(&registry, &project.id, Vec::new())],
+        });
+        let file = default.join("projects.json");
+        storage::write(&file, &former).unwrap();
+        let original = fs::read(&file).unwrap();
+        location.schedule(&target, false).unwrap();
+        storage::write_bytes(&target.join("projects.json"), b"unverified partial copy").unwrap();
+        drop(location);
+
+        let reopened = DataLocation::open(default.clone(), legacy.clone());
+        let state = reopened.status().unwrap();
+        assert!(matches!(
+            state.project_reset,
+            Some(ProjectReset::CancelMove)
+        ));
+        assert_eq!(state.directory, Some(default.clone()));
+        assert_eq!(state.pending_directory, Some(target.clone()));
+        assert!(reopened
+            .require_project_reset_ready()
+            .unwrap_err()
+            .contains("Cancel"));
+        assert_eq!(fs::read(&file).unwrap(), original);
+        let cancelled = reopened.cancel_move().unwrap();
+        assert!(matches!(
+            cancelled.project_reset,
+            Some(ProjectReset::RestartRequired)
+        ));
+        assert_eq!(cancelled.pending_directory, None);
+        assert!(reopened
+            .require_project_reset_ready()
+            .unwrap_err()
+            .contains("Restart"));
+        assert_eq!(fs::read(&file).unwrap(), original);
+        drop(reopened);
+
+        let restarted = DataLocation::open(default.clone(), legacy);
+        assert!(restarted.status().unwrap().project_reset.is_none());
+        restarted.require_project_reset_ready().unwrap();
+        let records = RecordsDirectory {
+            directory: default.clone(),
+            id: marker(&default).unwrap().id,
+        };
+        let brig = Brig {
+            executable: root.join("no-guest-command"),
+            environment: [(
+                "BRIG_STATE_DIR".into(),
+                root.join("brig-state").to_str().unwrap().into(),
+            )]
+            .into(),
+        };
+        crate::projects::operations::retired_history::activate(
+            &records,
+            &Settings::default(),
+            || Ok(brig),
+            || Ok(()),
+        )
+        .unwrap();
+        crate::usage_store::bootstrap::open_or_initialize(&records)
+            .unwrap()
+            .close()
+            .unwrap();
+        let shared = Registry::load(&file).unwrap().project(&project.id).unwrap();
+        assert_eq!(shared.path, source);
+        assert_eq!(shared.environment_id, project.environment_id);
+        assert_eq!(fs::read(source.join("kept")).unwrap(), b"project work");
+        assert_eq!(
+            fs::read(target.join("projects.json")).unwrap(),
+            b"unverified partial copy"
+        );
+        drop(restarted);
         fs::remove_dir_all(root).unwrap();
     }
 
@@ -1691,7 +1781,7 @@ mod tests {
         seed(&default);
         location.schedule(&target, false).unwrap();
         let mut registry = crate::projects::Registry::load(&default.join("projects.json")).unwrap();
-        registry.register(&project, "codex").unwrap();
+        registry.register(&project).unwrap();
         storage::write(&default.join("projects.json"), &registry).unwrap();
         drop(location);
         let blocked = DataLocation::open(default.clone(), legacy);

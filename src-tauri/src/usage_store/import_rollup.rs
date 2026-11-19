@@ -1,6 +1,6 @@
 //! Keep projection memory bounded by one typed request or cursor. Temporary SQL
 //! keys reproduce own_turns ordering and canonical source preference in Rust.
-use super::{codecs, error, importer, Rollup};
+use super::{codecs, error, revision, Rollup};
 use crate::usage::{self, Cursor, RequestUsage, Summary, TurnUsage};
 use rusqlite::{params, Connection};
 use std::collections::BTreeMap;
@@ -237,7 +237,7 @@ pub(crate) fn build(
         missing_turn_links: missing,
         has_unread_bytes: unread,
         has_ownership_problem: ownership_problem,
-        usage_revision: importer::revision(connection, record_id, &metadata, metadata.available)?,
-        offline_usage_revision: importer::revision(connection, record_id, &metadata, false)?,
+        usage_revision: revision::revision(connection, record_id, &metadata, metadata.available)?,
+        offline_usage_revision: revision::revision(connection, record_id, &metadata, false)?,
     })
 }

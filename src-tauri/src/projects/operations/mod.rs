@@ -12,9 +12,9 @@ use std::path::Path;
 use std::process::Command;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
-#[cfg(test)]
-mod environment_tests;
+pub(crate) mod gateway_logs;
 mod removal_target;
+pub(crate) mod retired_history;
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -129,36 +129,17 @@ fn arguments(project: &Project, operation: Operation) -> Result<Vec<String>, Str
 pub async fn start_project_operation(
     window: WebviewWindow,
     identifier: String,
-    environment_id: Option<EnvironmentId>,
+    environment_id: EnvironmentId,
     fingerprint: Option<String>,
     operation: Operation,
     layout: Layout,
 ) -> Result<u64, String> {
     let app = window.app_handle().clone();
-    let selected = Registry::load(&projects::file(&app)?)?
-        .resolve_environment(&identifier, environment_id.as_ref())?;
-    let account_operation = (selected.agent_kind == crate::agents::AgentKind::ClaudeCode)
-        .then(|| {
-            app.state::<crate::agent_sessions::Accounts>()
-                .operation(&selected)
-        })
-        .transpose()?;
-    let _claude_guard = match account_operation {
-        Some(operation) => Some(operation.lock_owned().await),
-        None => None,
-    };
-    let shared = app
-        .state::<crate::providers::shared_chatgpt::SharedChatgpt>()
-        .0
-        .clone();
-    let _codex_guard = match selected.agent_kind {
-        crate::agents::AgentKind::Codex => Some(shared.lock_owned().await),
-        crate::agents::AgentKind::ClaudeCode => None,
-    };
+    let _operation = environment::EnvironmentOperation::begin(&identifier, &environment_id)?;
     let (command, project) = tauri::async_runtime::spawn_blocking(move || {
         let registry = Registry::load(&projects::file(&app)?)?;
         crate::storage::data_location::validate_project_records(&app, &registry)?;
-        let project = registry.resolve_environment(&identifier, environment_id.as_ref())?;
+        let project = registry.environment(&identifier, &environment_id)?;
         project.require_active()?;
         if project.stage == crate::projects::ProjectStage::Stopping {
             return Err(
@@ -209,7 +190,16 @@ pub async fn start_project_operation(
     .await
 }
 
-fn verify_target(brig: &Brig, project: &Project) -> Result<Value, String> {
+pub(super) fn verify_target(brig: &Brig, project: &Project) -> Result<Value, String> {
+    let info = verify_registered_reference(brig, project)?;
+    let home = brig.shared_project_home(project)?;
+    if info["data"]["workspace"].as_str() != home.to_str() {
+        return Err("The Brig guest home does not match the registered project.".into());
+    }
+    Ok(info)
+}
+
+fn verify_registered_reference(brig: &Brig, project: &Project) -> Result<Value, String> {
     let info = brig.json(
         &["--json".into(), "info".into(), project.reference()],
         "Info",
@@ -232,34 +222,29 @@ pub async fn stop_project(
     app: AppHandle,
     projects: State<'_, Projects>,
     identifier: String,
-    environment_id: Option<EnvironmentId>,
+    environment_id: EnvironmentId,
 ) -> Result<Project, String> {
     let lock = projects.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let selected = Registry::load(&projects::file(&app)?)?
-            .resolve_environment(&identifier, environment_id.as_ref())?;
-        let _operation = environment::EnvironmentOperation::begin(&selected.environment_id)?;
-        let operation = (selected.agent_kind == crate::agents::AgentKind::ClaudeCode)
-            .then(|| {
-                app.state::<crate::agent_sessions::Accounts>()
-                    .operation(&selected)
-            })
-            .transpose()?;
-        let claude_guard = operation
-            .as_ref()
-            .map(|operation| operation.blocking_lock());
+        let selected =
+            Registry::load(&projects::file(&app)?)?.environment(&identifier, &environment_id)?;
+        let _operation =
+            environment::EnvironmentOperation::begin(&selected.id, &selected.environment_id)?;
+        let operation = app
+            .state::<crate::agent_sessions::Accounts>()
+            .operation(&selected)?;
+        let claude_guard = operation.blocking_lock();
         let shared = app
             .state::<crate::providers::shared_chatgpt::SharedChatgpt>()
             .0
             .clone();
-        let codex_guard = (selected.agent_kind == crate::agents::AgentKind::Codex)
-            .then(|| shared.blocking_lock());
+        let codex_guard = shared.blocking_lock();
         let _guard = lock.lock().map_err(|error| error.to_string())?;
         let file = projects::file(&app)?;
         let _file_guard = storage::lock(&file)?;
         let mut registry = Registry::load(&file)?;
         crate::storage::data_location::validate_project_records(&app, &registry)?;
-        let mut project = registry.resolve_environment(&identifier, environment_id.as_ref())?;
+        let mut project = registry.environment(&identifier, &environment_id)?;
         project.require_active()?;
         let settings = project.settings(settings::load(&settings::file(&app)?)?)?;
         let brig = environment::brig_for_project(&app, &project, &settings)?;
@@ -304,9 +289,7 @@ pub struct RemovalPreview {
     pub label: Option<String>,
     pub policy: Option<projects::Policy>,
     pub owns_binding: bool,
-    pub environments: Vec<RemovalPreview>,
     running: bool,
-    logout: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -338,6 +321,7 @@ impl RemovalPreview {
 }
 
 pub(crate) fn preview(brig: &Brig, project: &Project) -> Result<RemovalPreview, String> {
+    project.require_no_image_update()?;
     let list = brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
     let inventory = list["data"]["sandboxes"]
         .as_array()
@@ -348,36 +332,21 @@ pub(crate) fn preview(brig: &Brig, project: &Project) -> Result<RemovalPreview, 
     let running = inventory
         .iter()
         .any(|sandbox| sandbox["ref"] == project.reference() && sandbox["state"] != "stopped");
-    let info = brig.json(
-        &["--json".into(), "info".into(), project.reference()],
-        "Info",
-        None,
-    )?;
-    if info["data"]["profile"] != project.profile || info["data"]["session"] != project.label {
-        return Err("The Brig session identity changed. Refresh the preview.".into());
-    }
-    if has_environment && info["data"]["project"]["host"].as_str() != project.path.to_str() {
-        return Err("The Brig session belongs to another project.".into());
-    }
+    let workspace = brig
+        .shared_project_home(project)?
+        .to_string_lossy()
+        .into_owned();
     let mut description = if has_environment {
-        brig.checked(
-            &["rm".into(), project.reference(), "--dry-run".into()],
-            None,
-        )?
-        .stdout
+        verify_target(brig, project)?;
+        "Remove the shared Brig environment and its Tugboat-owned guest home. Project files and shared provider accounts stay on the Mac.".into()
     } else {
-        format!("No Brig environment exists for {}. Remove only the app project record and its owned policy binding. Existing guest home and project files will be preserved.", project.reference())
+        format!("Remove the Tugboat project record for {} and its owned guest home and policy binding. The project files stay on the Mac.", project.reference())
     };
-    let workspace = info["data"]["workspace"]
-        .as_str()
-        .ok_or("Could not read the Brig guest home.")?
-        .to_owned();
     if let Some(removal) = &project.removal {
         if removal.workspace != workspace || (removal.environment_removed && has_environment) {
             return Err("The removal target was replaced or its guest home changed. The new environment was preserved.".into());
         }
         let completed: Vec<_> = [
-            (removal.logged_out, "guest signed out"),
             (removal.stopped, "environment stopped"),
             (removal.environment_removed, "environment removed"),
             (removal.binding_detached, "app binding cleaned"),
@@ -401,8 +370,12 @@ pub(crate) fn preview(brig: &Brig, project: &Project) -> Result<RemovalPreview, 
         project.profile, project.label, workspace, project.owns_session, project.owns_binding,
         project.policy.as_ref().map(|policy| format!("{} (owned by app: {})", policy.name, policy.owned)).unwrap_or_else(|| "none".into()),
     ));
+    description.push_str(&terminal::removal_terminal_summary(project)?);
+    if project.github_access.is_some() {
+        description.push_str("\nThis also revokes the project's GitHub fetch access.");
+    }
     let fingerprint = brig::fingerprint(
-        &serde_json::json!({"reference":project.reference(),"workspace":workspace,"project":project.path,"dryRun":description,"policy":project.policy,"hasEnvironment":has_environment,"removal":project.removal}),
+        &serde_json::json!({"reference":project.reference(),"workspace":workspace,"project":project.path,"dryRun":description,"policy":project.policy,"hasEnvironment":has_environment,"removal":project.removal,"githubAccess":project.github_access}),
     )?;
     Ok(RemovalPreview {
         reference: project.reference(),
@@ -416,9 +389,7 @@ pub(crate) fn preview(brig: &Brig, project: &Project) -> Result<RemovalPreview, 
         label: Some(project.label.clone()),
         policy: project.policy.clone(),
         owns_binding: project.owns_binding,
-        environments: Vec::new(),
         running,
-        logout: project.removal.as_ref().map(|removal| removal.logout),
     })
 }
 
@@ -426,13 +397,13 @@ pub(crate) fn preview(brig: &Brig, project: &Project) -> Result<RemovalPreview, 
 pub async fn preview_removal(
     app: AppHandle,
     identifier: String,
-    environment_id: Option<EnvironmentId>,
+    environment_id: EnvironmentId,
 ) -> Result<RemovalPreview, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let registry = Registry::load(&projects::file(&app)?)?;
         crate::storage::data_location::validate_project_records(&app, &registry)?;
-        let targets = removal_target::select(&registry, &identifier, environment_id.as_ref())?;
-        removal_target::preview(&app, &targets)
+        let project = registry.environment(&identifier, &environment_id)?;
+        removal_target::preview(&app, &project)
     })
     .await
     .map_err(|error| error.to_string())?
@@ -443,59 +414,34 @@ pub async fn remove_project(
     app: AppHandle,
     projects: State<'_, Projects>,
     identifier: String,
-    environment_id: Option<EnvironmentId>,
+    environment_id: EnvironmentId,
     fingerprint: String,
     confirmation: String,
-    logout: bool,
 ) -> Result<String, RemovalError> {
-    let preflight_app = app.clone();
-    let preflight_id = identifier.clone();
-    let selected_environment = environment_id.clone();
-    let expected = fingerprint.clone();
-    let entered = confirmation.clone();
-    let targets = tauri::async_runtime::spawn_blocking(move || -> Result<_, RemovalError> {
-        let registry = Registry::load(&projects::file(&preflight_app)?)?;
-        crate::storage::data_location::validate_project_records(&preflight_app, &registry)?;
-        let targets =
-            removal_target::select(&registry, &preflight_id, selected_environment.as_ref())?;
-        let snapshots = removal_target::snapshots(&preflight_app, &targets)?;
-        let current = removal_target::combine(&snapshots)?;
-        current.check_fingerprint(&expected)?;
-        if current.reference != entered {
+    let _operation = environment::EnvironmentOperation::begin(&identifier, &environment_id)?;
+    let begin_app = app.clone();
+    let lock = projects.0.clone();
+    let target = tauri::async_runtime::spawn_blocking(move || -> Result<_, RemovalError> {
+        let registry = Registry::load(&projects::file(&begin_app)?)?;
+        crate::storage::data_location::validate_project_records(&begin_app, &registry)?;
+        let target = registry.environment(&identifier, &environment_id)?;
+        let current = removal_target::preview(&begin_app, &target)?;
+        current.check_fingerprint(&fingerprint)?;
+        if current.reference != confirmation {
             return Err("Enter the exact session name to confirm.".to_owned().into());
         }
-        Ok(snapshots)
+        removal_target::begin(&begin_app, lock, &target, &current.fingerprint)?;
+        Ok(target)
     })
     .await
     .map_err(|error| error.to_string())??;
-    let mut messages = Vec::new();
-    for (target, previous) in targets {
-        let _operation = environment::EnvironmentOperation::begin(&target.environment_id)?;
-        let begin_app = app.clone();
-        let begin_target = target.clone();
-        let lock = projects.0.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            removal_target::begin(
-                &begin_app,
-                lock,
-                &begin_target,
-                &previous.fingerprint,
-                previous.logout.unwrap_or(logout),
-            )
-        })
-        .await
-        .map_err(|error| error.to_string())??;
-        terminal::close_environment(app.clone(), &target).await?;
-        let remove_app = app.clone();
-        let lock = projects.0.clone();
-        let cleanup = tauri::async_runtime::spawn_blocking(move || {
-            removal_target::finish(&remove_app, lock, &target)
-        })
-        .await
-        .map_err(|error| error.to_string())??;
-        messages.push(cleanup);
-    }
-    Ok(messages.join("\n"))
+    terminal::close_environment(app.clone(), &target).await?;
+    let lock = projects.0.clone();
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || removal_target::finish(&app, lock, &target))
+            .await
+            .map_err(|error| error.to_string())??,
+    )
 }
 
 fn persist_removal(file: &Path, project: &Project) -> Result<(), String> {
@@ -506,22 +452,7 @@ fn persist_removal(file: &Path, project: &Project) -> Result<(), String> {
 
 #[cfg(test)]
 fn removal_project(file: &Path, identifier: &str) -> Result<Project, String> {
-    let registry = Registry::load(file)?;
-    if registry.environments(identifier)?.iter().count() != 1 {
-        return Err("Removal is not yet available for projects with multiple agent environments. All environments were preserved.".into());
-    }
-    registry.project(identifier)
-}
-
-fn guest_logout(brig: &Brig, project: &Project) -> Result<(), String> {
-    brig.checked(
-        &project
-            .agent_kind
-            .command(crate::agents::AgentCommand::Logout)?
-            .in_guest(project.reference()),
-        None,
-    )
-    .map(|_| ())
+    Registry::load(file)?.project(identifier)
 }
 
 #[cfg(test)]
@@ -531,7 +462,6 @@ pub(crate) fn continue_removal(
     identifier: &str,
     fingerprint: &str,
     confirmation: &str,
-    logout: bool,
 ) -> Result<String, String> {
     continue_removal_with(
         brig,
@@ -540,8 +470,6 @@ pub(crate) fn continue_removal(
         &removal_project(file, identifier)?.environment_id,
         fingerprint,
         confirmation,
-        logout,
-        guest_logout,
     )
 }
 
@@ -552,8 +480,6 @@ fn continue_removal_with(
     environment_id: &EnvironmentId,
     fingerprint: &str,
     confirmation: &str,
-    logout: bool,
-    mut sign_out: impl FnMut(&Brig, &Project) -> Result<(), String>,
 ) -> Result<String, String> {
     let _file_guard = storage::lock(file)?;
     let mut project = Registry::load(file)?.environment(identifier, environment_id)?;
@@ -561,19 +487,11 @@ fn continue_removal_with(
     if current.fingerprint != fingerprint || current.reference != confirmation {
         return Err("The removal target or progress changed. Close and refresh the removal preview before continuing.".into());
     }
-    if current.logout.is_some_and(|previous| previous != logout) {
-        return Err("Keep the sign-out choice recorded for this removal attempt.".into());
-    }
-    if logout && !current.has_environment && project.removal.is_none() {
-        return Err("No guest environment exists to sign out of.".into());
-    }
     project.stage = crate::projects::ProjectStage::Removing;
     project.removal.get_or_insert(projects::Removal {
         reference: project.reference(),
         workspace: current.workspace,
-        logout,
         had_environment: current.has_environment,
-        logged_out: false,
         stopped: false,
         environment_removed: false,
         binding_detached: false,
@@ -581,19 +499,6 @@ fn continue_removal_with(
         preserved_policy: false,
     });
     persist_removal(file, &project)?;
-    let progress = project.removal.as_ref().unwrap();
-    if progress.next_step() == projects::RemovalStep::SignOut {
-        if !current.has_environment {
-            return Err("The guest disappeared before sign-out could be verified. Guest credentials may remain; review the guest home before continuing.".into());
-        }
-        sign_out(brig, &project)?;
-        project
-            .removal
-            .as_mut()
-            .unwrap()
-            .complete(projects::RemovalStep::SignOut)?;
-        persist_removal(file, &project)?;
-    }
     if project.removal.as_ref().unwrap().next_step() == projects::RemovalStep::Environment {
         if current.has_environment {
             if project
@@ -610,6 +515,11 @@ fn continue_removal_with(
             verify_target(brig, &project)?;
             brig.checked(&["rm".into(), project.reference()], None)?;
         }
+        environment::project_home::remove(
+            brig,
+            &project,
+            &project.removal.as_ref().unwrap().workspace,
+        )?;
         project
             .removal
             .as_mut()
@@ -706,50 +616,13 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[test]
-    fn legacy_removal_preserves_multiple_environments_before_any_brig_operation() {
-        let root =
-            std::env::temp_dir().join(format!("tugboat-multiple-removal-{}", std::process::id()));
-        fs::create_dir_all(root.join("project")).unwrap();
-        let file = root.join("projects.json");
-        let mut registry = Registry::default();
-        let codex = registry.register(&root.join("project"), "codex").unwrap();
-        registry
-            .ensure_environment(
-                &codex.id,
-                crate::agents::AgentKind::ClaudeCode,
-                &settings::Settings::default(),
-            )
-            .unwrap();
-        storage::write(&file, &registry).unwrap();
-        let original = fs::read(&file).unwrap();
-        let brig = Brig {
-            executable: root.join("must-not-run"),
-            environment: crate::platform::command::environment(),
-        };
-        let error = continue_removal(&brig, &file, &codex.id, "unused", &codex.reference(), false)
-            .unwrap_err();
-        assert!(error.contains("multiple agent environments"), "{error}");
-        assert_eq!(fs::read(&file).unwrap(), original);
-        assert_eq!(
-            Registry::load(&file)
-                .unwrap()
-                .environments(&codex.id)
-                .unwrap()
-                .iter()
-                .count(),
-            2
-        );
-        fs::remove_dir_all(root).unwrap();
-    }
-
-    #[test]
     fn working_tree_and_staged_diffs_cover_each_git_state_without_external_drivers() {
         let root = std::env::temp_dir().join(format!("tugboat-diffs-{}", std::process::id()));
         fs::create_dir_all(root.join("project folder")).unwrap();
         fs::create_dir_all(root.join("home")).unwrap();
         let project = Registry::load(&root.join("registry.json"))
             .unwrap()
-            .register(&root.join("project folder"), "codex")
+            .register(&root.join("project folder"))
             .unwrap();
         let mut environment = crate::platform::command::environment();
         environment.insert(
@@ -841,10 +714,29 @@ mod tests {
             let root = std::env::temp_dir()
                 .join(format!("tugboat-remove-{}-{failure}", std::process::id()));
             fs::create_dir_all(root.join("project")).unwrap();
+            let root = root.canonicalize().unwrap();
+            fs::create_dir_all(root.join("sibling")).unwrap();
             fs::write(root.join("project/kept"), "source").unwrap();
             let file = root.join("registry.json");
             let mut registry = Registry::load(&file).unwrap();
-            let mut project = registry.register(&root.join("project"), "codex").unwrap();
+            let mut project = registry.register(&root.join("project")).unwrap();
+            let sibling = registry.register(&root.join("sibling")).unwrap();
+            let executable = root.join("brig");
+            let mut environment = crate::platform::command::environment();
+            environment.insert(
+                "BRIG_STATE_DIR".into(),
+                root.join("state").to_string_lossy().into_owned(),
+            );
+            let brig = Brig {
+                executable: executable.clone(),
+                environment,
+            };
+            let home = brig.shared_project_home(&project).unwrap();
+            let sibling_home = brig.shared_project_home(&sibling).unwrap();
+            fs::create_dir_all(&home).unwrap();
+            fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+            fs::create_dir(&sibling_home).unwrap();
+            fs::write(sibling_home.join("marker"), "sibling").unwrap();
             let document = serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Policy","metadata":{"name":"owned"},"spec":{"egress":{"default":"deny"}}});
             project.policy = Some(projects::Policy {
                 name: "owned".into(),
@@ -874,12 +766,11 @@ mod tests {
                 ),
                 (
                     "info.json",
-                    serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":project.profile,"session":project.label,"project":{"host":project.path},"workspace":root.join("guest-home")}}),
+                    serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":project.profile,"session":project.label,"project":{"host":project.path},"workspace":home}}),
                 ),
             ] {
                 fs::write(root.join(name), value.to_string()).unwrap();
             }
-            let executable = root.join("brig");
             fs::write(&executable, r#"#!/bin/sh
 root=${0%/*}
 printf '%s\n' "$*" >> "$root/calls"
@@ -887,7 +778,6 @@ fail() { test -f "$root/failure" && test "$(cat "$root/failure")" = "$1"; }
 case "$1:$2" in
 --json:ls) if test -e "$root/environment"; then if test -e "$root/stopped"; then cat "$root/stopped.json"; else cat "$root/present.json"; fi; else cat "$root/absent.json"; fi;;
 --json:info) cat "$root/info.json";;
-sh:*) : > "$root/logged-out";;
 stop:*) : > "$root/stopped";;
 rm:*) if test "$3" = --dry-run; then printf 'Remove selected fixture environment\n'; elif fail rm-before; then exit 9; else rm -f "$root/environment"; if fail rm-after; then exit 9; fi; fi;;
 policy:check) if test -e "$root/binding"; then printf 'owned\n'; fi;;
@@ -899,10 +789,6 @@ policy:rm) if fail policy-rm; then exit 9; else rm -f "$root/policy.json"; fi;;
 esac
 "#).unwrap();
             fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
-            let brig = Brig {
-                executable,
-                environment: crate::platform::command::environment(),
-            };
             let initial = preview(&brig, &project).unwrap();
             assert!(continue_removal(
                 &brig,
@@ -910,12 +796,10 @@ esac
                 &project.id,
                 &initial.fingerprint,
                 &project.reference(),
-                true
             )
             .is_err());
             let pending = Registry::load(&file).unwrap().project(&project.id).unwrap();
             assert_eq!(pending.stage, "removing");
-            assert!(pending.removal.as_ref().unwrap().logged_out);
             assert!(pending.removal.as_ref().unwrap().stopped);
             assert!(pending.require_active().is_err());
             if failure == "policy-rm" {
@@ -930,7 +814,6 @@ esac
             fs::remove_file(root.join("failure")).unwrap();
             let recovery = preview(&brig, &pending).unwrap();
             assert!(recovery.description.contains("Continue incomplete removal"));
-            assert_eq!(recovery.logout, Some(true));
             assert!(recovery.check_fingerprint(&recovery.fingerprint).is_ok());
             let stale = recovery
                 .check_fingerprint(&initial.fingerprint)
@@ -948,7 +831,6 @@ esac
                 &project.id,
                 &initial.fingerprint,
                 &project.reference(),
-                true
             )
             .is_err());
             continue_removal(
@@ -957,14 +839,23 @@ esac
                 &project.id,
                 &recovery.fingerprint,
                 &project.reference(),
-                true,
             )
             .unwrap();
-            assert!(Registry::load(&file).unwrap().projects.is_empty());
+            let current = Registry::load(&file).unwrap();
+            assert!(current.project(&project.id).is_err());
+            assert_eq!(
+                current.project(&sibling.id).unwrap().environment_id,
+                sibling.environment_id
+            );
+            assert_eq!(
+                fs::read_to_string(sibling_home.join("marker")).unwrap(),
+                "sibling"
+            );
+            assert!(!home.exists());
             let calls = fs::read_to_string(root.join("calls")).unwrap();
             assert_eq!(
                 calls.lines().filter(|line| line.starts_with("sh ")).count(),
-                1,
+                0,
                 "{calls}"
             );
             assert_eq!(

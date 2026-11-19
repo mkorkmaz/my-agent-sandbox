@@ -67,9 +67,18 @@ def update(path, operation, incoming=None):
         os.close(directory)
 
 
+def is_memory_mount(path):
+    with open('/proc/self/mountinfo', encoding='utf-8') as mounts:
+        for line in mounts:
+            before, after = line.split(' - ', 1)
+            if before.split()[4] == path and after.split()[0] == 'tmpfs':
+                return True
+    return False
+
+
 if __name__ == '__main__':
     try:
-        if os.environ.get('CLAUDE_CONFIG_DIR') != '/brig/claude':
+        if os.environ.get('CLAUDE_CONFIG_DIR') != '/brig/claude' or not is_memory_mount('/brig/claude'):
             raise ValueError('Unsupported Claude configuration directory')
         content = sys.stdin.buffer.read(LIMIT + 1) if sys.argv[1] == 'write' else None
         if content is not None and len(content) > LIMIT:

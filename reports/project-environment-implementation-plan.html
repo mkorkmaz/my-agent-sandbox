@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>One environment per project · Tugboat implementation plan</title><link rel="stylesheet" href="../docs/handbook.css"><style>pre {white-space:pre-wrap; overflow-wrap:anywhere}</style></head><body><main>
+<h1>One environment per project</h1>
+<p>Tugboat will give each registered project one active Brig environment. Opening a Codex or Claude Code chat will start the selected agent inside that environment. The four features below will use the same project environment.</p>
+<section id="implementation-progress">
+<h2>Implementation progress</h2>
+<p><strong>20 November 2026 · Base revision <code>2365b575</code> · Verified on <code>trunk</code>.</strong></p>
+<p><strong>Release decision.</strong> <strong>Go for the verified scope.</strong> All 27 criteria passed independent acceptance across Phases 1–7. Tugboat Dev used the verified runtime from the workspace build.</p>
+<p>Existing and new project registrations use the same target model. Each project starts with one shared guest and empty chat history. The transition creates no archives of old guest homes or records. Tests use disposable data.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="Phase acceptance"><table><thead><tr><th scope="col">Phase</th><th scope="col">Status</th><th scope="col">Verified evidence and open criteria</th></tr></thead><tbody>
+<tr><th scope="row"><a href="#phase-1">1. Shared guest</a></th><td><strong>Passed</strong></td><td>Both signed-in agents ran in one real guest, read each other’s project file and resumed their own conversations after restart.</td></tr>
+<tr><th scope="row"><a href="#phase-2">2. Project ownership</a></th><td><strong>Passed</strong></td><td>Both agent views reopened one guest. Identical native chat IDs remained distinct by agent in terminals, transcripts and usage. A damaged bootstrap was detected and repaired.</td></tr>
+<tr><th scope="row"><a href="#phase-3">3. Existing projects</a></th><td><strong>Passed</strong></td><td>The installed Dev binary opened and reopened isolated older registrations. The real guest reset removed owned homes and old records. It preserved both working folders, provider accounts and an unrelated guest. An interrupted reset also completed on retry.</td></tr>
+<tr><th scope="row"><a href="#phase-4">4. Web preview</a></th><td><strong>Passed</strong></td><td>Both agents shared the project’s approved port. A Mac browser displayed the guest response. Closing the mapping kept the port closed after restart. An occupied port returned HTTP 409.</td></tr>
+<tr><th scope="row"><a href="#phase-5">5. Gateway logs</a></th><td><strong>Passed</strong></td><td>Both agents read the same filtered events for their project. Two real gateways returned distinct events. The reader enforced the 100-line limit and redacted credentials before copying.</td></tr>
+<tr><th scope="row"><a href="#phase-6">6. Guest image update</a></th><td><strong>Passed</strong></td><td>Review listed 107 paths. A failed executable check restored the exact outside-home file on the previous signed image. Project A updated to the verified candidate. Both original chats, usage, policy, preview and mounted files survived. Project B restarted on its original digest.</td></tr>
+<tr><th scope="row"><a href="#phase-7">7. Read-only GitHub grant</a></th><td><strong>Passed</strong></td><td>Project settings saves, replaces and revokes its GitHub token through Mac Keychain. The live guest fetched the authorized private repository. Push, cross-repository fetch, sibling access and reuse after revocation all failed as required.</td></tr>
+</tbody></table></div>
+<p>The latest independent full run passed 455 native tests with 17 opt-in tests skipped. All 344 JavaScript tests passed, with a separate eight-test image-update run. The final full image update, rollback and both native chat resumes passed on new disposable guests in 186.46 seconds. The frontend production build, native desktop build and working-tree whitespace check passed.</p>
+
+<details id="criterion-results" open><summary>Acceptance criteria and evidence</summary>
+<h3>Phase 1</h3><ol>
+<li><strong>Passed.</strong> One reference, one mount and both versions were independently verified on HVI. Both live agents wrote their marker and read the other agent’s exact file. The lead checked the file bytes and the provider transcripts.</li>
+<li><strong>Passed.</strong> Both live CLIs accepted terminal input. The native terminal target and frontend selector checks passed independently. Each original provider chat recalled the peer marker after a new guest boot. The lead verified the real Claude assistant reply at 19:49:34 UTC and the Codex reply in its native session.</li>
+<li><strong>Passed.</strong> The normal controller renewed the designated Claude Dev account. Both CLIs passed live provider status checks. The worker exercised both Codex boundaries and observed the Claude manual approval prompt. Stop cleared the synthetic copy on the independent guest. The separate live restart also cleared the Claude access copy. The real Claude Code one-time approval permitted only the displayed fixture command.</li>
+<li><strong>Passed.</strong> Independent real guest run. Brig required its default image signature, verified the image and boot assets, and rejected the untrusted image with exit 5. Running Linux ARM64 image SHA-256 f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce. Versions were Codex 0.167.0 and Claude Code 2.1.318. The project used virtiofs and Claude credentials used tmpfs.</li>
+</ol>
+<h3>Phase 2</h3><ol>
+<li><strong>Passed.</strong> Schema 3 stores one environment per registered folder. Five independent registry tests verified stable reopen and rejection of an old or foreign reference. Concurrent callers join the same preparation before the terminal exists. The lead ran the delayed success, error and cancellation regression. The production-helper HVI test verified both agents on the same boot after registry reopen.</li>
+<li><strong>Passed.</strong> Both agent views reopened the same signed guest and kept its boot ID, project file, named home and host policy. The frontend started Codex with Claude signed out, then started Claude after sign-in and kept the Codex terminal. The lead reran the five relevant frontend checks.</li>
+<li><strong>Passed.</strong> Real saved chats resumed under the intended providers. Equal native IDs in the same physical environment kept distinct terminals, transcripts, usage and state actions. The lead traced and reran the corrected Claude request-owner query with colliding IDs. Wrong and stale agent selections were refused.</li>
+<li><strong>Passed.</strong> The lead verified both-agent stop impact and late-selection handling in the frontend. Native interrupted removal passed in the integrated suite. ADR-022 and the handbook document the project, agent, chat and provider boundaries. The lead checked their source links. The pending-move recovery test passed after the lead canceled the fixture move and restarted the isolated records.</li>
+</ol>
+<h3>Phase 3</h3><ol>
+<li><strong>Passed.</strong> Fixtures covered zero, one and two former environments, including each agent. On a real first open, the prior registration obtained one signed shared guest. Repeating startup kept that registration and its single environment.</li>
+<li><strong>Passed.</strong> The lead checked empty environment, chat and usage tables after the real reset. The restart and retry fixtures preserved newly added sessions, colliding native IDs and separate usage for both agents.</li>
+<li><strong>Passed.</strong> The resumed operation and a new first-open run removed the stopped owned guest, old home, ledger and backup. The registered working trees, external guest and provider marker remained. Two provider tests verified that old binding receipts are removed without removing the shared accounts or new bindings. The transition drops prior network approval and requires review of the new plan.</li>
+<li><strong>Passed.</strong> Four fresh independent startup tests passed. An interrupted delete rolled back SQLite changes and blocked publication. Retry preserved fresh and unrelated usage. Busy guests, active terminals, unavailable records, changed paths and replaced homes were refused. The native suite also passed the second-instance writer check.</li>
+<li><strong>Passed.</strong> The first real run stopped before deletion at the old-home identity check. After correction, the lead resumed that same checkpoint. One new signed guest booted. The prior owned home, ledger and backups were gone. Two registrations, both working folders, the external guest and the provider fixture remained. Fresh history and usage tables contained zero rows.</li>
+</ol>
+<h3>Phase 4</h3><ol>
+<li><strong>Passed.</strong> A stopped-sandbox mapping was isolated to project A. Headless Chrome on the Mac independently rendered a unique response from the running guest. The native settings service used the final shared project reference, verified the response, and opened the Mac browser. Both agents saw the same preview and the sibling was independent.</li>
+<li><strong>Passed.</strong> Port 71344 was rejected. An occupied port returned HTTP 409 from the real gateway. The lead observed a live publication with no HTTP response until the server started. The native service rejected unapproved mappings and distinguished a published port waiting for its server from a ready preview.</li>
+<li><strong>Passed.</strong> Real unpublish removed the mapping. The lead restarted the guest and verified the host port stayed closed. Native retry fixtures passed for interrupted open and close. The frontend rejected a late Open after a project switch. The native browser command rechecked the running mapping.</li>
+</ol>
+<h3>Phase 5</h3><ol>
+<li><strong>Passed.</strong> Project settings reads the verified reference. Two frontend projects rejected a late result after switching. The native reader returned six filtered lines for each of two real guests and excluded the peer port from each view. On the final registered targets, both agents saw six lines on A and nine on B with the distinct expected events. Both live native tests passed.</li>
+<li><strong>Passed.</strong> The independent reader tests distinguish a missing log, empty log and observed offline guest. Configured offline cannot override an observed isolated gateway. A missing project log returned exit 3 with real Brig.</li>
+<li><strong>Passed.</strong> Eight checks passed, including timeout, output size, terminal controls and full or clipped synthetic keys. The lead read 100 lines for A and five for B from two real development gateways. The lead ran the new frontend project-switch and safe-copy tests. Two new native reads passed on real guests.</li>
+</ol>
+<h3>Phase 6</h3><ol>
+<li><strong>Passed.</strong> The service refused active operations, both agent chats, local terminals and guest terminals. Both local launch orders preserved the lock. Signature, download and simulated disk-full failures left the fixture registry and current guest untouched. An actual untrusted candidate was refused. A real successful Apply returned Already up to date on the next read.</li>
+<li><strong>Passed.</strong> Hull confirmed the candidate digest and both agent versions. Both mounted markers, recorded usage, the exact six-host policy and approved loopback preview survived. A separate continuation used the finalized project’s approved fingerprint and the designated account. The normal native Codex and Claude terminals displayed the saved assistant replies for their original sessions. The independent continuation passed in 8.16 seconds. The earlier short observer exited before the Codex reply appeared. The final uninterrupted A/B test on fresh guests verified every step and both native replies in one run. It passed in 186.46 seconds.</li>
+<li><strong>Passed.</strong> The service listed 107 guest-local paths and reopened its durable review. Keep current and rollback after executable verification failure both restored the exact outside-home file. The interruption test cleared the recorded replay and preserved unexpected replacement bytes.</li>
+<li><strong>Passed.</strong> During the final independent candidate update, the sibling kept its boot ID. The service restarted the sibling and confirmed its original signed digest, Codex 0.167.0 and Claude Code 2.1.318.</li>
+</ol>
+<h3>Phase 7</h3><ol>
+<li><strong>Passed.</strong> The private test repositories were hgmlabs/tugboat-fetch-test-a and hgmlabs/tugboat-fetch-test-b. The replacement credential permitted host Git reads for both. Through project A’s broker the real guest fetched A and verified the commit. Git push --dry-run and fetch from B failed. The broker returned HTTP 403 for receive-pack and repository B. The sibling could neither obtain a grant nor reach project A’s route.</li>
+<li><strong>Passed.</strong> Removing the last grant shut down its endpoint. The old token lost its guest DNS route, and a fresh token could not be issued because the control socket was gone. Both the fresh fetch and the old token still failed after restart. The lead checked both designated provider sign-ins on that same guest and independently verified refusal and access-copy cleanup.</li>
+<li><strong>Passed.</strong> A real host edit preserved the grant route. External policy edits required review. Revocation kept the host edit and the sibling running. The native failure test kept the registration when Keychain cleanup failed, then removed only that registration after retry. Cancel clears unsubmitted credentials in the interface.</li>
+<li><strong>Passed.</strong> The masked field clears on handoff, cancel and project change. The native service delivered a synthetic token over standard input, saved and replaced one project-specific Keychain item, and removed it. The lead verified that the project record contained no token. The live broker checks found no reusable credential or session token in the guest or diagnostic output.</li>
+</ol>
+</details><!-- end criterion-results -->
+<details id="review-commands"><summary>Independent verification commands and file references</summary>
+<ul>
+<li><code>npm test</code> passed 344 tests with local loopback access. <code>node --experimental-vm-modules --test tests/frontend/project-image-update.test.mjs</code> passed eight focused image-update tests.</li>
+<li><code>cargo test --manifest-path src-tauri/Cargo.toml --locked --offline</code> passed 455 tests, failed zero and skipped 17 opt-in checks in 21.87 seconds. Live guest checks use separate disposable stores.</li>
+<li><code>npm run build</code> passed TypeScript and the frontend build. <code>git diff --check</code> passed.</li>
+<li><strong>Phase 1.</strong> <a href="../docs/shared-project-proof.html">Guest proof commands and verified image inputs</a>. The first independent infrastructure run used <code>node scripts/acceptance/check-shared-project.mjs --keep</code>. The native two-terminal check used <code>two_guest_commands_keep_their_native_terminal_input_targets</code>.</li>
+<li><strong>Phase 2.</strong> <a href="../src/terminal/terminal-launch.ts">Terminal targets</a>, <a href="../src-tauri/src/agent_sessions/mod.rs">native session commands</a>, <a href="../src-tauri/src/conversations/environment_history.rs">transcript lookup</a> and <a href="../src/usage/usage-details-controller.ts">usage selection</a>. <a href="../tests/frontend/frontend-flow.test.mjs">Frontend routing tests</a> cover equal native IDs and stale selections.</li>
+<li><strong>Phase 3.</strong> <a href="../src-tauri/src/projects/operations/retired_history/tests.rs">Disposable filesystem checks</a> and <a href="../src-tauri/src/usage_store/connection/retired_history.rs">SQLite scope checks and reset</a>. A new real first-open run passed in 35.77 seconds. The interrupted run resumed in 12.60 seconds. The Dev binary also reopened two registrations with stable environment IDs.</li>
+<li><strong>Phases 4–6.</strong> <a href="../scripts/acceptance/read-project-gateway-logs.mjs">Bounded gateway reader</a> and <a href="../tests/acceptance/project-gateway-logs.test.mjs">diagnostic tests</a>, <a href="../src-tauri/src/projects/operations/gateway_logs.rs">native reader</a>, and <a href="../src/projects/gateway-logs.ts">Project settings control</a>. The lead used separate disposable guests for real browser, stop, unpublish and image checks.</li>
+<li><strong>Phase 6.</strong> <a href="../src-tauri/src/projects/project_image_update/mod.rs">Native image update service</a>, <a href="../src-tauri/src/projects/project_image_update/live.rs">signed guest and terminal checks</a>, <a href="../src-tauri/src/projects/project_image_update/admission_tests.rs">admission and failure tests</a>, and <a href="../docs/developer-guide.html#project-image-update">rerun instructions</a>. The desktop command returned both pins for the correct project and refused a different environment ID. All ten runtime executables and both hypervisor entitlements passed package verification in the final workspace Dev runtime. The prior proof guests and the account access copies were removed. The guest failure tests used real signed images. The disk-full staging case used a local tool fixture.</li>
+<li><strong>Phase 7.</strong> <code>node scripts/acceptance/check-brig-fetch-grant.mjs</code> exercised <a href="../tests/native/brig_fetch_grant_test.go">the pinned Go broker handler</a> with a local upstream. The subsequent private GitHub run used the replacement credential and two live guests. It verified fetch, denied push, denied cross-project access and revocation.</li>
+</ul></details>
+
+<details id="changed-files"><summary>Changed files against the base revision (206)</summary><p>This list covers the implementation files. The commit also includes this progress report.</p><ul>
+<li>Modified · <code><a href="../PRODUCT.md">PRODUCT.md</a></code></li>
+<li>Modified · <code><a href="../README.md">README.md</a></code></li>
+<li>Modified · <code><a href="../docs/adr.html">docs/adr.html</a></code></li>
+<li>Modified · <code><a href="../docs/agent-guide.html">docs/agent-guide.html</a></code></li>
+<li>Modified · <code><a href="../docs/architecture.html">docs/architecture.html</a></code></li>
+<li>Modified · <code><a href="../docs/developer-guide.html">docs/developer-guide.html</a></code></li>
+<li>Added · <code><a href="../docs/shared-project-proof.html">docs/shared-project-proof.html</a></code></li>
+<li>Modified · <code><a href="../docs/user-guide.html">docs/user-guide.html</a></code></li>
+<li>Modified · <code><a href="../index.html">index.html</a></code></li>
+<li>Added · <code><a href="../resources/runtime/hull-rootfs-restore.patch">resources/runtime/hull-rootfs-restore.patch</a></code></li>
+<li>Modified · <code><a href="../scripts/acceptance/capture-brig-fixtures.mjs">scripts/acceptance/capture-brig-fixtures.mjs</a></code></li>
+<li>Removed · <code>scripts/acceptance/check-agent-environments.mjs</code></li>
+<li>Added · <code><a href="../scripts/acceptance/check-brig-fetch-grant.mjs">scripts/acceptance/check-brig-fetch-grant.mjs</a></code></li>
+<li>Added · <code><a href="../scripts/acceptance/check-shared-project.mjs">scripts/acceptance/check-shared-project.mjs</a></code></li>
+<li>Added · <code><a href="../scripts/acceptance/read-project-gateway-logs.mjs">scripts/acceptance/read-project-gateway-logs.mjs</a></code></li>
+<li>Added · <code><a href="../scripts/acceptance/shared-project-cleanup.mjs">scripts/acceptance/shared-project-cleanup.mjs</a></code></li>
+<li>Added · <code><a href="../scripts/acceptance/shared-project-policy.yaml">scripts/acceptance/shared-project-policy.yaml</a></code></li>
+<li>Added · <code><a href="../scripts/acceptance/shared-project-profile.yaml">scripts/acceptance/shared-project-profile.yaml</a></code></li>
+<li>Modified · <code><a href="../scripts/benchmark-sqlite-usage.py">scripts/benchmark-sqlite-usage.py</a></code></li>
+<li>Modified · <code><a href="../scripts/check-sqlite-usage-acceptance.py">scripts/check-sqlite-usage-acceptance.py</a></code></li>
+<li>Modified · <code><a href="../scripts/compare-sqlite-frozen-contracts.py">scripts/compare-sqlite-frozen-contracts.py</a></code></li>
+<li>Modified · <code><a href="../scripts/licenses/collect-hull-licenses.mjs">scripts/licenses/collect-hull-licenses.mjs</a></code></li>
+<li>Modified · <code><a href="../scripts/runtime/prepare-hull.mjs">scripts/runtime/prepare-hull.mjs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/Cargo.lock">src-tauri/Cargo.lock</a></code></li>
+<li>Modified · <code><a href="../src-tauri/Cargo.toml">src-tauri/Cargo.toml</a></code></li>
+<li>Added · <code><a href="../src-tauri/profiles/codex-0.167.0.manifest">src-tauri/profiles/codex-0.167.0.manifest</a></code></li>
+<li>Removed · <code>src-tauri/profiles/tugboat-claude.yaml</code></li>
+<li>Added · <code><a href="../src-tauri/profiles/tugboat-project.yaml">src-tauri/profiles/tugboat-project.yaml</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agent_sessions/claude.rs">src-tauri/src/agent_sessions/claude.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agent_sessions/codex.rs">src-tauri/src/agent_sessions/codex.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agent_sessions/mod.rs">src-tauri/src/agent_sessions/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/agent_sessions/shared_project_proof.rs">src-tauri/src/agent_sessions/shared_project_proof.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/agent_sessions/shared_project_proof/codex_replay.py">src-tauri/src/agent_sessions/shared_project_proof/codex_replay.py</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/agent_sessions/shared_project_proof/live.rs">src-tauri/src/agent_sessions/shared_project_proof/live.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/agent_sessions/shared_project_proof/live/chat.rs">src-tauri/src/agent_sessions/shared_project_proof/live/chat.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/agent_sessions/shared_project_proof/screen.rs">src-tauri/src/agent_sessions/shared_project_proof/screen.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agent_sessions/tests.rs">src-tauri/src/agent_sessions/tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agents/claude.rs">src-tauri/src/agents/claude.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agents/codex.rs">src-tauri/src/agents/codex.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agents/command.rs">src-tauri/src/agents/command.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agents/mod.rs">src-tauri/src/agents/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/agents/tests.rs">src-tauri/src/agents/tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history.rs">src-tauri/src/conversations/environment_history.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/mod.rs">src-tauri/src/conversations/environment_history_tests/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/append.rs">src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/append.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/billing.rs">src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/billing.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/contracts.rs">src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/contracts.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/mod.rs">src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/acceptance/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/mod.rs">src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/replay.rs">src-tauri/src/conversations/environment_history_tests/sqlite_usage_tests/replay.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/mod.rs">src-tauri/src/conversations/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/sql_projection.rs">src-tauri/src/conversations/sql_projection.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/sql_reconnect.rs">src-tauri/src/conversations/sql_reconnect.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/conversations/sqlite_benchmark.rs">src-tauri/src/conversations/sqlite_benchmark.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/boundaries.rs">src-tauri/src/environment/boundaries.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/environment/codex_package.rs">src-tauri/src/environment/codex_package.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/gate.rs">src-tauri/src/environment/gate.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/managed_profile.rs">src-tauri/src/environment/managed_profile.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/mod.rs">src-tauri/src/environment/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/plan_tests.rs">src-tauri/src/environment/plan_tests.rs</a></code></li>
+<li>Removed · <code>src-tauri/src/environment/preparation/agent_tests.rs</code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/preparation/mod.rs">src-tauri/src/environment/preparation/mod.rs</a></code></li>
+<li>Removed · <code>src-tauri/src/environment/preparation/selection.rs</code></li>
+<li>Modified · <code><a href="../src-tauri/src/environment/preparation/session_index.rs">src-tauri/src/environment/preparation/session_index.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/environment/preparation/shared_guest_tests.rs">src-tauri/src/environment/preparation/shared_guest_tests.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/environment/project_home.rs">src-tauri/src/environment/project_home.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/environment/shared_runtime.rs">src-tauri/src/environment/shared_runtime.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/main.rs">src-tauri/src/main.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/platform/brig/keychain_scope.rs">src-tauri/src/platform/brig/keychain_scope.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/platform/brig/mod.rs">src-tauri/src/platform/brig/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/platform/brig/shared.rs">src-tauri/src/platform/brig/shared.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/platform/runtime/mod.rs">src-tauri/src/platform/runtime/mod.rs</a></code></li>
+<li>Removed · <code>src-tauri/src/projects/agent_environment.rs</code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/environment_id.rs">src-tauri/src/projects/environment_id.rs</a></code></li>
+<li>Removed · <code>src-tauri/src/projects/migration.rs</code></li>
+<li>Removed · <code>src-tauri/src/projects/migration_tests.rs</code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/mod.rs">src-tauri/src/projects/mod.rs</a></code></li>
+<li>Removed · <code>src-tauri/src/projects/operations/environment_tests.rs</code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/gateway_logs.rs">src-tauri/src/projects/operations/gateway_logs.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/gateway_logs/summary.rs">src-tauri/src/projects/operations/gateway_logs/summary.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/gateway_logs/tests.rs">src-tauri/src/projects/operations/gateway_logs/tests.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/gateway_logs/tests/live.rs">src-tauri/src/projects/operations/gateway_logs/tests/live.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/operations/mod.rs">src-tauri/src/projects/operations/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/operations/removal_target.rs">src-tauri/src/projects/operations/removal_target.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/retired_history.rs">src-tauri/src/projects/operations/retired_history.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/retired_history/target.rs">src-tauri/src/projects/operations/retired_history/target.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/retired_history/tests.rs">src-tauri/src/projects/operations/retired_history/tests.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/operations/retired_history/tests/live.rs">src-tauri/src/projects/operations/retired_history/tests/live.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/broker.rs">src-tauri/src/projects/project_github_access/broker.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/keychain.rs">src-tauri/src/projects/project_github_access/keychain.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/mod.rs">src-tauri/src/projects/project_github_access/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/policy.rs">src-tauri/src/projects/project_github_access/policy.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/state.rs">src-tauri/src/projects/project_github_access/state.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/tests.rs">src-tauri/src/projects/project_github_access/tests.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_github_access/tests/live.rs">src-tauri/src/projects/project_github_access/tests/live.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/admission_tests.rs">src-tauri/src/projects/project_image_update/admission_tests.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/live.rs">src-tauri/src/projects/project_image_update/live.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/mod.rs">src-tauri/src/projects/project_image_update/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/post_update.rs">src-tauri/src/projects/project_image_update/post_update.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/post_update/transcripts.rs">src-tauri/src/projects/project_image_update/post_update/transcripts.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/proof_policy.rs">src-tauri/src/projects/project_image_update/proof_policy.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/replay.rs">src-tauri/src/projects/project_image_update/replay.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/root.rs">src-tauri/src/projects/project_image_update/root.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/runtime.rs">src-tauri/src/projects/project_image_update/runtime.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_image_update/state.rs">src-tauri/src/projects/project_image_update/state.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/project_policy/editor.rs">src-tauri/src/projects/project_policy/editor.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/project_policy/mod.rs">src-tauri/src/projects/project_policy/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_preview/mod.rs">src-tauri/src/projects/project_preview/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_preview/runtime.rs">src-tauri/src/projects/project_preview/runtime.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_preview/state.rs">src-tauri/src/projects/project_preview/state.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_preview/tests.rs">src-tauri/src/projects/project_preview/tests.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/project_preview/tests/live.rs">src-tauri/src/projects/project_preview/tests/live.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/record.rs">src-tauri/src/projects/record.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/registry_tests.rs">src-tauri/src/projects/registry_tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/removal.rs">src-tauri/src/projects/removal.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/projects/stage.rs">src-tauri/src/projects/stage.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/projects/transition.rs">src-tauri/src/projects/transition.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_chatgpt/account.rs">src-tauri/src/providers/shared_chatgpt/account.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_chatgpt/guest.rs">src-tauri/src/providers/shared_chatgpt/guest.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_chatgpt/mod.rs">src-tauri/src/providers/shared_chatgpt/mod.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/providers/shared_chatgpt/proof.rs">src-tauri/src/providers/shared_chatgpt/proof.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_chatgpt/store.rs">src-tauri/src/providers/shared_chatgpt/store.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_chatgpt/tests.rs">src-tauri/src/providers/shared_chatgpt/tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_claude/account.rs">src-tauri/src/providers/shared_claude/account.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_claude/guest.rs">src-tauri/src/providers/shared_claude/guest.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_claude/guest_credentials.py">src-tauri/src/providers/shared_claude/guest_credentials.py</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_claude/mod.rs">src-tauri/src/providers/shared_claude/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_claude/store.rs">src-tauri/src/providers/shared_claude/store.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/providers/shared_claude/tests.rs">src-tauri/src/providers/shared_claude/tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/storage/data_location/mod.rs">src-tauri/src/storage/data_location/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/storage/data_location/p06_volume_tests.rs">src-tauri/src/storage/data_location/p06_volume_tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/storage/data_location/sqlite_tests.rs">src-tauri/src/storage/data_location/sqlite_tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/terminal/mod.rs">src-tauri/src/terminal/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/terminal/target.rs">src-tauri/src/terminal/target.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/usage_store/bootstrap.rs">src-tauri/src/usage_store/bootstrap.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/usage_store/bounded_json.rs">src-tauri/src/usage_store/bounded_json.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/codecs/mod.rs">src-tauri/src/usage_store/codecs/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/connection.rs">src-tauri/src/usage_store/connection.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/usage_store/connection/retired_history.rs">src-tauri/src/usage_store/connection/retired_history.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/import_rollup.rs">src-tauri/src/usage_store/import_rollup.rs</a></code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/digest.rs</code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/guard.rs</code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/inventory.rs</code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/leaf.rs</code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/mod.rs</code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/stream.rs</code></li>
+<li>Removed · <code>src-tauri/src/usage_store/importer/tests.rs</code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/migrations/001_initial.sql">src-tauri/src/usage_store/migrations/001_initial.sql</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/usage_store/migrations/002_project_identity.sql">src-tauri/src/usage_store/migrations/002_project_identity.sql</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/mod.rs">src-tauri/src/usage_store/mod.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/queries.rs">src-tauri/src/usage_store/queries.rs</a></code></li>
+<li>Added · <code><a href="../src-tauri/src/usage_store/revision.rs">src-tauri/src/usage_store/revision.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/runtime.rs">src-tauri/src/usage_store/runtime.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/runtime/tests.rs">src-tauri/src/usage_store/runtime/tests.rs</a></code></li>
+<li>Modified · <code><a href="../src-tauri/src/usage_store/tests.rs">src-tauri/src/usage_store/tests.rs</a></code></li>
+<li>Modified · <code><a href="../src/dashboard/dashboard.ts">src/dashboard/dashboard.ts</a></code></li>
+<li>Modified · <code><a href="../src/main.ts">src/main.ts</a></code></li>
+<li>Added · <code><a href="../src/projects/gateway-logs.ts">src/projects/gateway-logs.ts</a></code></li>
+<li>Modified · <code><a href="../src/projects/operations.ts">src/projects/operations.ts</a></code></li>
+<li>Modified · <code><a href="../src/projects/preparation.ts">src/projects/preparation.ts</a></code></li>
+<li>Added · <code><a href="../src/projects/project-github-access.ts">src/projects/project-github-access.ts</a></code></li>
+<li>Added · <code><a href="../src/projects/project-image-update.ts">src/projects/project-image-update.ts</a></code></li>
+<li>Added · <code><a href="../src/projects/project-preview.ts">src/projects/project-preview.ts</a></code></li>
+<li>Modified · <code><a href="../src/projects/projects.ts">src/projects/projects.ts</a></code></li>
+<li>Modified · <code><a href="../src/settings/data-location.ts">src/settings/data-location.ts</a></code></li>
+<li>Modified · <code><a href="../src/settings/settings.ts">src/settings/settings.ts</a></code></li>
+<li>Modified · <code><a href="../src/style.css">src/style.css</a></code></li>
+<li>Modified · <code><a href="../src/terminal/environment-boot.ts">src/terminal/environment-boot.ts</a></code></li>
+<li>Modified · <code><a href="../src/terminal/terminal-launch.ts">src/terminal/terminal-launch.ts</a></code></li>
+<li>Modified · <code><a href="../src/usage/usage-details-controller.ts">src/usage/usage-details-controller.ts</a></code></li>
+<li>Modified · <code><a href="../src/usage/usage-details-state.ts">src/usage/usage-details-state.ts</a></code></li>
+<li>Modified · <code><a href="../src/usage/usage-types.ts">src/usage/usage-types.ts</a></code></li>
+<li>Modified · <code><a href="../tests/acceptance/acceptance-scripts.test.mjs">tests/acceptance/acceptance-scripts.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/acceptance/brig-contract.test.mjs">tests/acceptance/brig-contract.test.mjs</a></code></li>
+<li>Added · <code><a href="../tests/acceptance/project-gateway-logs.test.mjs">tests/acceptance/project-gateway-logs.test.mjs</a></code></li>
+<li>Removed · <code>tests/fixtures/brig/agent-environments-stub.cjs</code></li>
+<li>Removed · <code>tests/fixtures/brig/v0.5.2/claude-code/manifest.json</code></li>
+<li>Removed · <code>tests/fixtures/brig/v0.5.2/claude-code/missing-runtime.json</code></li>
+<li>Removed · <code>tests/fixtures/brig/v0.5.2/claude-code/profile.json</code></li>
+<li>Removed · <code>tests/fixtures/brig/v0.5.2/claude-code/ready.json</code></li>
+<li>Removed · <code>tests/fixtures/brig/v0.5.2/claude-code/refused.json</code></li>
+<li>Added · <code><a href="../tests/fixtures/brig/v0.5.2/github-fetch-policy.yaml">tests/fixtures/brig/v0.5.2/github-fetch-policy.yaml</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/brig/v0.5.2/manifest.json">tests/fixtures/brig/v0.5.2/manifest.json</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/brig/v0.5.2/missing-runtime.json">tests/fixtures/brig/v0.5.2/missing-runtime.json</a></code></li>
+<li>Added · <code><a href="../tests/fixtures/brig/v0.5.2/profile.json">tests/fixtures/brig/v0.5.2/profile.json</a></code></li>
+<li>Added · <code><a href="../tests/fixtures/brig/v0.5.2/project-preview.sh">tests/fixtures/brig/v0.5.2/project-preview.sh</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/brig/v0.5.2/ready.json">tests/fixtures/brig/v0.5.2/ready.json</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/brig/v0.5.2/refused.json">tests/fixtures/brig/v0.5.2/refused.json</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/brig/v0.5.2/version.json">tests/fixtures/brig/v0.5.2/version.json</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/sqlite-usage/frozen-full-export.rs">tests/fixtures/sqlite-usage/frozen-full-export.rs</a></code></li>
+<li>Modified · <code><a href="../tests/fixtures/terminal-launch-types.ts">tests/fixtures/terminal-launch-types.ts</a></code></li>
+<li>Added · <code><a href="../tests/fixtures/tugboat/usage-schema-v1.sql">tests/fixtures/tugboat/usage-schema-v1.sql</a></code></li>
+<li>Modified · <code><a href="../tests/frontend/environment-boot-flow.test.mjs">tests/frontend/environment-boot-flow.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/frontend/frontend-flow.test.mjs">tests/frontend/frontend-flow.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/frontend/frontend-harness.mjs">tests/frontend/frontend-harness.mjs</a></code></li>
+<li>Added · <code><a href="../tests/frontend/gateway-logs.test.mjs">tests/frontend/gateway-logs.test.mjs</a></code></li>
+<li>Added · <code><a href="../tests/frontend/project-github-access.test.mjs">tests/frontend/project-github-access.test.mjs</a></code></li>
+<li>Added · <code><a href="../tests/frontend/project-image-update.test.mjs">tests/frontend/project-image-update.test.mjs</a></code></li>
+<li>Added · <code><a href="../tests/frontend/project-preview.test.mjs">tests/frontend/project-preview.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/frontend/terminal-flow.test.mjs">tests/frontend/terminal-flow.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/frontend/terminal-launch-types.test.mjs">tests/frontend/terminal-launch-types.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/frontend/workflow-states.test.mjs">tests/frontend/workflow-states.test.mjs</a></code></li>
+<li>Added · <code><a href="../tests/native/brig_fetch_grant_test.go">tests/native/brig_fetch_grant_test.go</a></code></li>
+<li>Added · <code><a href="../tests/native/hull_rootfs_restore_test.go">tests/native/hull_rootfs_restore_test.go</a></code></li>
+<li>Modified · <code><a href="../tests/native/native-preparation.test.mjs">tests/native/native-preparation.test.mjs</a></code></li>
+<li>Modified · <code><a href="../tests/providers/agent-session-boundary.test.mjs">tests/providers/agent-session-boundary.test.mjs</a></code></li>
+</ul></details>
+</section><!-- end implementation-progress -->
+<div class="table-wrap" tabindex="0" role="region" aria-label="Project ownership"><table><thead><tr><th scope="col">Owner</th><th scope="col">State and actions</th></tr></thead><tbody>
+<tr><th scope="row">Mac and provider</th><td>Provider sign-in, renewal, and sign-out across projects</td></tr>
+<tr><th scope="row">Project</th><td>One environment ID, Brig session reference, guest home, project mount, image, resources, network policy, preview, gateway logs, and GitHub access grant</td></tr>
+<tr><th scope="row">Agent within a project</th><td>Supported executable, settings, permission mode, native transcript location, and provider access delivery</td></tr>
+<tr><th scope="row">Chat</th><td>Project, agent kind, native session ID, terminal target, resume state, and attributed usage</td></tr>
+</tbody></table></div>
+<p>Both agents share the guest filesystem, processes, and project network permissions. The isolation boundary is between projects. A directory per agent organizes state; it cannot isolate credentials from another process with the same guest privileges. This plan assumes users trust both agents with the project&#x27;s guest access. Keep renewable credentials on the Mac. Show this behavior in Project settings before users prepare the shared environment.</p>
+<p><strong>Delivery order.</strong> Complete phases 1–3 before releasing the new ownership model. Deliver phases 4–7 as separate increments. The diagnostics work can be developed alongside preview work after the project contract is stable.</p>
+<section id="phase-1"><h2>1. Prove the shared guest works · Medium</h2>
+<p><strong>Scope.</strong> In a disposable development project, prepare one agent-independent Brig profile and a guest image that can run both supported command-line programs. Establish how the release build will obtain the two programs and verify the image under the default signature policy. Launch each agent explicitly against the same Brig reference. Check the actual interactive terminal path. Keep provider access delivery and each agent&#x27;s permission options in its adapter.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>Brig reports one sandbox reference and one project mount. Both programs report their versions inside that sandbox. Each sees a test file written to the project by the other.</li><li>A Codex chat and a Claude Code chat each accept terminal input and resume after a guest restart. Changing the agent selector preserves an already open chat and its terminal target.</li><li>Codex passes checks for both supported sandbox settings. Claude passes its manual permission check. Each agent uses its intended provider. Renewal secrets remain on the Mac, and Claude&#x27;s temporary access copy clears on stop.</li><li>The default signature check accepts the intended image and rejects an untrusted replacement. Record the tested image identity, agent versions, and guest layout. Resolve any failed capability before changing the production registry.</li></ul>
+</section>
+<section id="phase-2"><h2>2. Make the project own the environment · High</h2>
+<p><strong>Scope.</strong> Implement the new model for fresh projects in the development build. Replace environment lookup by agent with lookup by project. Use one start, stop, retry, and removal path. Route new and resumed chats by project, agent kind, and native session ID. Move environment controls to Project settings. Keep the agent selector on New Chat. Replace separate agent network defaults for fresh projects with a visible project policy that supports the configured providers.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>Preparing a new project from either agent creates exactly one environment. Concurrent preparation requests resolve to the same environment. Reopening the app preserves its ID and Brig reference.</li><li>Switching agents preserves guest uptime, guest files, and the selected project policy. With a single provider connected, that agent can start; connecting the second provider does not create another environment.</li><li>A saved chat opens with its original agent even when the other agent is selected. Messages, cancellation, sign-out, transcript reads, and usage attribution target the intended provider or chat. Test equal native session IDs across agents.</li><li>Project stop and removal show all affected chats and terminals. Both agents see the resulting project state. A late completion after switching to another project cannot change that project&#x27;s state. Update the architecture decision and handbook ownership map.</li></ul>
+</section>
+<section id="phase-3"><h2>3. Start existing projects with a fresh shared environment · High</h2>
+<p><strong>Revised scope, 19 November 2026.</strong> Keep the project registration and working folder. Existing projects use the same environment preparation and chat paths as new projects. Start each project with empty chat history and usage in its shared environment. Remove the former Tugboat-owned guest homes and project records. Create no archives. Keep provider accounts on the Mac.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>Open existing projects with zero prepared guests, Codex only, Claude only, and both agents. Each keeps its registration and obtains exactly one fresh environment through the same path as a new project.</li><li>Both agents start with empty history. Old transcripts, usage and cost records do not enter the new environment. Fresh chats and usage remain attributable to the correct agent after restart.</li><li>Remove the old Tugboat-owned homes and records without making an archive. Preserve the project working tree, provider accounts, and resources owned by other projects or managed externally. A wider network policy requires explicit review.</li><li>Test active terminals, unavailable storage and an interrupted cleanup on disposable data. Reopening or retrying uses one writer and preserves new work. Complete cleanup when ownership and availability are verified.</li><li>Complete an end-to-end transition in Tugboat Dev. Verify the unrelated project, the new guest, empty initial history and the absence of old owned homes and records. Document the reset before release.</li></ul>
+</section>
+<section id="phase-4"><h2>4. Open a local web preview · Medium</h2>
+<p><strong>Scope.</strong> Add one user-selected web preview per project. Publish one TCP port on the Mac loopback address, record the approved mapping, and open its local URL in the browser. Check the observed Brig mapping against that record during preparation. Brig remembers a publication after stop, so closing a preview must remove the publication.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>Open a guest test server from the Mac browser and verify its project-specific response. The host binding is <code>127.0.0.1</code>. Both agents see the same preview. Other projects have independent mappings.</li><li>Reject invalid ports, an occupied host port, and a mapping outside the approved address or port. Show the difference between a published port and a guest server that has not started.</li><li>Close the preview, restart the guest, and verify that the port stays closed. An interrupted open or close reconciles with Brig on retry. A project switch cannot open the wrong project&#x27;s URL.</li></ul>
+</section>
+<section id="phase-5"><h2>5. Show recent gateway logs · Low</h2>
+<p><strong>Scope.</strong> Add a project diagnostic beside the existing guest logs. Read the last 100 lines for the project&#x27;s isolated gateway using <code>brig logs --gateway &lt;ref&gt; --tail 100</code>. Use the existing time and output limits. Display plain text and remove sensitive values before display or copying.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>Generate distinguishable events in two projects. Each view shows only its project&#x27;s gateway output. Switching agents within a project shows the same gateway.</li><li>With an offline guest, an unavailable gateway, or an empty log, show the observed condition. A missing project log must never trigger a read of the shared host gateway. A log with no denial record is insufficient evidence of a policy denial.</li><li>Fixtures cover oversized output, timeout, terminal control characters, a synthetic credential, and a late result after project switch. Verify the 100-line limit on a real development gateway.</li></ul>
+</section>
+<section id="phase-6"><h2>6. Update the project guest image · Medium–high</h2>
+<p><strong>Scope.</strong> Add <strong>Update guest image</strong> for an idle project. Resolve and verify the candidate image, retain the current image identity, and apply the candidate only to that project. Show the old and new image digests and both agent versions. Confirm that the running guest uses the candidate. Account for a shared image cache and for guest files outside the persistent home that a replacement could discard.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>An active chat, terminal, or project operation prevents image replacement. A current image reports <strong>Already up to date</strong>. Download, verification, and insufficient-space failures leave the previous image usable.</li><li>On a real test update, verify the running image identity and both agent versions. Resume a Codex chat and a Claude chat. Verify project files, persistent guest state, usage, policy, and the approved preview.</li><li>Inventory guest-local changes before replacement. Preserve them or present the exact impact for review. If startup or either executable check fails, restore the previous verified image and guest state. An interruption can be retried after app restart.</li><li>Update project A while project B uses the old image. Verify that project B still boots its recorded image after a restart.</li></ul>
+</section>
+<section id="phase-7"><h2>7. Grant read-only GitHub access · Medium–high</h2>
+<p><strong>Scope.</strong> Add one fetch-only grant for a specific GitHub repository in Project settings. Use Brig&#x27;s credential broker and its GitHub route. Store the GitHub secret on the Mac. Show the exact repository, the allowed action, and that both agents in this project receive access. Integrate the route with Tugboat&#x27;s existing host policy editor and plan validation.</p>
+<p><strong>Credential entry.</strong> Enter the repository and token in Project settings. Use a masked field. Tugboat asks Brig to save the token in the Mac Keychain. Show the repository and read permission for both agents. Support replacement and revocation from Tugboat. Handle a locked Keychain or a denied authorization with a clear retry state.</p>
+<p><strong>Acceptance criteria</strong></p>
+<ul><li>In an authorized disposable private repository, fetch succeeds from the project guest. A push and a fetch from a second private repository fail through the grant. A second project using the same Mac cannot use the first project&#x27;s grant.</li><li>After revocation, a fresh fetch and an attempt with the previously issued session token fail. Restarting the guest does not restore the grant. Verify both agents retain their normal provider sign-in.</li><li>Editing allowed hosts preserves the route, and removing the route preserves unrelated rules. An externally modified policy requires a fresh review. Failure or cancellation during grant creation or removal reports the effective access after recovery.</li><li>Verify that the reusable GitHub credential stays out of the guest, command arguments, diagnostics, copied logs, and saved project records. Use synthetic secrets for automated tests.</li></ul>
+</section>
+<section id="references"><h2>Evidence and implementation references</h2>
+<p>For each phase, record the revision, tests, results, and outstanding checks. Use fixtures for routing and failure cases. Use a disposable Apple silicon guest for runtime claims. Update the relevant user and developer documentation in the same implementation phase.</p>
+<ul><li><a href="../src-tauri/src/projects/record.rs">Current environment registry</a> and <a href="../src-tauri/src/platform/brig/mod.rs">plan checks</a></li><li><a href="../src-tauri/src/agent_sessions/codex.rs">Codex launch</a>, <a href="../src-tauri/src/agent_sessions/claude.rs">Claude launch</a>, and <a href="../src-tauri/profiles/tugboat-project.yaml">managed shared profile</a></li><li><a href="../src-tauri/src/usage_store/migrations/001_initial.sql">Usage database</a>, <a href="../src-tauri/src/projects/project_policy/mod.rs">policy editor</a>, and <a href="../src-tauri/src/projects/operations/mod.rs">project operations</a></li><li><a href="https://github.com/brig-sh/brig/blob/v0.5.2/docs/cli.md">Brig v0.5.2 command reference</a> and <a href="https://github.com/brig-sh/brig/blob/v0.5.2/docs/broker.md">credential broker</a></li></ul>
+</section>
+<section id="astra-prompt"><h2>Implementation prompt for GPT-6.2-Astra</h2>
+<pre>You are GPT-6.2-Astra. Lead implementation and independently review the work in the Tugboat repository. Use GPT-6.2-Sol with reasoning effort max for implementation, tests, documentation, and corrections. In Codex, select model gpt-6.2-sol and reasoning_effort max explicitly. Use a fresh context for a worker when required to select the model. Give it the repository path, phase number, instructions, scope, and acceptance criteria. If this exact worker configuration is unavailable, report the blocker.
+
+Read AGENTS.md, docs/agent-guide.html, and reports/project-environment-implementation-plan.html. Inspect the current branch, working tree, code, and tests. Preserve existing user changes. Treat sections 1 through 7 of the plan as the scope. The required invariant is one active Brig environment per registered project. Both agents run inside it. Keep provider identity and chat history attributable to the correct agent.
+
+For each phase:
+1. Give Sol Max a bounded implementation task. Name the user outcome, dependencies, owning modules, acceptance criteria, and authorized test environment. Ask it to report changed files, test commands, exact results, and any gaps.
+2. Inspect the resulting diff yourself. Trace the normal app entry points. Compare the code and tests against every acceptance criterion. Independently run the decisive tests, including at least one relevant failure or recovery case. Identify which claims need a real guest or authorized account.
+3. If a criterion fails, send Sol Max the finding, reproduction, and expected behavior. Ask it to correct the implementation and add the missing regression coverage. Inspect the new diff and rerun the affected checks. Repeat until the criterion passes or a concrete external blocker remains.
+4. Record each criterion as passed, failed, or blocked with its evidence. Keep blocked criteria open. Continue independent authorized work while awaiting a dependency. Advance dependent changes after their prerequisites pass.
+
+Use isolated Tugboat Dev records and disposable guests. Obtain authorization before using a shared account, publishing an image, accessing a real private repository, or changing external data. Use local fixtures for independent work. Keep existing registrations. Start each shared environment with empty history. Retire old Tugboat-owned guest homes and records without archives. Verify interruption recovery on disposable data before release. Do not substitute mock evidence for a real guest or broker result.
+
+At completion, give the user a phase-by-phase report with verified behavior, changed files, exact test results, remaining blockers, and the release decision. Implementation work remains with Sol Max. You own review, correction requests, and acceptance.
+</pre></section></main></body></html>

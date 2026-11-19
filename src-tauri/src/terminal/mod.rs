@@ -4,6 +4,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::ffi::c_void;
 use std::io::{Read, Write};
+use std::ops::AsyncFnOnce;
+use std::path::Path;
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex, OnceLock};
@@ -15,7 +17,9 @@ mod target;
 mod title;
 use surface::Surface;
 pub use target::AgentTarget;
-use target::{is_codex, same_process_scope};
+use target::{is_codex, same_environment_scope};
+#[cfg(test)]
+pub(crate) use title::TitleParser;
 
 unsafe extern "C" {
     fn brig_terminal_create(
@@ -216,10 +220,27 @@ pub struct TerminalStatus {
 }
 
 impl TerminalStatus {
+    pub fn belongs_to_environment(
+        &self,
+        project_id: &str,
+        environment_id: &projects::EnvironmentId,
+    ) -> bool {
+        self.project_id == project_id && self.environment_id.as_ref() == Some(environment_id)
+    }
+
     pub fn belongs_to(&self, project: &projects::Project) -> bool {
-        self.project_id == project.id
-            && self.environment_id.as_ref() == Some(&project.environment_id)
+        self.belongs_to_environment(&project.id, &project.environment_id)
             && self.agent_kind == Some(project.agent_kind)
+    }
+
+    fn stops_with_environment(
+        &self,
+        project_id: &str,
+        environment_id: &projects::EnvironmentId,
+    ) -> bool {
+        self.running
+            && self.belongs_to_environment(project_id, environment_id)
+            && runs_in_guest(self.purpose)
     }
 }
 
@@ -227,11 +248,12 @@ pub fn is_chat(purpose: &str) -> bool {
     ["codex", "resume", "claude", "claude-resume"].contains(&purpose)
 }
 
-pub fn conversations_running(project_id: &str, conversation_ids: &[String]) -> bool {
+pub fn conversations_running(project: &projects::Project, conversation_ids: &[String]) -> bool {
+    let target = AgentTarget::for_project(project);
     sessions().lock().is_ok_and(|states| {
         states.values().any(|session| {
-            session.project_id == project_id
-                && is_codex(session.target.as_ref())
+            session.project_id == project.id
+                && session.target.as_ref() == Some(&target)
                 && session.process.running()
                 && session
                     .chat
@@ -294,7 +316,7 @@ fn status_for(
         .iter()
         .filter(|(_, session)| {
             session.project_id == project_id
-                && same_process_scope(session.target.as_ref(), target)
+                && same_environment_scope(session.target.as_ref(), target)
                 && group.is_none_or(|group| purpose_group(session.purpose) == group)
         })
         .max_by_key(|(identifier, session)| {
@@ -309,6 +331,10 @@ fn status_for(
 
 #[tauri::command]
 pub fn terminal_sessions(project_id: String) -> Vec<TerminalStatus> {
+    #[cfg(test)]
+    if let Some(statuses) = fixture_terminal_statuses(&project_id) {
+        return statuses;
+    }
     let Ok(states) = sessions().lock() else {
         return Vec::new();
     };
@@ -319,6 +345,39 @@ pub fn terminal_sessions(project_id: String) -> Vec<TerminalStatus> {
         .collect();
     statuses.sort_by_key(|status| status.identifier);
     statuses
+}
+
+#[cfg(test)]
+thread_local! {
+    static FIXTURE_STATUSES: std::cell::RefCell<Option<Vec<TerminalStatus>>> = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn fixture_terminal_statuses(project_id: &str) -> Option<Vec<TerminalStatus>> {
+    FIXTURE_STATUSES.with(|statuses| {
+        statuses.borrow().as_ref().map(|statuses| {
+            statuses
+                .iter()
+                .filter(|status| status.project_id == project_id)
+                .cloned()
+                .collect()
+        })
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn with_fixture_terminal_statuses<ResultValue>(
+    statuses: Vec<TerminalStatus>,
+    run: impl FnOnce() -> ResultValue,
+) -> ResultValue {
+    struct Restore(Option<Vec<TerminalStatus>>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            FIXTURE_STATUSES.with(|statuses| statuses.replace(self.0.take()));
+        }
+    }
+    let _restore = Restore(FIXTURE_STATUSES.with(|fixture| fixture.replace(Some(statuses))));
+    run()
 }
 
 #[tauri::command]
@@ -452,6 +511,18 @@ pub(crate) async fn on_main<T: Send + 'static>(
     .map_err(|error| error.to_string())?
 }
 
+pub(crate) async fn copy_text(app: AppHandle, text: String) -> Result<(), String> {
+    on_main(app, move || {
+        unsafe { brig_terminal_copy_text(text.as_ptr(), text.len()) };
+        Ok(())
+    })
+    .await
+}
+
+unsafe extern "C" {
+    fn brig_terminal_copy_text(bytes: *const u8, length: usize);
+}
+
 #[derive(Deserialize)]
 pub struct Layout {
     x: f64,
@@ -504,8 +575,22 @@ pub async fn terminal_start(
     project_id: String,
     layout: Layout,
 ) -> Result<u64, String> {
+    let file = projects::file(window.app_handle())?;
+    start_local_terminal(&file, project_id, async move |project_id, command| {
+        start(window, project_id, "local", command, layout, None).await
+    })
+    .await
+}
+
+async fn start_local_terminal(
+    registry_file: &Path,
+    project_id: String,
+    launch: impl AsyncFnOnce(String, Command) -> Result<u64, String>,
+) -> Result<u64, String> {
+    let environment_id = projects::EnvironmentId::for_project(&project_id);
+    let _operation = crate::environment::EnvironmentOperation::begin(&project_id, &environment_id)?;
     let project =
-        projects::Registry::load(&projects::file(window.app_handle())?)?.project(&project_id)?;
+        projects::Registry::load(registry_file)?.environment(&project_id, &environment_id)?;
     project.require_active()?;
     project.check_path()?;
     let mut command = Command::new("/bin/zsh");
@@ -516,7 +601,7 @@ pub async fn terminal_start(
         .envs(command::environment())
         .env("TERM", "xterm-256color")
         .env("PROMPT", "%1~ %# ");
-    start(window, project_id, "local", command, layout, None).await
+    launch(project_id, command).await
 }
 
 pub async fn start(
@@ -571,7 +656,10 @@ pub(crate) async fn start_reserved(
     layout.validate()?;
     if let Some(previous) = status_for(&project_id, Some(purpose_group(purpose)), target.as_ref()) {
         if previous.running && !(is_chat(purpose) && is_chat(previous.purpose)) {
-            if previous.purpose == purpose && on_exit.is_none() {
+            if previous.purpose == purpose
+                && previous.agent_kind == target.as_ref().map(|target| target.agent_kind)
+                && on_exit.is_none()
+            {
                 return Ok(previous.identifier);
             }
             return Err("This project has an open terminal. End that process first.".into());
@@ -615,7 +703,7 @@ pub(crate) async fn start_reserved(
         }
         if states.values().any(|session| {
             session.project_id == project_id
-                && same_process_scope(session.target.as_ref(), target.as_ref())
+                && same_environment_scope(session.target.as_ref(), target.as_ref())
                 && purpose_group(session.purpose) == purpose_group(purpose)
                 && !(is_chat(session.purpose) && is_chat(purpose))
                 && session.process.running()
@@ -920,8 +1008,9 @@ pub fn stop_environment_processes(project: &projects::Project) -> Result<(), Str
         .map_err(|error| error.to_string())?
         .values()
         .filter(|session| {
-            let status = session.status(0);
-            status.belongs_to(project) && runs_in_guest(status.purpose) && status.running
+            session
+                .status(0)
+                .stops_with_environment(&project.id, &project.environment_id)
         })
         .map(|session| session.process.clone())
         .collect();
@@ -929,16 +1018,50 @@ pub fn stop_environment_processes(project: &projects::Project) -> Result<(), Str
     pty::terminate(&processes, std::time::Duration::from_millis(500))
 }
 
-pub async fn close_environment(app: AppHandle, project: &projects::Project) -> Result<(), String> {
-    let identifiers: Vec<_> = sessions()
+fn environment_terminals(project: &projects::Project) -> Result<Vec<TerminalStatus>, String> {
+    let mut statuses: Vec<_> = sessions()
         .lock()
         .map_err(|error| error.to_string())?
         .iter()
-        .filter(|(identifier, session)| session.status(**identifier).belongs_to(project))
-        .map(|(identifier, _)| *identifier)
+        .map(|(identifier, session)| session.status(*identifier))
+        .filter(|status| status.belongs_to_environment(&project.id, &project.environment_id))
         .collect();
-    for identifier in identifiers {
-        terminal_close(app.clone(), identifier).await?;
+    statuses.sort_by_key(|status| status.identifier);
+    Ok(statuses)
+}
+
+pub(crate) fn removal_terminal_summary(project: &projects::Project) -> Result<String, String> {
+    let statuses = environment_terminals(project)?;
+    if statuses.is_empty() {
+        return Ok(String::new());
+    }
+    let names: Vec<_> = statuses
+        .iter()
+        .map(|status| {
+            let purpose = match status.purpose {
+                "codex" | "resume" => "Codex chat",
+                "claude" | "claude-resume" => "Claude Code chat",
+                "shell" => "Guest terminal",
+                "environment" => "Environment startup",
+                "git-status" => "Git status",
+                "git-diff" => "Working tree diff",
+                "git-staged-diff" => "Staged diff",
+                "tests" => "Project tests",
+                "doctor" => "Brig doctor",
+                "info" => "Session info",
+                "policy-check" => "Policy bindings",
+                "logs" => "Guest logs",
+                _ => "Operation",
+            };
+            format!("{purpose} · Terminal {}", status.identifier)
+        })
+        .collect();
+    Ok(format!("\n\nTerminals to close\n{}", names.join("\n")))
+}
+
+pub async fn close_environment(app: AppHandle, project: &projects::Project) -> Result<(), String> {
+    for status in environment_terminals(project)? {
+        terminal_close(app.clone(), status.identifier).await?;
     }
     Ok(())
 }
@@ -946,6 +1069,128 @@ pub async fn close_environment(app: AppHandle, project: &projects::Project) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn local_launch_and_environment_update_exclude_each_other_in_both_orders() {
+        use crate::{environment::EnvironmentOperation, projects::Registry, storage};
+        use std::{
+            fs,
+            future::Future,
+            os::unix::fs::DirBuilderExt,
+            pin::pin,
+            task::{Context, Poll, Waker},
+        };
+
+        let root = std::env::temp_dir().join(format!(
+            "tugboat-terminal-admission-{}-{}",
+            std::process::id(),
+            reserve_identifier()
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let first = root.join("first");
+        let second = root.join("second");
+        fs::create_dir(&first).unwrap();
+        fs::create_dir(&second).unwrap();
+        let file = root.join("projects.json");
+        let mut registry = Registry::default();
+        let project = registry.register(&first).unwrap();
+        let sibling = registry.register(&second).unwrap();
+        storage::write(&file, &registry).unwrap();
+        let mut context = Context::from_waker(Waker::noop());
+
+        {
+            let mut starting = pin!(start_local_terminal(
+                &file,
+                project.id.clone(),
+                async |_, command| {
+                    assert_eq!(command.get_current_dir(), Some(first.as_path()));
+                    std::future::pending().await
+                }
+            ));
+            assert!(starting.as_mut().poll(&mut context).is_pending());
+            assert!(EnvironmentOperation::begin(&project.id, &project.environment_id).is_err());
+            assert!(EnvironmentOperation::begin(&sibling.id, &sibling.environment_id).is_ok());
+        }
+
+        let update = EnvironmentOperation::begin(&project.id, &project.environment_id).unwrap();
+        let mut blocked = pin!(start_local_terminal(
+            &file,
+            project.id.clone(),
+            async |_, _| { panic!("The current project operation must block local launch.") }
+        ));
+        assert!(matches!(
+            blocked.as_mut().poll(&mut context),
+            Poll::Ready(Err(error)) if error.contains("already in progress")
+        ));
+        let mut independent = pin!(start_local_terminal(
+            &file,
+            sibling.id.clone(),
+            async |_, command| {
+                assert_eq!(command.get_current_dir(), Some(second.as_path()));
+                Ok(41)
+            }
+        ));
+        assert_eq!(independent.as_mut().poll(&mut context), Poll::Ready(Ok(41)));
+        drop(update);
+        let mut retry = pin!(start_local_terminal(
+            &file,
+            project.id.clone(),
+            async |_, _| { Ok(42) }
+        ));
+        assert_eq!(retry.as_mut().poll(&mut context), Poll::Ready(Ok(42)));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn stopping_a_guest_selects_both_agents_and_leaves_other_terminals_running() {
+        use crate::{agents::AgentKind, projects::EnvironmentId};
+
+        let project = "project-a";
+        let shared = EnvironmentId::for_project(project);
+        let sibling = EnvironmentId::for_agent(project, AgentKind::ClaudeCode);
+        let terminal = |identifier,
+                        project_id: &str,
+                        environment_id: Option<&EnvironmentId>,
+                        agent_kind,
+                        purpose,
+                        running| {
+            TerminalStatus {
+                identifier,
+                project_id: project_id.into(),
+                environment_id: environment_id.cloned(),
+                agent_kind,
+                purpose,
+                running,
+                exit_code: None,
+                conversation_id: Some("same-native-id".into()),
+                busy: false,
+            }
+        };
+        let codex = Some(AgentKind::Codex);
+        let claude = Some(AgentKind::ClaudeCode);
+        let terminals = [
+            terminal(1, project, Some(&shared), codex, "codex", true),
+            terminal(2, project, Some(&shared), claude, "claude", true),
+            terminal(3, project, Some(&sibling), claude, "claude", true),
+            terminal(4, "project-b", Some(&shared), codex, "codex", true),
+            terminal(5, project, None, None, "local", true),
+            terminal(6, project, Some(&shared), codex, "doctor", true),
+            terminal(7, project, Some(&shared), claude, "claude", false),
+        ];
+        let stopped: Vec<_> = terminals
+            .iter()
+            .filter(|terminal| terminal.stops_with_environment(project, &shared))
+            .map(|terminal| terminal.identifier)
+            .collect();
+        let closed: Vec<_> = terminals
+            .iter()
+            .filter(|terminal| terminal.belongs_to_environment(project, &shared))
+            .map(|terminal| terminal.identifier)
+            .collect();
+        assert_eq!(stopped, [1, 2]);
+        assert_eq!(closed, [1, 2, 6, 7]);
+    }
 
     #[test]
     fn terminal_layout_accepts_existing_requests_and_optional_overlay_rectangles() {

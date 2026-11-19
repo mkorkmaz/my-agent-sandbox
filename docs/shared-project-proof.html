@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shared project guest proof · Tugboat handbook</title>
+  <link rel="stylesheet" href="handbook.css">
+</head>
+<body>
+  <main id="main">
+    <h1>Shared project guest proof</h1>
+    <p>Run this acceptance check on an Apple silicon Mac with the prepared Tugboat development runtime. The check creates a project, a Brig session, a policy, and runtime storage under a private temporary directory. The check uses public downloads and synthetic credential data.</p>
+    <p>Run the check where Hull can inspect its virtual machine and gateway processes. Brig uses those process checks to decide whether it can reuse a running guest.</p>
+    <pre><code>node scripts/acceptance/check-shared-project.mjs</code></pre>
+    <p>Read <code>evidence.json</code> at the path printed by the check. The report includes the image digest, both program versions, and the guest layout. The check stops and removes its guest and detaches its private Hull store. Use <code>--keep</code> when the next check needs the same running guest.</p>
+
+    <h2>Image and executables</h2>
+    <p>The profile uses an immutable Linux ARM64 Claude Code stock image from Brig's signed public registry. Tugboat's <code>require</code> setting and Brig's default signer check cover the image and the boot assets. The runner also tries a public Ubuntu image against the same policy and checks for a signature refusal.</p>
+    <p>The Codex release workflow signs the pinned Linux ARM64 package, which includes the resources used by its workspace sandbox. The runner checks the archive and bundle hashes and verifies the signature for the exact OpenAI release tag. It stages the package in the guest home and compares the executable hash on both sides of the mount. The guest policy allows provider endpoints only, so the guest does not obtain programs from a package server during preparation.</p>
+    <p class="source"><a href="https://github.com/brig-sh/community-images#pulling-and-verifying">Brig image signatures</a> · <a href="https://github.com/openai/codex/blob/rust-v0.167.0/.github/workflows/rust-release.yml">OpenAI release signing workflow</a></p>
+
+    <h2>Application setup</h2>
+    <p>The app prepares one <code>tugboat-project</code> reference per project. The plan pins the stock image digest and names a persistent guest home under the Brig state directory. The app uses the bundled Brig and Hull tools and requires the default Brig signature policy.</p>
+    <p>The Mac downloads the pinned official Codex package on first preparation. The app checks the archive and Sigstore bundle hashes, verifies the exact release signer, and installs the package in <code>/root/.tugboat-codex-0.167.0</code>. The package manifest covers its 44 files, including the executable, workspace sandbox helper, and other resources. The installed package is verified again before a Codex chat starts.</p>
+    <p>If a package check fails, stop the guest and prepare again. The app can replace the damaged files in its package directory after it verifies the replacement. A link or unexpected file owner stops the repair for review.</p>
+    <p>Preparation checks the running Hull image digest, Claude's temporary credential mount, and both agent versions. Each chat names its own executable against the same Brig reference. The guest shell uses that same reference and needs no provider sign-in. The project has one deny-by-default policy and its initial allowed hosts include both providers.</p>
+    <p>Run the opt-in native check with fresh disposable records. The check uses normal project registration, plan validation, package staging, guest setup, and version checks. It verifies one guest, both agent targets, stable uptime, package repair, restart, and removal.</p>
+    <pre><code>proof=$(mktemp -d /private/tmp/tg2.XXXX)
+TUGBOAT_SHARED_GUEST_TEST_ROOT="$proof" \
+  cargo test --manifest-path src-tauri/Cargo.toml --locked \
+  production_shared_guest_boot_and_reopen -- --ignored --nocapture</code></pre>
+    <p class="source"><a href="../src-tauri/profiles/tugboat-project.yaml">Managed profile</a> · <a href="../src-tauri/profiles/codex-0.167.0.manifest">Codex package manifest</a> · <a href="../src-tauri/src/environment/codex_package.rs">Package verification and installation</a> · <a href="../src-tauri/src/environment/preparation/shared_guest_tests.rs">Native setup check</a></p>
+
+    <h2>One guest and two launch targets</h2>
+    <p>The proof profile uses Bash as the neutral profile executable. Brig v0.5.2 accepts a session policy on an agent profile. Each proof launch names the agent executable and passes that agent's normal arguments to the same Brig session. The project mounts at <code>/work/sample project</code>. The guest home mounts at <code>/root</code>.</p>
+    <p>Codex uses <code>/root/.codex</code> for its settings and saved sessions. Claude uses the memory filesystem at <code>/brig/claude</code> for its access copy. The profile binds Claude's persistent configuration and history paths under <code>/root/.claude</code> into that filesystem. Stopping the guest clears its memory filesystem. The two guest processes can access the same project and share the guest permissions.</p>
+    <p>With <code>--keep</code>, run the native terminal check with the temporary directory printed by the first check. It uses the same pseudo-terminal code as the desktop app. The test verifies input reaches two independent terminals in the same guest.</p>
+    <pre><code>TUGBOAT_PHASE1_ROOT=/private/tmp/tgp1.REPLACE \
+  cargo test --manifest-path src-tauri/Cargo.toml --locked \
+  two_guest_commands_keep_their_native_terminal_input_targets -- --ignored</code></pre>
+    <p>Live chat checks require permission to use the selected Tugboat Dev provider connections. Start with current access in the Dev records and the same verified disposable guest. Set <code>TUGBOAT_PHASE1_LIVE_RECORDS</code> to the authorized default Dev records directory. Run the ignored test <code>both_live_chats_use_project_files_and_resume_after_stop</code>. The test sends short prompts about disposable files to the two providers. It uses the provider-specific access projections and clears those guest copies. The renewal credentials stay in the Dev provider records.</p>
+    <p>For recovery between steps, set <code>TUGBOAT_PHASE1_CONTINUE_ID</code> to the Claude session ID from the same disposable project. Run <code>recorded_live_chats_resume_after_stop</code> to verify both recorded sessions after a guest restart.</p>
+    <p>After a check with <code>--keep</code>, stop the guest. Review the removal preview. Remove the same guest and detach the private Hull store.</p>
+    <pre><code>proof=/private/tmp/tgp1.REPLACE
+"$proof/run" brig stop tugboat-project-proof@proof
+"$proof/run" brig rm tugboat-project-proof@proof --dry-run
+"$proof/run" brig rm tugboat-project-proof@proof
+"$proof/run" hull store detach</code></pre>
+    <p class="source"><a href="../scripts/acceptance/check-shared-project.mjs">Infrastructure check</a> · <a href="../src-tauri/src/agent_sessions/shared_project_proof.rs">Native launch checks</a> · <a href="../scripts/acceptance/shared-project-profile.yaml">Disposable profile</a></p>
+    <p><a href="developer-guide.html#verification">Return to the developer guide</a></p>
+  </main>
+</body>
+</html>

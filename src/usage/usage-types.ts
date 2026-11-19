@@ -84,7 +84,7 @@ export interface UsageSummary {
 }
 
 export interface Conversation {
-  id: string; environmentId?: string | null; agentKind?: 'codex' | 'claude-code'; usageAvailable?: boolean; title: string; updatedAt: number; state: SessionState; available: boolean;
+  id: string; environmentId: string; agentKind: 'codex' | 'claude-code'; usageAvailable?: boolean; title: string; updatedAt: number; state: SessionState; available: boolean;
   usage: UsageSummary; // Existing meaning: this node's own usage.
   warning: string | null;
   lineage: Lineage;
@@ -125,6 +125,7 @@ export interface UnassignedUsage {
   unmeasuredTurnRefs: TurnRef[];
 }
 export interface ConversationUsageDetails {
+  agentKind: Conversation['agentKind'];
   sessionId: string; // Selected node, even if it is a child.
   rootSessionId: string | null; // Resolved ancestor information; does not widen selected scope.
   ownUsage: UsageSummary; descendantsUsage: UsageSummary; combinedUsage: UsageSummary;

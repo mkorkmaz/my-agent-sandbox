@@ -1,6 +1,6 @@
 use crate::{
-    agents::AgentKind,
     desktop::settings::{self, Settings},
+    environment::managed_profile,
     platform::brig::{self, Brig},
     projects::project_policy::PolicyEditor,
     projects::{self, EnvironmentId, Policy, Project, Projects, Registry},
@@ -13,10 +13,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
 
-mod selection;
 mod session_index;
-use selection::SessionSelection;
-use session_index::SessionIndex;
+#[cfg(all(test, target_os = "macos"))]
+mod shared_guest_tests;
+pub(crate) use session_index::GuestHomes;
 
 #[derive(Default)]
 pub struct PreparationLocks(pub Mutex<HashMap<(String, EnvironmentId), Arc<Mutex<()>>>>);
@@ -26,7 +26,6 @@ pub struct PreparationLocks(pub Mutex<HashMap<(String, EnvironmentId), Arc<Mutex
 pub struct Preparation {
     pub project: Project,
     pub plan: Option<Value>,
-    pub candidates: Vec<String>,
     pub message: Option<String>,
     pub fingerprint: Option<String>,
 }
@@ -37,7 +36,15 @@ fn save(registry_file: &Path, project: &Project) -> Result<(), String> {
     storage::write(registry_file, &registry)
 }
 
-fn matches_template(policy: &Value, settings: &Settings, kind: AgentKind) -> bool {
+fn allowed_hosts(settings: &Settings) -> Vec<String> {
+    let mut hosts = settings.codex.allowed_hosts.clone();
+    hosts.extend(settings.claude_code.allowed_hosts.iter().cloned());
+    hosts.sort();
+    hosts.dedup();
+    hosts
+}
+
+fn matches_template(policy: &Value, expected: &[String]) -> bool {
     let spec = &policy["spec"];
     if spec["egress"]["default"] != "deny"
         || spec
@@ -53,8 +60,7 @@ fn matches_template(policy: &Value, settings: &Settings, kind: AgentKind) -> boo
         return false;
     }
     let Some(rules) = spec["egress"]["allow"].as_array() else {
-        return settings.agent_defaults(kind).allowed_hosts.is_empty()
-            && spec["egress"]["allow"].is_null();
+        return expected.is_empty() && spec["egress"]["allow"].is_null();
     };
     let mut hosts = Vec::new();
     for rule in rules {
@@ -68,95 +74,7 @@ fn matches_template(policy: &Value, settings: &Settings, kind: AgentKind) -> boo
     }
     hosts.sort();
     hosts.dedup();
-    let mut expected = settings.agent_defaults(kind).allowed_hosts.clone();
-    expected.sort();
-    expected.dedup();
     hosts == expected
-}
-
-fn candidates(brig: &Brig, project: &Project) -> Result<Vec<String>, String> {
-    let index = SessionIndex::read(brig);
-    if !brig.environment.contains_key("BRIG_PROFILE_DIR") {
-        return inventory_candidates(brig, project, &index, |_| true);
-    }
-    // Brig classifies only profiles visible in the directory used for ls.
-    let managed = crate::environment::managed_profile::CLAUDE_PROFILE;
-    let mut matches = inventory_candidates(
-        &brig.without_profile_override(),
-        project,
-        &index,
-        |profile| profile != managed,
-    )?;
-    matches.extend(inventory_candidates(brig, project, &index, |profile| {
-        profile == managed
-    })?);
-    matches.sort();
-    matches.dedup();
-    Ok(matches)
-}
-
-fn inventory_candidates(
-    brig: &Brig,
-    project: &Project,
-    index: &SessionIndex,
-    in_scope: impl Fn(&str) -> bool,
-) -> Result<Vec<String>, String> {
-    let list = brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
-    let sandboxes = list["data"]["sandboxes"]
-        .as_array()
-        .ok_or("Could not read the Brig session list.")?;
-    if sandboxes.len() > 256 {
-        return Err("The Brig session list is too large. Review unused sessions.".into());
-    }
-    let mut matches = Vec::new();
-    for sandbox in sandboxes {
-        // Raw runtime sandboxes have no agent or ref in the Brig inventory.
-        if sandbox["agent"].is_null()
-            || (project.agent_kind == AgentKind::Codex && sandbox["agent"] != project.profile)
-        {
-            continue;
-        }
-        let Some(reference) = sandbox["ref"].as_str() else {
-            return Err("The Brig session identity is missing.".into());
-        };
-        let Some((profile, label)) = reference.split_once('@') else {
-            continue;
-        };
-        if !in_scope(profile)
-            || (project.agent_kind == AgentKind::Codex && profile != project.profile)
-            || !settings::valid_identifier(profile)
-            || !settings::valid_identifier(label)
-        {
-            continue;
-        }
-        if sandbox["sandbox"]
-            .as_str()
-            .is_some_and(|name| index.excludes(reference, name, &project.path))
-        {
-            continue;
-        }
-        if project.agent_kind == AgentKind::ClaudeCode {
-            let definition = brig.agent_profile(profile)?;
-            if definition["kind"] != "agent" || definition["binary"] != project.agent_kind.binary()
-            {
-                continue;
-            }
-        }
-        let info = brig
-            .json(
-                &["--json".into(), "info".into(), reference.into()],
-                "Info",
-                None,
-            )
-            .map_err(|error| format!("brig --json info {reference}: {error}"))?;
-        let Some(path) = info["data"]["project"]["host"].as_str() else {
-            continue;
-        };
-        if std::fs::canonicalize(path).ok().as_ref() == Some(&project.path) {
-            matches.push(reference.to_owned());
-        }
-    }
-    Ok(matches)
 }
 
 fn checked_plan(
@@ -172,12 +90,11 @@ fn checked_plan(
 }
 
 #[cfg(test)]
-fn prepare(
+pub(crate) fn prepare(
     brig: &Brig,
     registry_file: &Path,
     settings: &Settings,
     identifier: &str,
-    chosen: Option<&str>,
 ) -> Result<Preparation, String> {
     let project = Registry::load(registry_file)?.project(identifier)?;
     prepare_selected(
@@ -186,7 +103,6 @@ fn prepare(
         settings,
         identifier,
         &project.environment_id,
-        chosen,
         &[],
     )
 }
@@ -197,16 +113,14 @@ fn prepare_selected(
     settings: &Settings,
     identifier: &str,
     environment_id: &EnvironmentId,
-    chosen: Option<&str>,
     private_records: &[PathBuf],
 ) -> Result<Preparation, String> {
     let _file_guard = storage::lock(registry_file)?;
     let mut project = Registry::load(registry_file)?.environment(identifier, environment_id)?;
     let configured = project.settings(settings.clone())?;
     let settings = &configured;
-    let mut brig = brig.clone();
     if project.removal_pending() {
-        return Ok(Preparation { project, plan: None, candidates: Vec::new(), message: Some("Removal is incomplete. Review the removal preview to continue. Project setup is paused.".into()), fingerprint: None });
+        return Ok(Preparation { project, plan: None, message: Some("Removal is incomplete. Review the removal preview to continue. Project setup is paused.".into()), fingerprint: None });
     }
     if matches!(
         project.stage,
@@ -216,9 +130,14 @@ fn prepare_selected(
         return Ok(Preparation {
             project,
             plan: None,
-            candidates: Vec::new(),
             message: Some("An environment operation is in progress. Wait for it to finish.".into()),
             fingerprint: None,
+        });
+    }
+    if project.image_update.is_some() {
+        return Ok(Preparation {
+            project, plan: None, fingerprint: None,
+            message: Some("Finish guest image recovery in Project settings before preparing the environment.".into()),
         });
     }
     project.check_path()?;
@@ -227,65 +146,31 @@ fn prepare_selected(
         return Ok(Preparation {
             project,
             plan: None,
-            candidates: Vec::new(),
             message: Some("Policy detached. Read the policy and choose Attach to this session before preparing the environment.".into()),
             fingerprint: None,
         });
     }
-    brig.validate_agent_profile(&project.profile, project.agent_kind)?;
-    if project.policy.is_none() && project.stage == crate::projects::ProjectStage::Selected {
-        let selection = SessionSelection::resolve(candidates(&brig, &project)?, chosen)?;
-        if let SessionSelection::Choose(candidates) = selection {
-            return Ok(Preparation {
-                project,
-                plan: None,
-                candidates,
-                message: Some(
-                    "Multiple Brig sessions use this folder. Select the session to use.".into(),
-                ),
-                fingerprint: None,
-            });
-        }
-        if let SessionSelection::Adopt(reference) = selection {
-            let (profile, label) = reference.split_once('@').ok_or("Invalid Brig session.")?;
-            let managed_profile = brig.environment.contains_key("BRIG_PROFILE_DIR")
-                && profile == crate::environment::managed_profile::CLAUDE_PROFILE;
-            let owned = managed_profile && project.owns_session && project.reference() == reference;
-            project.profile = profile.into();
-            project.label = label.into();
-            project.owns_session = owned;
-            project.adopted_managed_profile = managed_profile && !owned;
-            if !managed_profile {
-                brig = brig.without_profile_override();
-            }
-            brig.validate_agent_profile(&project.profile, project.agent_kind)?;
-            let plan = checked_plan(&brig, &project, settings, private_records)?;
-            if let Some(name) = plan["data"]["policies"]
-                .as_array()
-                .and_then(|policies| policies.first())
-                .and_then(Value::as_str)
-            {
-                if !settings::valid_identifier(name) {
-                    return Err("Invalid Brig policy name.".into());
-                }
-                let policy = brig
-                    .policy(name)?
-                    .ok_or("The existing session policy was not found.")?;
-                project.policy = Some(Policy {
-                    name: name.into(),
-                    owned: false,
-                    fingerprint: Some(brig::fingerprint(&policy)?),
-                });
-            }
-            save(registry_file, &project)?;
-        }
-    }
-    checked_plan(&brig, &project, settings, private_records)?;
+    let definition = brig.agent_profile(&project.profile)?;
+    managed_profile::validate(&project, &definition)?;
+    checked_plan(brig, &project, settings, private_records)?;
+    let hosts = allowed_hosts(settings);
     if project.policy.is_none() {
-        let base = match project.agent_kind {
-            AgentKind::Codex => format!("bd-{}", project.id),
-            AgentKind::ClaudeCode => format!("bd-{}", project.environment_id),
-        };
+        if hosts.len() > 64 {
+            return Err(
+                "Use up to 64 distinct project allowed hosts across both providers.".into(),
+            );
+        }
+        let inventory = brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
+        let inventory = inventory["data"]["sandboxes"]
+            .as_array()
+            .ok_or("Could not read the Brig session list.")?;
+        if inventory
+            .iter()
+            .any(|entry| entry["ref"] == project.reference())
+        {
+            return Err("A Brig session already uses this project's reserved name. Resolve the existing session before preparing this project.".into());
+        }
+        let base = format!("bd-{}", project.id);
         let mut available = None;
         for index in 0..32 {
             let candidate = if index == 0 {
@@ -316,10 +201,7 @@ fn prepare_selected(
                     .into(),
             );
         }
-        let editor = PolicyEditor::create(
-            &policy_link.name,
-            &settings.agent_defaults(project.agent_kind).allowed_hosts,
-        )?;
+        let editor = PolicyEditor::create(&policy_link.name, &hosts)?;
         let mut editor_brig = Brig {
             executable: brig.executable.clone(),
             environment: brig.environment.clone(),
@@ -350,7 +232,7 @@ fn prepare_selected(
         }
     }
     if policy_link.fingerprint.is_none()
-        && (!policy_link.owned || !matches_template(&policy, settings, project.agent_kind))
+        && (!policy_link.owned || !matches_template(&policy, &hosts))
     {
         return Err(
             "The interrupted policy does not match the expected template. The document was preserved.".into(),
@@ -400,9 +282,9 @@ fn prepare_selected(
     {
         return Err("Brig could not verify the policy binding.".into());
     }
-    let plan = checked_plan(&brig, &project, settings, private_records)?;
+    let plan = checked_plan(brig, &project, settings, private_records)?;
     let paths = brig::validate_plan(&plan, &project, settings)?;
-    let running = match crate::environment::is_running(&brig, &project, &paths) {
+    let running = match crate::environment::is_running(brig, &project, &paths) {
         Ok(running) => running,
         Err(message) => {
             project.stage = crate::projects::ProjectStage::EnvironmentUnverified;
@@ -410,16 +292,11 @@ fn prepare_selected(
             return Ok(Preparation {
                 project,
                 plan: None,
-                candidates: Vec::new(),
                 message: Some(message),
                 fingerprint: None,
             });
         }
     };
-    let definition = brig.agent_profile(&project.profile)?;
-    project
-        .agent_kind
-        .validate_profile(&project.profile, &definition)?;
     let fingerprint = crate::environment::plan_fingerprint(&plan, &project, &definition)?;
     project.stage = project.environment_stage(running, &fingerprint).into();
     save(registry_file, &project)?;
@@ -427,7 +304,6 @@ fn prepare_selected(
     Ok(Preparation {
         project,
         plan: Some(plan),
-        candidates: Vec::new(),
         message: None,
         fingerprint,
     })
@@ -440,7 +316,6 @@ pub async fn prepare_project(
     locks: State<'_, PreparationLocks>,
     identifier: String,
     environment_id: Option<EnvironmentId>,
-    chosen_reference: Option<String>,
 ) -> Result<Preparation, String> {
     let registry_file = projects::file(&app)?;
     let registry = Registry::load(&registry_file)?;
@@ -459,22 +334,21 @@ pub async fn prepare_project(
     // Registry writes serialize with folder selection as well as project preparation.
     let registry_lock = projects.0.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _project_guard = lock
-            .try_lock()
-            .map_err(|_| "This project setup is already running.")?;
+        let _project_guard = lock.lock().map_err(|error| error.to_string())?;
         let _registry_guard = registry_lock.lock().map_err(|error| error.to_string())?;
         let _file_guard = storage::lock(&registry_file)?;
         let registry = Registry::load(&registry_file)?;
         crate::storage::data_location::validate_project_records(&app, &registry)?;
         let mut project = registry.environment(&identifier, &environment_id)?;
-        let active = crate::environment::EnvironmentOperation::pending(&environment_id)
-            || crate::terminal::terminal_sessions(identifier.clone())
-                .iter()
-                .any(|session| {
-                    session.environment_id.as_ref() == Some(&environment_id)
-                        && session.purpose == "environment"
-                        && session.running
-                });
+        let active =
+            crate::environment::EnvironmentOperation::pending(&identifier, &environment_id)
+                || crate::terminal::terminal_sessions(identifier.clone())
+                    .iter()
+                    .any(|session| {
+                        session.belongs_to_environment(&identifier, &environment_id)
+                            && session.purpose == "environment"
+                            && session.running
+                    });
         if project.recover_preparation(active)? {
             save(&registry_file, &project)?;
         }
@@ -487,16 +361,12 @@ pub async fn prepare_project(
             &settings,
             &identifier,
             &environment_id,
-            chosen_reference.as_deref(),
             &crate::storage::data_location::protected_directories(&app)?,
         )
     })
     .await
     .map_err(|error| error.to_string())?
 }
-
-#[cfg(test)]
-mod agent_tests;
 
 #[cfg(test)]
 mod tests {
@@ -511,7 +381,7 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let file = root.join("projects.json");
         let mut registry = Registry::load(&file).unwrap();
-        let mut project = registry.register(&root, "codex").unwrap();
+        let mut project = registry.register(&root).unwrap();
         project.stage = crate::projects::ProjectStage::Removing;
         registry.update(project.clone()).unwrap();
         storage::write(&file, &registry).unwrap();
@@ -521,7 +391,7 @@ mod tests {
             environment: Default::default(),
         };
         for _ in 0..2 {
-            let result = prepare(&brig, &file, &Settings::default(), &project.id, None).unwrap();
+            let result = prepare(&brig, &file, &Settings::default(), &project.id).unwrap();
             assert_eq!(result.project.stage, "removing");
             assert!(result.plan.is_none());
             assert!(result.fingerprint.is_none());
@@ -538,9 +408,7 @@ mod tests {
         let registry_file = root.join("projects.json");
         let settings = Settings::default();
         let mut registry = Registry::load(&registry_file).unwrap();
-        let project = registry
-            .register(&root.join("sample-project"), "codex")
-            .unwrap();
+        let project = registry.register(&root.join("sample-project")).unwrap();
         storage::write(&registry_file, &registry).unwrap();
         let mut brig = Brig::new(&settings).unwrap();
         for (name, directory) in [
@@ -569,15 +437,16 @@ mod tests {
             "BRIG_RUNTIME_BIN".into(),
             inventory.to_string_lossy().into_owned(),
         );
-        let first = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+        let brig = brig.for_project(&project, &root.join("profiles")).unwrap();
+        let first = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
         assert_eq!(first.project.stage, "ready");
-        let second = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+        let second = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
         assert_eq!(first.project.reference(), second.project.reference());
         let mut stale_ready = second.project.clone();
         stale_ready.stage = crate::projects::ProjectStage::EnvironmentReady;
         save(&registry_file, &stale_ready).unwrap();
         assert_eq!(
-            prepare(&brig, &registry_file, &settings, &project.id, None)
+            prepare(&brig, &registry_file, &settings, &project.id)
                 .unwrap()
                 .project
                 .stage,
@@ -585,7 +454,7 @@ mod tests {
         );
         let absent_preview = crate::projects::operations::preview(&brig, &second.project).unwrap();
         assert!(!absent_preview.has_environment);
-        assert!(absent_preview.description.contains("will be preserved"));
+        assert!(absent_preview.description.contains("project files stay"));
         let policy_name = first.project.policy.as_ref().unwrap().name.clone();
         let file = root.join("policies").join(format!("{policy_name}.yaml"));
         let original = fs::read(&file).unwrap();
@@ -614,7 +483,7 @@ mod tests {
                 "policy".into(),
                 "attach".into(),
                 policy_name.clone(),
-                "codex".into(),
+                project.profile.clone(),
                 "-n".into(),
                 "other-project".into(),
             ],
@@ -635,7 +504,7 @@ mod tests {
                 .as_ref()
                 .unwrap(),
             crate::projects::project_policy::Action::Save,
-            settings.codex.allowed_hosts.clone(),
+            allowed_hosts(&settings),
             &[],
         )
         .is_err());
@@ -645,7 +514,7 @@ mod tests {
                 "policy".into(),
                 "detach".into(),
                 policy_name.clone(),
-                "codex".into(),
+                project.profile.clone(),
                 "-n".into(),
                 "other-project".into(),
             ],
@@ -672,7 +541,7 @@ mod tests {
         .unwrap();
         assert_eq!(detached.stage, "policy-detached");
         for _ in 0..2 {
-            let reopened = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+            let reopened = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
             assert_eq!(reopened.project.stage, "policy-detached");
             assert!(reopened.project.policy_detached);
             assert!(reopened.plan.is_none());
@@ -696,7 +565,7 @@ mod tests {
                 .as_ref()
                 .unwrap(),
             crate::projects::project_policy::Action::Save,
-            settings.codex.allowed_hosts.clone(),
+            allowed_hosts(&settings),
             &[],
         )
         .unwrap();
@@ -736,7 +605,7 @@ mod tests {
                 .as_ref()
                 .unwrap(),
             crate::projects::project_policy::Action::Save,
-            settings.codex.allowed_hosts.clone(),
+            allowed_hosts(&settings),
             &[],
         )
         .unwrap();
@@ -753,7 +622,7 @@ mod tests {
         interrupted.policy.as_mut().unwrap().fingerprint = None;
         save(&registry_file, &interrupted).unwrap();
         assert_eq!(
-            prepare(&brig, &registry_file, &settings, &project.id, None)
+            prepare(&brig, &registry_file, &settings, &project.id)
                 .unwrap()
                 .project
                 .stage,
@@ -763,7 +632,7 @@ mod tests {
             .unwrap()
             .replace("Prepared by Tugboat", "User maintained policy");
         fs::write(&file, &edited).unwrap();
-        assert!(prepare(&brig, &registry_file, &settings, &project.id, None).is_err());
+        assert!(prepare(&brig, &registry_file, &settings, &project.id).is_err());
         assert_eq!(fs::read_to_string(&file).unwrap(), edited);
         let preview = crate::projects::operations::preview(&brig, &first.project).unwrap();
         let removed = crate::projects::operations::continue_removal(
@@ -772,17 +641,16 @@ mod tests {
             &project.id,
             &preview.fingerprint,
             &project.reference(),
-            false,
         )
         .unwrap();
         assert!(removed.contains("preserved"));
         assert_eq!(fs::read_to_string(&file).unwrap(), edited);
         let mut registry = Registry::load(&registry_file).unwrap();
         assert!(registry.projects.is_empty());
-        let readded = registry.register(&project.path, "codex").unwrap();
+        let readded = registry.register(&project.path).unwrap();
         assert_eq!(readded.id, project.id);
         storage::write(&registry_file, &registry).unwrap();
-        let replacement = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+        let replacement = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
         let new_name = replacement.project.policy.as_ref().unwrap().name.clone();
         assert_ne!(new_name, policy_name);
         assert!(replacement.project.policy.as_ref().unwrap().owned);
@@ -793,7 +661,7 @@ mod tests {
         interrupted.policy.as_mut().unwrap().fingerprint = None;
         save(&registry_file, &interrupted).unwrap();
         for _ in 0..2 {
-            let retried = prepare(&brig, &registry_file, &settings, &project.id, None).unwrap();
+            let retried = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
             assert_eq!(retried.project.policy.as_ref().unwrap().name, new_name);
         }
         assert_eq!(
@@ -811,7 +679,6 @@ mod tests {
             &project.id,
             &preview.fingerprint,
             &project.reference(),
-            false,
         )
         .unwrap();
         assert_eq!(fs::read_to_string(&file).unwrap(), edited);

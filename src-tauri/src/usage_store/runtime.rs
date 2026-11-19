@@ -100,14 +100,18 @@ impl Runtime {
             let result =
                 crate::storage::data_location::records_directory(&app).and_then(|records| {
                     records.verify()?;
+                    crate::storage::data_location::require_project_reset_ready(&app)?;
+                    crate::projects::operations::retired_history::finish_startup(
+                        &records,
+                        &crate::desktop::settings::load(&records.path().join("settings.json"))?,
+                    )?;
                     let registry =
                         crate::projects::Registry::load(&records.path().join("projects.json"))?;
                     crate::storage::data_location::require_private_records(
                         records.path(),
                         &registry,
                     )?;
-                    super::importer::activate(&records)?;
-                    Store::open(&records).map(SharedStore::new)
+                    super::bootstrap::open_or_initialize(&records).map(SharedStore::new)
                 });
             runtime.complete(result);
         });

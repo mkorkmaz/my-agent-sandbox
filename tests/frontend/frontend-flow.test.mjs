@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { root, flush, deferred, project, plan, emptyUsage, unknownLineage, conversationFixture, sessionDashboard, sessionDetails, settings, recordsLocation, sharedAccount, sharedClaudeAccount, providerLogin, captureProjectRescans, interfaceHarness } from './frontend-harness.mjs';
+import { root, flush, deferred, project, plan, emptyUsage, unknownLineage, conversationFixture, fixtureConversationKey, sessionDashboard, sessionDetails, settings, recordsLocation, sharedAccount, sharedClaudeAccount, providerLogin, captureProjectRescans, interfaceHarness } from './frontend-harness.mjs';
 
 test('initial project reads show skeletons and then show records or a real empty state', async () => {
   for (const records of [[], [project]]) {
@@ -188,37 +188,24 @@ test('failed initial project reads remove skeletons and show an error without an
   harness.dom.window.close();
 });
 
-test('agent profile edits survive tab changes and save both agents with their host defaults', async () => {
-  const saved = { ...settings, codex: { profile: 'custom-codex', allowedHosts: ['private.example'] }, claudeCode: { profile: 'custom-claude', allowedHosts: ['api.anthropic.com', 'platform.claude.com'] } };
-  const harness = await interfaceHarness({ load_settings: () => saved, save_settings: () => ({ recorded: 'off', effective: 'off', message: null }) });
+test('network defaults survive tab changes without an agent profile selector', async t => {
+  const harness = await interfaceHarness({ save_settings: () => ({ recorded: 'off', effective: 'off', message: null }) });
+  t.after(() => harness.dom.window.close());
   await harness.ready;
   harness.element('settings-navigation').click();
-  harness.element('settings-tab-agent-profile').click();
-  assert.equal(harness.element('codex-profile').value, 'custom-codex');
-  assert.equal(harness.element('claude-code-profile').value, 'custom-claude');
-  harness.element('codex-profile').value = 'changed-codex';
-  harness.element('claude-code-profile').value = 'changed-claude';
-  harness.element('settings-tab-general').click();
-  harness.element('cpu-count').value = '6';
+  assert.equal(harness.element('settings-tab-agent-profile'), null);
+  harness.element('allowed-hosts').value = 'codex.example';
   harness.element('settings-tab-general').dispatchEvent(new harness.dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', cancelable: true }));
-  assert.equal(harness.dom.window.document.activeElement, harness.element('settings-tab-agent-profile'));
-  assert.equal(harness.element('settings-panel-agent-profile').hidden, false);
-  assert.equal(harness.element('codex-profile').value, 'changed-codex');
-  assert.equal(harness.element('claude-code-profile').value, 'changed-claude');
-  harness.element('save-agent-profile').click();
-  await flush();
+  assert.equal(harness.dom.window.document.activeElement, harness.element('settings-tab-providers'));
+  harness.element('settings-tab-general').click();
+  assert.equal(harness.element('allowed-hosts').value, 'codex.example');
+  harness.element('save-settings').click(); await flush();
   const request = harness.calls.find(call => call.command === 'save_settings');
-  assert.equal(request.args.settings.schemaVersion, 2);
-  assert.equal(request.args.settings.codex.profile, 'changed-codex');
-  assert.deepEqual(Array.from(request.args.settings.codex.allowedHosts), saved.codex.allowedHosts);
-  assert.deepEqual(Array.from(request.args.settings.claudeCode.allowedHosts), saved.claudeCode.allowedHosts);
-  assert.equal(request.args.settings.claudeCode.profile, 'changed-claude');
-  assert.equal(request.args.settings.cpus, 6);
-  harness.dom.window.close();
+  assert.deepEqual(Array.from(request.args.settings.codex.allowedHosts), ['codex.example']);
 });
 
 test('external settings changes update untouched fields and preserve local edits', async () => {
-  const changed = { ...settings, cpus: 8, memoryMb: 8192, codex: { ...settings.codex, profile: 'external-profile' } };
+  const changed = { ...settings, cpus: 8, memoryMb: 8192, codex: { ...settings.codex, allowedHosts: ['example.invalid'] } };
   let saved;
   const harness = await interfaceHarness({ save_settings: ({ settings: value }) => { saved = value; return { recorded: 'off', effective: 'off', message: null }; } });
   await harness.ready;
@@ -229,11 +216,11 @@ test('external settings changes update untouched fields and preserve local edits
   await harness.listeners.get('records-changed')({ payload: ['settings'] }); await flush();
   assert.equal(harness.element('cpu-count').value, '6');
   assert.equal(harness.element('memory-mb').value, '8192');
-  assert.equal(harness.element('codex-profile').value, 'external-profile');
+  assert.equal(harness.element('allowed-hosts').value, 'example.invalid');
   harness.element('save-settings').click(); await flush();
   assert.equal(saved.cpus, 6);
   assert.equal(saved.memoryMb, 8192);
-  assert.equal(saved.codex.profile, 'external-profile');
+  assert.deepEqual(Array.from(saved.codex.allowedHosts), ['example.invalid']);
   harness.dom.window.close();
 });
 
@@ -522,12 +509,12 @@ test('General settings load and save each agent host list independently', async 
   for (const [id, agent, hosts] of [['allowed-hosts', 'Codex', saved.codex.allowedHosts], ['claude-code-allowed-hosts', 'Claude Code', saved.claudeCode.allowedHosts]]) {
     const control = harness.element(id);
     assert.equal(control.closest('[role="tabpanel"]').id, 'settings-panel-general');
-    assert.match(control.labels[0].textContent, new RegExp('new ' + agent + ' policies'));
+    assert.match(control.labels[0].textContent, new RegExp('Default ' + agent + ' destinations'));
     assert.equal(control.value, hosts.join('\n'));
   }
   harness.element('allowed-hosts').value = ' codex.example\n\ncodex.example\napi.openai.com ';
   harness.element('claude-code-allowed-hosts').value = ' claude.example\n\nclaude.example\napi.anthropic.com ';
-  harness.element('settings-tab-agent-profile').click();
+  harness.element('settings-tab-providers').click();
   harness.element('settings-tab-general').click();
   harness.element('save-settings').click(); await flush();
   const request = harness.calls.find(call => call.command === 'save_settings');
@@ -558,29 +545,15 @@ test('empty agent host lists remain empty and can be saved after clearing existi
   }
 });
 
-test('settings validation opens and focuses the first invalid field across tabs', async () => {
+test('settings validation focuses the first invalid general field', async t => {
   const harness = await interfaceHarness();
+  t.after(() => harness.dom.window.close());
   await harness.ready;
   harness.element('settings-navigation').click();
-  harness.element('codex-profile').value = '';
   harness.element('cpu-count').value = '0';
-  harness.element('settings-tab-agent-profile').click();
-  harness.element('save-agent-profile').click();
-  assert.equal(harness.element('settings-panel-general').hidden, false);
+  harness.element('save-settings').click();
   assert.equal(harness.dom.window.document.activeElement, harness.element('cpu-count'));
-  harness.element('cpu-count').value = '4';
-  harness.element('save-settings').click();
-  assert.equal(harness.element('settings-panel-agent-profile').hidden, false);
-  assert.equal(harness.dom.window.document.activeElement, harness.element('codex-profile'));
-  harness.element('codex-profile').value = 'codex';
-  harness.element('claude-code-profile').value = '';
-  harness.element('settings-tab-general').click();
-  harness.element('save-settings').click();
-  assert.equal(harness.element('settings-panel-agent-profile').hidden, false);
-  assert.equal(harness.dom.window.document.activeElement, harness.element('claude-code-profile'));
   assert.equal(harness.calls.filter(call => call.command === 'save_settings').length, 0);
-  await flush();
-  harness.dom.window.close();
 });
 
 test('settings use skeletons for reads and a button loader for saves with error recovery', async () => {
@@ -588,32 +561,25 @@ test('settings use skeletons for reads and a button loader for saves with error 
   const harness = await interfaceHarness({ load_settings: () => read.promise, save_settings: () => save.promise });
   assert.equal(harness.element('settings-fields').getAttribute('aria-busy'), 'true');
   assert.equal(harness.element('settings-fields').disabled, true);
-  for (const id of ['codex-profile', 'claude-code-profile', 'allowed-hosts', 'claude-code-allowed-hosts', 'save-agent-profile']) assert.equal(harness.element(id).matches(':disabled'), true);
-  assert.equal(harness.element('agent-profile-fields').getAttribute('aria-busy'), 'true');
+  for (const id of ['allowed-hosts', 'claude-code-allowed-hosts', 'save-settings']) assert.equal(harness.element(id).matches(':disabled'), true);
   read.resolve(settings); await harness.ready;
   assert.equal(harness.element('settings-fields').getAttribute('aria-busy'), 'false');
-  assert.equal(harness.element('agent-profile-fields').getAttribute('aria-busy'), 'false');
   assert.equal(harness.element('allowed-hosts').value, '');
   assert.equal(harness.element('claude-code-allowed-hosts').value, 'api.anthropic.com');
   harness.element('allowed-hosts').value = 'codex.example';
   harness.element('claude-code-allowed-hosts').value = 'claude.example';
   harness.element('settings-navigation').click();
-  harness.element('settings-tab-agent-profile').click();
-  harness.element('save-agent-profile').click(); await flush();
+  harness.element('save-settings').click(); await flush();
   assert.equal(harness.element('save-settings').getAttribute('aria-busy'), 'true');
   assert.equal(harness.element('save-settings').disabled, true);
-  assert.equal(harness.element('save-agent-profile').getAttribute('aria-busy'), 'true');
-  assert.equal(harness.element('save-agent-profile').disabled, true);
   assert.equal(harness.element('settings-fields').classList.contains('is-loading'), false);
   save.reject(new Error('Could not write settings')); await flush();
   assert.equal(harness.element('save-settings').getAttribute('aria-busy'), 'false');
   assert.equal(harness.element('save-settings').disabled, false);
   assert.match(harness.element('settings-status').textContent, /Could not write settings/);
-  assert.match(harness.element('agent-profile-status').textContent, /Could not write settings/);
   assert.equal(harness.element('allowed-hosts').value, 'codex.example');
   assert.equal(harness.element('claude-code-allowed-hosts').value, 'claude.example');
-  assert.equal(harness.dom.window.document.activeElement, harness.element('save-agent-profile'));
-  assert.equal(harness.element('settings-panel-agent-profile').hidden, false);
+  assert.equal(harness.dom.window.document.activeElement, harness.element('save-settings'));
   harness.dom.window.close();
 });
 
@@ -623,8 +589,7 @@ test('pending settings saves retain the current view and visible focus after nav
     const harness = await interfaceHarness({ save_settings: () => save.promise });
     await harness.ready;
     harness.element('settings-navigation').click();
-    harness.element('settings-tab-agent-profile').click();
-    harness.element('save-agent-profile').click(); await flush();
+    harness.element('save-settings').click(); await flush();
     const navigation = harness.element(destination);
     navigation.click(); navigation.focus(); await flush();
     const focusedControl = harness.dom.window.document.activeElement;
@@ -635,7 +600,6 @@ test('pending settings saves retain the current view and visible focus after nav
     harness.element('settings-tab-general').click();
     assert.match(harness.element('settings-status').textContent, /Settings saved/);
     assert.equal(harness.element('save-settings').disabled, false);
-    assert.equal(harness.element('save-agent-profile').disabled, false);
     harness.dom.window.close();
   }
 });
@@ -668,12 +632,12 @@ test('usage skeletons clear after a read error and a closed read cannot clear a 
   const first = deferred(), second = deferred();
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([{ id: 'chat', title: 'Usage chat', updatedAt: 1000 }]), conversation_usage: () => first.promise });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('usage-for-chat').click(); await flush();
+  harness.element('usage-for-' + fixtureConversationKey('chat')).click(); await flush();
   assert.equal(harness.element('session-usage-details').getAttribute('aria-busy'), 'true');
   assert.ok(harness.element('session-usage-details').querySelector('.skeleton'));
   harness.element('close-session-usage').click();
   harness.handlers.conversation_usage = () => second.promise;
-  harness.element('usage-for-chat').click(); await flush();
+  harness.element('usage-for-' + fixtureConversationKey('chat')).click(); await flush();
   first.resolve(sessionDetails('chat', [])); await flush();
   assert.equal(harness.element('session-usage-details').getAttribute('aria-busy'), 'true');
   assert.ok(harness.element('session-usage-details').querySelector('.skeleton'));
@@ -729,11 +693,9 @@ test('settings stay disabled until initialization installs the save handler', as
   let release;
   const harness = await interfaceHarness({ telemetry_status: () => new Promise(resolve => { release = resolve; }) });
   assert.equal(harness.element('settings-fields').disabled, true);
-  assert.equal(harness.element('agent-profile-fields').disabled, true);
   release({ recorded: 'off', effective: 'off', message: null });
   await harness.ready;
   assert.equal(harness.element('settings-fields').disabled, false);
-  assert.equal(harness.element('agent-profile-fields').disabled, false);
   harness.dom.window.close();
 });
 
@@ -747,7 +709,7 @@ test('cancelled folder selection does not register a project', async () => {
 });
 
 test('ready removal preview clears its loading message before opening the dialog', async () => {
-  const harness = await interfaceHarness({ preview_removal: () => ({ reference: 'codex@sample-a', workspace: '/fixture/guest-home', description: 'Own test session', fingerprint: 'remove-a', external: false, hasEnvironment: false }) });
+  const harness = await interfaceHarness({ preview_removal: () => ({ reference: 'tugboat-project@sample-a', workspace: '/fixture/guest-home', description: 'Own test session', fingerprint: 'remove-a', external: false, hasEnvironment: false }) });
   await harness.ready;
   const dialog = harness.element('removal-dialog');
   dialog.showModal = () => { dialog.open = true; };
@@ -961,6 +923,32 @@ test('a cancelled or rejected records folder preserves the current location and 
   harness.dom.window.close();
 });
 
+test('a former pending move offers Cancel, then Restart for the project reset', async t => {
+  const harness = await interfaceHarness({
+    storage_location: () => ({
+      ...recordsLocation, pendingDirectory: '/Volumes/Records/Tugboat', projectReset: 'cancel-move',
+      message: 'Cancel the pending folder change before restarting Tugboat to reset the project environments.',
+    }),
+    cancel_storage_move: () => ({
+      ...recordsLocation, projectReset: 'restart-required',
+      message: 'Restart Tugboat to finish the one-time project environment reset.',
+    }),
+    restart_for_storage_change: () => null,
+  });
+  t.after(() => harness.dom.window.close());
+  await harness.ready; harness.element('settings-navigation').click(); await flush();
+  assert.match(harness.element('records-folder-status').textContent, /Cancel the pending folder change/);
+  assert.equal(harness.element('restart-for-records').hidden, true);
+  assert.equal(harness.element('change-records-folder').disabled, true);
+  harness.element('cancel-records-move').click(); await flush();
+  assert.equal(harness.element('records-folder').textContent, recordsLocation.directory);
+  assert.match(harness.element('records-folder-status').textContent, /Restart Tugboat to finish the one-time project environment reset/);
+  assert.equal(harness.element('cancel-records-move').hidden, true);
+  assert.equal(harness.element('restart-for-records').hidden, false);
+  harness.element('restart-for-records').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'restart_for_storage_change').length, 1);
+});
+
 test('unavailable records keep location recovery enabled while ordinary settings stay disabled', async () => {
   const unavailable = { ...recordsLocation, directory: '/Volumes/Offline/Tugboat', available: false, message: 'The records folder is unavailable.' };
   const harness = await interfaceHarness({
@@ -971,9 +959,7 @@ test('unavailable records keep location recovery enabled while ordinary settings
   });
   await harness.ready;
   assert.equal(harness.element('settings-fields').disabled, true);
-  assert.equal(harness.element('agent-profile-fields').disabled, true);
-  for (const id of ['codex-profile', 'claude-code-profile', 'save-agent-profile']) assert.equal(harness.element(id).matches(':disabled'), true);
-  assert.match(harness.element('agent-profile-status').textContent, /records folder is unavailable/);
+  for (const id of ['allowed-hosts', 'claude-code-allowed-hosts', 'save-settings']) assert.equal(harness.element(id).matches(':disabled'), true);
   const locate = harness.element('change-records-folder');
   assert.equal(locate.disabled, false);
   assert.equal(locate.textContent, 'Locate records folder…');
@@ -1113,7 +1099,7 @@ test('A to B to A keeps the dashboard sidebar and usage on the accepted recorded
   assert.equal(harness.element('session-table-body').querySelector('.session-title').textContent, 'Recorded A update');
   assert.match(harness.element('sidebar-session-list').textContent, /Recorded A update/);
   assert.doesNotMatch(harness.element('sidebar-session-list').textContent, /Obsolete|Current project-b/);
-  harness.element('usage-for-project-a-chat').click(); await flush();
+  harness.element('usage-for-' + fixtureConversationKey('project-a-chat')).click(); await flush();
   assert.equal(harness.element('session-usage-title').textContent, 'Recorded A update');
   assert.match(harness.element('session-usage-status').textContent, /Recorded for project-a/);
 });
@@ -1284,83 +1270,81 @@ test('a saved project with an incomplete policy receipt resumes preparation', as
   harness.dom.window.close();
 });
 
-test('a plan result does not start an environment while an agent switch is pending', async () => {
-  const checking = deferred(), switching = deferred();
-  const stopped = { ...project, stage: 'ready' };
-  const claude = { ...project, agentKind: 'claude-code', environmentId: 'b'.repeat(32), profile: 'tugboat-claude' };
+test('a new shared plan requires review regardless of the selected chat agent', async t => {
+  const checking = deferred();
+  const stopped = { ...project, stage: 'ready', approvedPlan: undefined };
   const harness = await interfaceHarness({
     register_project: () => stopped,
     preview_project: () => checking.promise,
-    ensure_project_environment: () => switching.promise,
-    prepare_project: () => ({ project: claude, plan, fingerprint: 'claude-plan', message: null, candidates: [] }),
+    prepare_environment: () => { throw new Error('The test stops at the checked launch request.'); },
   });
+  t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('agent-choice').value = 'claude-code';
-  harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change')); await flush();
-  checking.resolve({ project: stopped, plan, fingerprint: 'codex-plan' }); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  switching.resolve(claude); await flush();
+  chooseAgent(harness, 'claude-code'); await flush();
+  checking.resolve({ project: stopped, plan, fingerprint: 'new-plan' }); await flush();
   assert.equal(harness.element('agent-choice').value, 'claude-code');
+  assert.equal(harness.element('start-codex').disabled, true);
+  assert.match(harness.element('project-plan-status').textContent, /Review the sharing and execution plan/);
+  assert.equal(harness.element('retry-project-plan').hidden, true);
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  harness.dom.window.close();
+  harness.element('project-settings-button').click(); await flush();
+  assert.match(harness.element('sharing-plan-values').textContent, /tugboat-project@sample-a/);
+  harness.element('prepare-environment').click(); await flush();
+  const start = harness.calls.find(call => call.command === 'prepare_environment');
+  assert.equal(start.args.environmentId, project.environmentId);
+  assert.equal(start.args.fingerprint, 'new-plan');
 });
 
-test('a retried plan does not start an environment while an agent switch is pending', async () => {
-  const checking = deferred(), switching = deferred();
-  const stopped = { ...project, stage: 'ready' };
-  const claude = { ...project, agentKind: 'claude-code', environmentId: 'b'.repeat(32), profile: 'tugboat-claude' };
+test('a retried plan with a new fingerprint still requires review', async t => {
+  const stopped = { ...project, stage: 'ready', approvedPlan: 'old-plan' };
   let attempts = 0;
   const harness = await interfaceHarness({
     register_project: () => stopped,
     preview_project: () => {
       if (++attempts === 1) throw new Error('Plan check failed.');
-      return checking.promise;
+      return { project: stopped, plan, fingerprint: 'new-plan' };
     },
-    ensure_project_environment: () => switching.promise,
-    prepare_project: () => ({ project: claude, plan, fingerprint: 'claude-plan', message: null, candidates: [] }),
   });
+  t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
+  assert.match(harness.element('project-plan-status').textContent, /Plan check failed/);
+  assert.equal(harness.element('retry-project-plan').hidden, false);
   harness.element('retry-project-plan').click(); await flush();
-  harness.element('agent-choice').value = 'claude-code';
-  harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change')); await flush();
-  checking.resolve({ project: stopped, plan, fingerprint: 'codex-plan' }); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  switching.resolve(claude); await flush();
-  assert.equal(harness.element('agent-choice').value, 'claude-code');
-  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  harness.dom.window.close();
+  assert.match(harness.element('project-plan-status').textContent, /Review the sharing and execution plan/);
+  assert.equal(harness.element('retry-project-plan').hidden, true);
 });
 
-test('a failed agent switch resumes automatic startup for the selected project', async () => {
-  const checking = deferred(), switching = deferred();
+test('an approved project starts once while the next chat agent changes', async t => {
+  const checking = deferred();
   const stopped = { ...project, stage: 'ready' };
   let started = false;
   const harness = await interfaceHarness({
     register_project: () => stopped,
-    preview_project: () => started ? { project: { ...stopped, stage: 'environment-starting' }, plan, fingerprint: 'codex-plan' } : checking.promise,
-    ensure_project_environment: () => switching.promise,
+    preview_project: () => started ? { project: { ...stopped, stage: 'environment-starting' }, plan, fingerprint: 'plan-a' } : checking.promise,
     prepare_environment: () => {
       started = true;
       harness.setTerminal({ identifier: 70, projectId: project.id, environmentId: project.environmentId, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
       return 70;
     },
   });
+  t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('agent-choice').value = 'claude-code';
-  harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change')); await flush();
-  checking.resolve({ project: stopped, plan, fingerprint: 'codex-plan' }); await flush();
+  chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  switching.reject(new Error('Agent switch failed.')); await flush();
-  assert.equal(harness.element('agent-choice').value, 'codex');
+  checking.resolve({ project: stopped, plan, fingerprint: 'plan-a' }); await flush();
+  assert.equal(harness.element('agent-choice').value, 'claude-code');
+  const starts = harness.calls.filter(call => call.command === 'prepare_environment');
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].args.environmentId, project.environmentId);
+  assert.equal(harness.element('environment-boot-overlay').hidden, false);
+  chooseAgent(harness, 'codex'); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
-  assert.equal(harness.element('folder-error').hidden, false);
-  assert.match(harness.element('folder-error').textContent, /Agent switch failed/);
-  harness.dom.window.close();
 });
 
 test('opening a stopped project shows its saved environment startup and reuses it on reopening', async () => {
   const preferences = { cpus: 2, memoryMb: 2048, verification: 'require', network: 'isolated' };
-  let current = { ...project, stage: 'ready', options: preferences };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan', options: preferences };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     recent_projects: () => [current], open_project: () => current,
@@ -1402,13 +1386,13 @@ test('opening a stopped project shows its saved environment startup and reuses i
 });
 
 test('an existing environment start is reused without a second process or terminal focus', async () => {
-  let current = { ...project, stage: 'environment-starting' };
+  let current = { ...project, stage: 'environment-starting', approvedPlan: 'saved-plan' };
   const harness = await interfaceHarness({
     recent_projects: () => [current], open_project: () => current,
     preview_project: () => ({ project: current, plan, fingerprint: 'saved-plan' }),
   });
   await harness.ready;
-  harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+  harness.setTerminal({ identifier: 70, projectId: project.id, environmentId: project.environmentId, agentKind: project.agentKind, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
   harness.element('recent-project-list').querySelector('.recent-project').click(); await flush();
   assert.equal(harness.calls.filter(call => ['prepare_project', 'prepare_environment', 'terminal_focus'].includes(call.command)).length, 0);
   assert.equal(harness.element('terminal-panel').hidden, false);
@@ -1423,7 +1407,7 @@ test('an existing environment start is reused without a second process or termin
 });
 
 test('an environment that exits before its start response is verified without waiting for another event', async () => {
-  let current = { ...project, stage: 'ready' };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -1446,7 +1430,7 @@ test('an environment that exits before its start response is verified without wa
 });
 
 test('a failed automatic environment start offers a retry without repeating project configuration', async () => {
-  let current = { ...project, stage: 'ready' }, attempts = 0;
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' }, attempts = 0;
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -1476,7 +1460,7 @@ test('a failed automatic environment start offers a retry without repeating proj
 });
 
 test('a failed environment check retains its output, stops the overlay and leaves New Chat disabled', async () => {
-  let current = { ...project, stage: 'ready' };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -1502,7 +1486,7 @@ test('a failed environment check retains its output, stops the overlay and leave
 });
 
 test('automatic environment startup preserves a project settings dialog opened during launch', async () => {
-  let finishStart, current = { ...project, stage: 'ready' };
+  let finishStart, current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -1527,7 +1511,7 @@ test('automatic environment startup preserves a project settings dialog opened d
 });
 
 test('automatic environment startup keeps a running local terminal and returns to it on request', async () => {
-  let current = { ...project, stage: 'ready' };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -1553,7 +1537,7 @@ test('automatic environment startup keeps a running local terminal and returns t
 });
 
 test('a stopped environment after completion never enables New Chat from a stale success event', async () => {
-  let current = { ...project, stage: 'ready' };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -1586,7 +1570,7 @@ test('project dashboard keeps project identity, session costs and creation actio
   assert.equal(harness.element('choose-folder').hidden, true);
   assert.equal(harness.element('project-settings-button').hidden, false);
   assert.equal(harness.element('project-overview').hidden, false);
-  assert.equal(harness.element('project-reference').textContent, 'codex@sample-a');
+  assert.equal(harness.element('project-reference').textContent, 'tugboat-project@sample-a');
   assert.equal(harness.element('selected-folder').textContent, project.path);
   assert.match(harness.element('session-table-body').textContent, /Existing chat/);
   assert.match(harness.element('project-usage').textContent, /1,050/);
@@ -1605,7 +1589,7 @@ test('archive, Trash and restore move a session between views without changing p
   const conversation = { id: '01a1c5fd-894f-7e42-b36c-bd1a0dfef8e7', title: 'Keep usage history', updatedAt: 2000, state: 'active', usage: { ...emptyUsage, input: 1000, output: 50, total: 1050, costUsd: 0.01, requests: 1 } };
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([conversation], { usage: conversation.usage }), change_conversation_state: ({ state, identifier, sessionId }) => { assert.equal(identifier, project.id); assert.equal(sessionId, conversation.id); conversation.state = state; } });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  const button = label => [...harness.element('session-table-body').querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label + ' ' + conversation.title);
+  const button = label => [...harness.element('session-table-body').querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label + ' ' + conversation.title + ', Codex');
   button('Archive').click(); await flush();
   assert.equal(harness.element('sidebar-session-list').children.length, 0);
   harness.dom.window.document.querySelector('[data-session-state="archived"]').click();
@@ -1658,7 +1642,7 @@ test('usage notifications update cumulative totals and prompt details retain unp
   assert.match(harness.element('project-usage').textContent, /1,050/);
   assert.match(harness.element('project-usage').textContent, /Unavailable/);
   assert.doesNotMatch(harness.element('project-usage').textContent, /\$0/);
-  harness.element('session-table-body').querySelector('[aria-label="Usage for Tracked chat"]').click(); await flush();
+  harness.element('session-table-body').querySelector('[aria-label="Usage for Tracked chat, Codex"]').click(); await flush();
   assert.equal(harness.element('session-usage-dialog').open, true);
   const details = harness.element('session-usage-details');
   const tables = [...details.querySelectorAll('table')];
@@ -1679,7 +1663,7 @@ test('usage notifications update cumulative totals and prompt details retain unp
   harness.element('close-session-usage').click();
   harness.handlers.conversation_usage = ({ sessionId }) => sessionDetails(sessionId, []);
   await harness.listeners.get('project-usage-updated')({ payload: [project.id, sessionDashboard([{ ...conversation, usageRevision: 'cleared' }])] });
-  harness.element('session-table-body').querySelector('[aria-label="Usage for Tracked chat"]').click(); await flush();
+  harness.element('session-table-body').querySelector('[aria-label="Usage for Tracked chat, Codex"]').click(); await flush();
   assert.equal(details.children.length, 0);
   assert.match(harness.element('session-usage-status').textContent, /No prompts have been recorded/);
   harness.dom.window.close();
@@ -1881,9 +1865,9 @@ test('a delayed usage response or error cannot replace another conversation or a
       conversation_usage: ({ sessionId }) => ++requests === 1 ? new Promise((resolve, reject) => { resolveOld = value => resolve(sessionDetails(sessionId, value)); rejectOld = reject; }) : sessionDetails(sessionId, request('new-model')),
     });
     await harness.ready; harness.element('choose-folder').click(); await flush();
-    harness.element('session-table-body').querySelector('[aria-label="Usage for Chat A"]').click(); await flush();
+    harness.element('session-table-body').querySelector('[aria-label="Usage for Chat A, Codex"]').click(); await flush();
     harness.element('close-session-usage').click();
-    harness.element('session-table-body').querySelector('[aria-label="Usage for ' + second.title + '"]').click(); await flush();
+    harness.element('session-table-body').querySelector('[aria-label="Usage for ' + second.title + ', Codex"]').click(); await flush();
     const status = harness.element('session-usage-status').textContent;
     if (outcome === 'success') resolveOld(request('old-model'));
     else rejectOld(new Error('Old usage failed'));
@@ -1913,7 +1897,7 @@ test('cache reads and writes display their independent known, zero and unknown v
   await harness.ready; harness.element('choose-folder').click(); await flush();
   assert.match(harness.element('project-usage').textContent, /75 \(25%\)/);
   assert.match(harness.element('usage-note').textContent, /Cache writes Unknown/);
-  harness.element('session-table-body').querySelector('[aria-label="Usage for Cache accounting"]').click(); await flush();
+  harness.element('session-table-body').querySelector('[aria-label="Usage for Cache accounting, Codex"]').click(); await flush();
   const rows = [...harness.element('session-usage-details').querySelectorAll('tbody tr')];
   assert.deepEqual(rows.map(row => [row.cells[2].textContent, row.cells[3].textContent]), [
     ['75 (25%)', 'Unknown'], ['0 (0%)', '0'], ['Unknown', '30'], ['Unknown', 'Unknown'],
@@ -1950,8 +1934,8 @@ test('network settings and execution plans distinguish guest traffic from hosted
   assert.match(harness.element('network-hint').textContent, /does not read or set the web search mode/);
   harness.element('network-preference').value = 'offline';
   harness.element('network-preference').dispatchEvent(new harness.dom.window.Event('change'));
-  assert.match(harness.element('network-hint').textContent, /Offline blocks guest command traffic/);
-  assert.match(harness.element('network-hint').textContent, /online Codex and Claude Code sessions are unavailable/);
+  assert.match(harness.element('network-hint').textContent, /Offline blocks guest command traffic and online chats/);
+  assert.match(harness.element('network-hint').textContent, /Provider sign-in uses the Mac connection/);
   assert.match(harness.element('network-hint').textContent, /separate scope/);
   harness.element('choose-folder').click(); await flush();
   assert.match(harness.element('sharing-plan-values').textContent, /Allowed guest destinations/);
@@ -1996,11 +1980,11 @@ test('provider details and account controls belong only to application settings'
   harness.element('project-settings-button').click(); await flush();
   const projectSettings = harness.element('project-settings-dialog');
   for (const id of ['codex-login', 'check-login', 'login-status', 'login-hint', 'logout-on-removal']) assert.equal(harness.element(id), null);
-  assert.doesNotMatch(projectSettings.textContent, /ChatGPT|provider|sign[- ]in|sign[- ]out/i);
+  assert.doesNotMatch(projectSettings.textContent, /ChatGPT|Sign out|Sign in with/i);
   assert.equal(projectSettings.contains(harness.element('shared-chatgpt-section')), false);
   account = { ...sharedAccount, generation: 2, state: 'needs-sign-in', message: 'ChatGPT sign-in required.' };
   await harness.listeners.get('shared-chatgpt-changed')({ payload: account }); await flush();
-  assert.doesNotMatch(projectSettings.textContent, /ChatGPT|provider|sign[- ]in|sign[- ]out/i);
+  assert.doesNotMatch(projectSettings.textContent, /ChatGPT|Sign out|Sign in with/i);
   assert.equal(harness.element('guest-terminal-status').textContent, '');
   harness.element('settings-navigation').click(); await flush();
   assert.equal(harness.element('project-settings-dialog').open, false);
@@ -2023,25 +2007,23 @@ test('the project account warning opens the provider section in application sett
   harness.dom.window.close();
 });
 
-test('removal offers no account action and keeps a previous removal choice unchanged', async () => {
-  for (const logout of [undefined, false, true]) {
-    const harness = await interfaceHarness({
-      preview_removal: () => ({ reference: 'codex@sample-a', workspace: '/fixture/guest-home', description: 'Remove this environment.', fingerprint: 'remove-a', external: false, logout }),
-      remove_project: () => 'Project removed.',
-    });
-    await harness.ready; harness.element('choose-folder').click(); await flush();
-    harness.element('project-settings-button').click(); await flush();
-    harness.element('preview-removal').click(); await flush();
-    assert.equal(harness.element('logout-on-removal'), null);
-    assert.doesNotMatch(harness.element('removal-dialog').textContent, /ChatGPT|sign[- ]in|sign[- ]out/i);
-    const confirmation = harness.element('removal-confirmation');
-    confirmation.value = 'codex@sample-a'; confirmation.dispatchEvent(new harness.dom.window.Event('input'));
-    harness.element('confirm-removal').click(); await flush();
-    assert.equal(harness.calls.find(call => call.command === 'remove_project').args.logout, logout ?? false);
-    assert.equal(harness.calls.filter(call => call.command === 'disconnect_shared_chatgpt').length, 0);
-    assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
-    harness.dom.window.close();
-  }
+test('environment removal keeps both shared provider accounts', async t => {
+  const harness = await interfaceHarness({
+    preview_removal: () => ({ reference: 'tugboat-project@sample-a', workspace: '/fixture/guest-home', description: 'Remove this environment.', fingerprint: 'remove-a', external: false }),
+    remove_project: () => 'Project removed.',
+  });
+  t.after(() => harness.dom.window.close());
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  harness.element('preview-removal').click(); await flush();
+  assert.equal(harness.element('logout-on-removal'), null);
+  const confirmation = harness.element('removal-confirmation');
+  confirmation.value = 'tugboat-project@sample-a'; confirmation.dispatchEvent(new harness.dom.window.Event('input'));
+  harness.element('confirm-removal').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'remove_project').length, 1);
+  assert.equal(harness.calls.filter(call => call.command.startsWith('disconnect_shared_')).length, 0);
+  assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
+  assert.equal(harness.element('claude-account-email').textContent, sharedClaudeAccount.email);
 });
 
 test('checking a connected account renews once and preserves its running chat', async () => {
@@ -2380,7 +2362,7 @@ test('incomplete removal preserves its saved operation without showing account c
   const harness = await interfaceHarness({
     register_project: () => pending,
     prepare_project: () => ({ project: pending, plan: null, fingerprint: null, candidates: [], message: 'Removal is incomplete. Review the removal preview to continue.' }),
-    preview_removal: () => ({ reference: 'codex@sample-a', workspace: '/fixture/guest-home', description: 'Continue incomplete removal. Environment removal complete; policy cleanup pending.', fingerprint: 'recovery', external: false, hasEnvironment: false, logout: true }),
+    preview_removal: () => ({ reference: 'tugboat-project@sample-a', workspace: '/fixture/guest-home', description: 'Continue incomplete removal. Environment removal complete; policy cleanup pending.', fingerprint: 'recovery', external: false, hasEnvironment: false }),
   });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   assert.equal(harness.element('resume-removal').hidden, false);
@@ -2402,7 +2384,7 @@ test('every recorded prompt remains visible when request measurements are missin
   ];
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([conversation]), conversation_usage: ({ sessionId }) => sessionDetails(sessionId, turns) });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  const open = async () => { harness.element('session-table-body').querySelector('[aria-label="Usage for Interrupted prompt"]').click(); await flush(); };
+  const open = async () => { harness.element('session-table-body').querySelector('[aria-label="Usage for Interrupted prompt, Codex"]').click(); await flush(); };
   await open();
   const sections = harness.element('session-usage-details').querySelectorAll('section[data-agent-turn]');
   assert.equal(sections.length, 2);
@@ -2426,7 +2408,7 @@ test('sidebar focus survives usage and terminal refreshes without taking focus f
   const second = { id: 'second', title: 'Second', updatedAt: 1 };
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([first, second]) });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  const row = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + id + '"]');
+  const row = id => harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(id) + '"]');
   row('first').focus();
   assert.equal(harness.dom.window.document.activeElement, row('first'), 'Initial focus: ' + harness.dom.window.document.activeElement.outerHTML);
   await harness.listeners.get('project-usage-updated')({ payload: [project.id, sessionDashboard([{ ...first, title: 'First renamed' }, second])] });
@@ -2460,7 +2442,7 @@ test('sidebar Refresh keeps focus and the selected chat during a usage update', 
   t.after(() => harness.dom.window.close());
   await harness.ready;
   harness.element('choose-folder').click(); await flush();
-  const row = id => harness.element('sidebar-session-list').querySelector(`[data-session-id="${id}"]`);
+  const row = id => harness.element('sidebar-session-list').querySelector(`[data-session-id="${fixtureConversationKey(id)}"]`);
   row('first').click(); await flush();
   harness.element('hide-terminal').click(); await flush();
   row('first').focus();
@@ -2520,15 +2502,15 @@ test('Settings displays the native package version without a version in the HTML
   harness.dom.window.close();
 });
 
-test('the frozen legacy detail DTO preserves the selected own prompt view', async () => {
-  const example = JSON.parse(fs.readFileSync(root + 'tests/fixtures/codex-subagents/contracts/v2-examples.json', 'utf8')).examples.find(example => example.name === 'legacy-single');
+test('the frozen detail fixture preserves the selected own prompt view', async () => {
+  const example = contractExample('legacy-single');
   const conversation = example.conversations[0];
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(example.conversations), conversation_usage: ({ identifier, sessionId }) => {
     assert.equal(identifier, project.id); assert.equal(sessionId, conversation.id);
     return structuredClone(example.details);
   } });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('session-table-body').querySelector('[aria-label="Usage for ' + conversation.title + '"]').click(); await flush();
+  harness.element('session-table-body').querySelector('[aria-label="Usage for ' + conversation.title + ', Codex"]').click(); await flush();
   assert.equal(harness.element('session-usage-dialog').open, true);
   assert.match(harness.element('session-usage-details').textContent, /Prompt 1 · complete/);
   assert.equal(harness.element('session-usage-details').querySelectorAll('tbody tr').length, 1);
@@ -2536,12 +2518,12 @@ test('the frozen legacy detail DTO preserves the selected own prompt view', asyn
   harness.dom.window.close();
 });
 
-test('the usage boundary rejects old arrays and a mismatched selected session', async () => {
+test('the usage boundary rejects mismatched session and agent identities', async () => {
   const conversation = conversationFixture({ id: 'strict-dto', title: 'Strict DTO', updatedAt: 1000 });
-  for (const response of [[], sessionDetails('other-session', [])]) {
+  for (const response of [[], sessionDetails('other-session', []), sessionDetails(conversation.id, [], { agentKind: 'claude-code' })]) {
     const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([conversation]), conversation_usage: () => response });
     await harness.ready; harness.element('choose-folder').click(); await flush();
-    harness.element('session-table-body').querySelector('[aria-label="Usage for Strict DTO"]').click(); await flush();
+    harness.element('session-table-body').querySelector('[aria-label="Usage for Strict DTO, Codex"]').click(); await flush();
     assert.match(harness.element('session-usage-status').textContent, /does not match this session/);
     assert.equal(harness.element('session-usage-details').children.length, 0);
     harness.dom.window.close();
@@ -2549,7 +2531,11 @@ test('the usage boundary rejects old arrays and a mismatched selected session', 
 });
 
 const subagentContractExamples = JSON.parse(fs.readFileSync(root + 'tests/fixtures/codex-subagents/contracts/v2-examples.json', 'utf8')).examples;
-const contractExample = name => structuredClone(subagentContractExamples.find(example => example.name === name));
+const contractExample = name => {
+  const example = structuredClone(subagentContractExamples.find(example => example.name === name));
+  example.details.agentKind = 'codex';
+  return example;
+};
 
 test('family grouping uses one main row and a read-only unlinked recovery area', async () => {
   const family = contractExample('root-two-children-grandchild-followup');
@@ -2561,8 +2547,8 @@ test('family grouping uses one main row and a read-only unlinked recovery area',
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(records, { usage: family.projectUsage, coverage: 'partial' }), conversation_usage: () => orphan.details });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const rows = [...harness.element('session-table-body').rows];
-  assert.deepEqual(rows.map(row => row.dataset.sessionId), [family.details.sessionId, legacy.id]);
-  assert.deepEqual([...harness.element('sidebar-session-list').querySelectorAll('button')].map(button => button.dataset.sessionId), [family.details.sessionId, legacy.id]);
+  assert.deepEqual(rows.map(row => row.dataset.sessionId), [fixtureConversationKey(family.details.sessionId), fixtureConversationKey(legacy.id)]);
+  assert.deepEqual([...harness.element('sidebar-session-list').querySelectorAll('button')].map(button => button.dataset.sessionId), [fixtureConversationKey(family.details.sessionId), fixtureConversationKey(legacy.id)]);
   assert.match(rows[0].textContent, /Includes 3 subagents/);
   assert.match(rows[0].cells[4].textContent, /24\.2K/);
   assert.match(rows[0].cells[2].textContent, /63\.6%/);
@@ -2575,7 +2561,7 @@ test('family grouping uses one main row and a read-only unlinked recovery area',
   assert.match(unlinked[1].textContent, /Invalid session relationship.*Parent relationship conflicts/s);
   for (const row of unlinked) {
     assert.equal(row.querySelector('.session-title').tagName, 'SPAN');
-    assert.deepEqual([...row.querySelectorAll('button')].map(button => button.getAttribute('aria-label')), ['Usage for ' + row.querySelector('.session-title').textContent]);
+    assert.deepEqual([...row.querySelectorAll('button')].map(button => button.getAttribute('aria-label')), ['Usage for ' + row.querySelector('.session-title').textContent + ', Codex']);
   }
   unlinked[0].querySelector('button').click(); await flush();
   assert.equal(harness.calls.find(call => call.command === 'conversation_usage').args.sessionId, orphan.details.sessionId);
@@ -2588,8 +2574,8 @@ test('main session counts use singular and plural subagent labels in the table a
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(conversations) });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   for (const conversation of conversations) {
-    const date = harness.element('session-table-body').querySelector('[data-session-id="' + conversation.id + '"] .session-date');
-    const button = harness.element('sidebar-session-list').querySelector('[data-session-id="' + conversation.id + '"]');
+    const date = harness.element('session-table-body').querySelector('[data-session-id="' + fixtureConversationKey(conversation.id) + '"] .session-date');
+    const button = harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(conversation.id) + '"]');
     const suffix = conversation.subagentCount === 1 ? 'Includes 1 subagent' : 'Includes 3 subagents';
     if (!conversation.subagentCount) {
       assert.doesNotMatch(date.textContent, /Includes/); assert.equal(button.title, conversation.title);
@@ -2611,7 +2597,7 @@ test('root archive, Trash and restore preserve descendant raw states and unique 
   } });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const projectTotal = harness.element('project-usage').textContent;
-  const action = label => [...harness.element('session-table-body').querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label + ' ' + main.title);
+  const action = label => [...harness.element('session-table-body').querySelectorAll('button')].find(button => button.getAttribute('aria-label') === label + ' ' + main.title + ', Codex');
   action('Archive').click(); await flush();
   assert.equal(harness.element('sidebar-session-list').children.length, 0);
   harness.dom.window.document.querySelector('[data-session-state="archived"]').click();
@@ -2631,16 +2617,16 @@ test('root archive, Trash and restore preserve descendant raw states and unique 
 test('a resolved child terminal identity restores the running root chat and keeps its activity state', async () => {
   const family = contractExample('root-two-children-grandchild-followup');
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(family.conversations) });
-  harness.setTerminal({ identifier: 77, projectId: project.id, purpose: 'resume', running: true, exitCode: null, conversationId: family.conversations[1].id, busy: true });
+  harness.setTerminal({ identifier: 77, projectId: project.id, environmentId: project.environmentId, agentKind: project.agentKind, purpose: 'resume', running: true, exitCode: null, conversationId: family.conversations[1].id, busy: true });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const chat = harness.element('sidebar-session-list').querySelector('button');
   assert.equal(harness.element('sidebar-session-list').children.length, 1);
-  assert.equal(chat.dataset.sessionId, family.conversations[0].id);
+  assert.equal(chat.dataset.sessionId, fixtureConversationKey(family.conversations[0].id));
   assert.ok(chat.querySelector('.session-activity'));
   chat.click(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 0);
   assert.ok(harness.calls.some(call => call.command === 'terminal_focus' && call.args.identifier === 77));
-  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, family.conversations[0].id);
+  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, fixtureConversationKey(family.conversations[0].id));
   harness.dom.window.close();
 });
 
@@ -2648,7 +2634,7 @@ test('family detail scopes and prompt source links retain each agent request exa
   const family = contractExample('root-two-children-grandchild-followup');
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(family.conversations), conversation_usage: () => family.details });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('session-table-body').querySelector('[aria-label="Usage for Primary R"]').click(); await flush();
+  harness.element('session-table-body').querySelector('[aria-label="Usage for Primary R, Codex"]').click(); await flush();
   const details = harness.element('session-usage-details');
   const scopes = [...details.querySelector('.usage-scope-table').tBodies[0].rows];
   assert.deepEqual(scopes.map(row => [row.cells[0].textContent, row.cells[5].textContent]), [['Main agent', '11,000'], ['Subagents', '13,200'], ['Combined', '24,200']]);
@@ -2722,7 +2708,7 @@ test('unmeasured work, an exact zero request and an empty history have different
     const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(example.conversations, { usage: example.details.combinedUsage }), conversation_usage: () => example.details });
     await harness.ready; harness.element('choose-folder').click(); await flush();
     const main = example.conversations[0];
-    harness.element('session-table-body').querySelector('[aria-label="Usage for ' + main.title + '"]').click(); await flush();
+    harness.element('session-table-body').querySelector('[aria-label="Usage for ' + main.title + ', Codex"]').click(); await flush();
     const report = harness.element('session-usage-details');
     if (name === 'genuine-unmeasured-own-turn') {
       assert.deepEqual([...harness.element('project-usage').querySelectorAll('dd')].map(value => value.textContent), ['Unknown', 'Unknown', 'Unknown', 'Unknown', 'Unknown']);
@@ -2774,7 +2760,7 @@ test('request rows retain mixed models, independent cache knownness and both dat
   const details = sessionDetails(conversation.id, [{ id: 'one', status: 'complete', requests: [corrected, edge, mixed] }]);
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([conversation]), conversation_usage: () => details });
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('session-table-body').querySelector('[aria-label="Usage for Mixed snapshots"]').click(); await flush();
+  harness.element('session-table-body').querySelector('[aria-label="Usage for Mixed snapshots, Codex"]').click(); await flush();
   const rows = [...harness.element('session-usage-details').querySelectorAll('.request-usage tbody tr')];
   assert.equal(rows.length, 3);
   assert.match(rows[0].textContent, /Amount correction:.*139,/s);
@@ -2809,11 +2795,11 @@ test('equal local turn IDs in different agents retain separate tables and source
 test('a running unlinked child stays reachable as a process without a child resume action', async () => {
   const orphan = contractExample('orphan');
   const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard(orphan.conversations) });
-  harness.setTerminal({ identifier: 78, projectId: project.id, purpose: 'codex', running: true, exitCode: null, conversationId: orphan.conversations[0].id, busy: true });
+  harness.setTerminal({ identifier: 78, projectId: project.id, environmentId: project.environmentId, agentKind: project.agentKind, purpose: 'codex', running: true, exitCode: null, conversationId: orphan.conversations[0].id, busy: true });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const process = harness.element('sidebar-session-list').querySelector('button');
   assert.equal(harness.element('sidebar-session-list').children.length, 1);
-  assert.equal(process.dataset.sessionId, 'terminal-78');
+  assert.equal(process.dataset.sessionId, fixtureConversationKey('terminal-78'));
   assert.match(process.textContent, /Codex process 78/);
   assert.ok(process.querySelector('.session-activity'));
   assert.equal(harness.element('session-table-body').rows.length, 0);
@@ -2822,14 +2808,14 @@ test('a running unlinked child stays reachable as a process without a child resu
   assert.equal(harness.element('terminal-panel').hidden, false);
   assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 0);
   assert.ok(harness.calls.some(call => call.command === 'terminal_focus' && call.args.identifier === 78));
-  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, 'terminal-78');
+  assert.equal(harness.element('sidebar-session-list').querySelector('[aria-current="true"]').dataset.sessionId, fixtureConversationKey('terminal-78'));
   harness.dom.window.close();
 });
 
 const publishUsage = async (harness, conversations, overrides = {}) => {
   await harness.listeners.get('project-usage-updated')({ payload: [project.id, sessionDashboard(conversations, overrides)] }); await flush();
 };
-const openUsage = async (harness, title) => { harness.element('session-table-body').querySelector('[aria-label="Usage for ' + title + '"]').click(); await flush(); };
+const openUsage = async (harness, title) => { harness.element('session-table-body').querySelector('[aria-label="Usage for ' + title + ', Codex"]').click(); await flush(); };
 
 test('open detail refreshes only for sorted selected-subtree revisions, metadata and membership', async () => {
   const family = contractExample('root-two-children-grandchild-followup');
@@ -2947,12 +2933,12 @@ test('a delayed usage close event and old result cannot clear the next dialog', 
   });
   t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  harness.element('usage-for-first').click(); await flush();
+  harness.element('usage-for-' + fixtureConversationKey('first')).click(); await flush();
   const dialog = harness.element('session-usage-dialog');
   let deliverClose;
   dialog.close = () => { dialog.open = false; deliverClose = () => dialog.dispatchEvent(new harness.dom.window.Event('close')); };
   harness.element('close-session-usage').click();
-  harness.element('usage-for-second').click(); await flush();
+  harness.element('usage-for-' + fixtureConversationKey('second')).click(); await flush();
   deliverClose();
   first.reject(new Error('Old usage failure')); await flush();
   assert.equal(dialog.open, true);
@@ -3159,7 +3145,7 @@ test('System Checks names the effective bundled CLI source without a Homebrew in
 test('only the top dialog is accessible and closing it returns focus to the current trigger', async t => {
   const conversation = { id: 'chat-a', title: 'QA chat', updatedAt: 1000 };
   const h = await interfaceHarness({
-    preview_removal: () => ({ reference: 'codex@sample-a', workspace: '/fixture/guest-home', description: 'Test session', fingerprint: 'remove-a', external: false, hasEnvironment: true }),
+    preview_removal: () => ({ reference: 'tugboat-project@sample-a', workspace: '/fixture/guest-home', description: 'Test session', fingerprint: 'remove-a', external: false, hasEnvironment: true }),
     project_dashboard: () => sessionDashboard([conversation]),
     conversation_usage: () => sessionDetails(conversation.id, []),
   });
@@ -3187,7 +3173,7 @@ test('only the top dialog is accessible and closing it returns focus to the curr
   checkModal('project-settings-dialog');
   assert.equal(doc.activeElement, preview);
   h.element('close-project-settings').click();
-  const usageButton = () => h.element('session-table-body').querySelector('[aria-label="Usage for QA chat"]');
+  const usageButton = () => h.element('session-table-body').querySelector('[aria-label="Usage for QA chat, Codex"]');
   const original = usageButton();
   original.click(); await flush();
   checkModal('session-usage-dialog');
@@ -3253,44 +3239,30 @@ test('foreign environment or stale plan boundary reports cannot appear as a pass
   harness.dom.window.close();
 });
 
-const claudeProject = { ...project, environmentId: 'b'.repeat(32), agentKind: 'claude-code', profile: 'tugboat-claude', label: 'claude-fixture' };
-const environmentPlan = selected => ({ ...plan, data: { ...plan.data, profile: selected.profile, session: selected.label, home: { host: '/fixture/home-' + selected.agentKind, guest: '/root' } } });
-async function twoAgentHarness(overrides = {}) {
-  const selected = args => args?.environmentId === claudeProject.environmentId ? claudeProject : project;
-  return interfaceHarness({
-    ensure_project_environment: ({ agentKind }) => agentKind === 'claude-code' ? claudeProject : project,
-    prepare_project: args => ({ project: selected(args), plan: environmentPlan(selected(args)), fingerprint: selected(args).agentKind + '-plan', message: null, candidates: [] }),
-    preview_project: args => ({ project: selected(args), plan: environmentPlan(selected(args)), fingerprint: selected(args).agentKind + '-plan' }),
-    ...overrides,
-  });
-}
+const claudeProject = { ...project, agentKind: 'claude-code' };
 function chooseAgent(harness, kind) {
   harness.element('agent-choice').value = kind;
   harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change'));
 }
 
-test('choosing a Claude session updates the reference in open project settings', async t => {
-  const selected = { ...claudeProject, label: 'previous' };
-  const reference = selected.profile + '@' + selected.label;
-  const harness = await twoAgentHarness();
+test('the next chat agent does not change the shared reference or home in project settings', async t => {
+  const harness = await interfaceHarness();
   t.after(() => harness.dom.window.close());
-  await harness.ready;
-  harness.element('choose-folder').click(); await flush();
-  harness.handlers.prepare_project = ({ chosenReference }) => chosenReference === reference
-    ? { project: selected, plan: environmentPlan(selected), fingerprint: 'selected-plan', message: null, candidates: [] }
-    : { project: claudeProject, plan: null, fingerprint: null, message: 'Choose the session.', candidates: ['external@first', reference] };
-  chooseAgent(harness, 'claude-code'); await flush();
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  const work = harness.calls.filter(call => ['prepare_project', 'preview_project', 'prepare_environment'].includes(call.command)).length;
+  const reference = project.profile + '@' + project.label;
   harness.element('project-settings-button').click(); await flush();
-  harness.element('session-choice').value = reference;
-  harness.element('adopt-session').click(); await flush();
+  chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.element('project-reference').textContent, reference);
-  assert.equal(harness.element('managed-environment').textContent, 'Claude Code · ' + reference);
+  assert.equal(harness.element('managed-environment').textContent, 'Shared Brig environment · ' + reference);
+  assert.match(harness.element('sharing-plan-values').textContent, /\/fixture\/guest-home/);
+  assert.equal(harness.calls.filter(call => ['prepare_project', 'preview_project', 'prepare_environment'].includes(call.command)).length, work);
 });
 
 function recordedClaudeDetails(sessionId) {
   const captured = fs.readFileSync(root + 'tests/fixtures/claude-code/v2.1.318/priced-details.json', 'utf8');
   const original = JSON.parse(captured).sessionId;
-  return JSON.parse(captured.replaceAll(original, sessionId));
+  return { ...JSON.parse(captured.replaceAll(original, sessionId)), agentKind: 'claude-code' };
 }
 
 test('usage caches separate equal session IDs and survive an agent switch within the project dashboard', async t => {
@@ -3299,33 +3271,33 @@ test('usage caches separate equal session IDs and survive an agent switch within
     id: identifier, environmentId: selected.environmentId, agentKind: selected.agentKind,
     title: selected.agentKind + ' stored usage', updatedAt: 1, usageAvailable: true,
   }));
-  const harness = await twoAgentHarness({
+  const harness = await interfaceHarness({
     project_dashboard: () => sessionDashboard(conversations),
-    conversation_usage: ({ sessionId, environmentId }) => sessionDetails(sessionId, [{ id: 'turn', status: 'complete', requests: [{
-      at: 'now', model: environmentId === project.environmentId ? 'Codex stored model' : 'Claude stored model',
+    conversation_usage: ({ sessionId, agentKind }) => sessionDetails(sessionId, [{ id: 'turn', status: 'complete', requests: [{
+      at: 'now', model: agentKind === 'codex' ? 'Codex stored model' : 'Claude stored model',
       tokens: { input: 1, cached: 0, cacheWrite: 0, output: 1 }, costUsd: 0, unpricedReason: null, rates: null,
-    }] }]),
+    }] }], { agentKind }),
   });
   t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
-  const open = async environmentId => { harness.element('usage-for-' + environmentId + '/' + identifier).click(); await flush(); };
-  await open(project.environmentId);
+  const open = async owner => { harness.element('usage-for-' + fixtureConversationKey(identifier, owner)).click(); await flush(); };
+  await open(project);
   assert.match(harness.element('session-usage-details').textContent, /Codex stored model/);
   harness.element('close-session-usage').click();
-  await open(claudeProject.environmentId);
+  await open(claudeProject);
   assert.match(harness.element('session-usage-details').textContent, /Claude stored model/);
   harness.element('close-session-usage').click();
   chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.element('session-table-body').rows.length, 2);
   assert.match(harness.element('sidebar-session-list').textContent, /codex stored usage.*claude-code stored usage/s);
-  await open(project.environmentId);
+  await open(project);
   assert.match(harness.element('session-usage-details').textContent, /Codex stored model/);
   assert.doesNotMatch(harness.element('session-usage-details').textContent, /Claude stored model/);
   assert.equal(harness.calls.filter(call => call.command === 'conversation_usage').length, 2);
 });
 
 test('a pending chat launch does not reuse the previous agent logo', async () => {
-  const harness = await twoAgentHarness();
+  const harness = await interfaceHarness();
   await harness.ready; harness.element('choose-folder').click(); await flush();
   harness.element('start-codex').click(); await flush();
   assert.equal(harness.element('terminal-status').querySelector('.agent-logo').dataset.agentKind, 'codex');
@@ -3355,7 +3327,7 @@ test('a pending chat launch does not reuse the previous agent logo', async () =>
 
 test('shared Claude sign-in and two chats keep the Codex terminal and environment selection', async () => {
   let account = { ...sharedClaudeAccount, state: 'signed-out', email: null };
-  const harness = await twoAgentHarness({ shared_claude_status: () => account });
+  const harness = await interfaceHarness({ shared_claude_status: () => account });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   harness.element('start-codex').click(); await flush();
   const codexTerminal = [...harness.terminals.values()][0];
@@ -3364,7 +3336,7 @@ test('shared Claude sign-in and two chats keep the Codex terminal and environmen
   harness.element('project-provider-settings').click(); await flush();
   harness.element('claude-sign-in').click(); await flush();
   assert.equal(harness.element('settings-view').hidden, false);
-  assert.equal(harness.calls.filter(call => call.command === 'start_agent_session' && call.args.action === 'login').length, 0);
+  assert.deepEqual(harness.calls.filter(call => call.command === 'start_provider_login').map(call => call.args.provider), ['claude']);
   account = { ...sharedClaudeAccount, generation: 2 };
   await harness.listeners.get('shared-claude-changed')({ payload: account });
   await harness.listeners.get('provider-login-changed')({ payload: providerLogin('claude', 'idle', 2) }); await flush();
@@ -3386,7 +3358,7 @@ test('equal native session IDs keep distinct agent rows, resumes and archive tar
   const details = recordedClaudeDetails(identifier);
   const claude = { ...codex, environmentId: claudeProject.environmentId, agentKind: 'claude-code', usageAvailable: true, usage: details.combinedUsage, familyUsage: details.combinedUsage, coverage: 'partial' };
   const changes = [];
-  const harness = await twoAgentHarness({ project_dashboard: () => sessionDashboard([codex, claude], { usage: details.combinedUsage, usageAvailable: true, coverage: 'partial' }), conversation_usage: args => { assert.equal(args.environmentId, claudeProject.environmentId); assert.equal(args.sessionId, identifier); return details; }, change_conversation_state: args => { changes.push(args); } });
+  const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([codex, claude], { usage: details.combinedUsage, usageAvailable: true, coverage: 'partial' }), conversation_usage: args => { assert.equal(args.environmentId, claudeProject.environmentId); assert.equal(args.sessionId, identifier); return details; }, change_conversation_state: args => { changes.push(args); } });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const rows = [...harness.element('session-table-body').rows];
   assert.equal(rows.length, 2); assert.match(rows[0].textContent, /Codex/); assert.match(rows[1].textContent, /Claude Code/);
@@ -3407,27 +3379,142 @@ test('equal native session IDs keep distinct agent rows, resumes and archive tar
   harness.element('close-session-usage').click(); await flush();
   rows[1].querySelector('[aria-label="Archive Same title, Claude Code"]').click(); await flush();
   assert.equal(changes[0].environmentId, claudeProject.environmentId);
-  for (const environmentId of [project.environmentId, claudeProject.environmentId]) {
-    const kind = environmentId === project.environmentId ? 'codex' : 'claude-code';
-    const sidebarRow = harness.element('sidebar-session-list').querySelector('[data-session-id="' + environmentId + '/' + identifier + '"]');
+  assert.equal(changes[0].agentKind, 'claude-code');
+  chooseAgent(harness, 'claude-code'); await flush();
+  for (const kind of ['codex', 'claude-code']) {
+    const environmentId = project.environmentId;
+    const sidebarRow = harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(identifier, { environmentId, agentKind: kind }) + '"]');
     assert.equal(sidebarRow.querySelector('.agent-logo').dataset.agentKind, kind);
     assert.equal(sidebarRow.querySelector('.agent-logo').getAttribute('aria-hidden'), 'true');
     sidebarRow.click(); await flush();
     assert.equal(harness.element('terminal-status').querySelector('.agent-logo').dataset.agentKind, kind);
+    assert.equal(harness.element('agent-choice').value, 'claude-code');
     assert.equal(harness.element('terminal-status').getAttribute('aria-label'), (kind === 'codex' ? 'Codex' : 'Claude Code') + ': Same title');
   }
   const launches = harness.calls.filter(call => call.command === 'start_agent_session');
   assert.equal(launches.length, 2);
   assert.deepEqual(launches.map(call => call.args.environmentId), [project.environmentId, claudeProject.environmentId]);
+  assert.deepEqual(launches.map(call => call.args.agentKind), ['codex', 'claude-code']);
   assert.deepEqual([...harness.terminals.values()].map(status => status.purpose), ['resume', 'claude-resume']);
   assert.ok(launches.every(call => call.args.sessionId === identifier));
-  harness.element('sidebar-session-list').querySelector('[data-session-id="' + claudeProject.environmentId + '/' + identifier + '"]').click(); await flush();
+  harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(identifier, claudeProject) + '"]').click(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 2);
   assert.match(harness.element('usage-note').textContent, /Claude totals include recorded main-session and discovered subagent messages/);
   assert.match(harness.element('project-usage').textContent, /82,948/);
   assert.doesNotMatch(harness.element('project-usage').textContent, /Usage unavailable/);
   assert.equal(harness.element('project-usage').querySelectorAll('dd')[4].textContent, '$0.0557');
   harness.dom.window.close();
+});
+
+test('two chats with the same environment and native ID keep their own terminals, usage and state actions', async t => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const environmentId = project.environmentId;
+  const chats = [
+    { id, environmentId, agentKind: 'codex', title: 'Same chat', updatedAt: 1 },
+    { id, environmentId, agentKind: 'claude-code', title: 'Same chat', updatedAt: 1 },
+  ];
+  const terminal = (identifier, projectId, agentKind, purpose) => ({ identifier, projectId, environmentId, agentKind, purpose, running: true, exitCode: null, conversationId: id, busy: false });
+  const harness = await interfaceHarness({
+    project_dashboard: () => sessionDashboard(chats),
+    conversation_usage: ({ sessionId, agentKind }) => sessionDetails(sessionId, [{ id: 'turn', status: 'complete', requests: [{ at: 'now', model: agentKind + ' usage', tokens: { input: 1, cached: 0, cacheWrite: 0, output: 1 }, costUsd: 0, rates: null }] }], { agentKind }),
+    change_conversation_state: () => null,
+  });
+  t.after(() => harness.dom.window.close());
+  harness.handlers.terminal_sessions = () => [...harness.terminals.values()];
+  harness.setTerminal(terminal(41, 'other-project', 'codex', 'codex'));
+  harness.setTerminal(terminal(42, project.id, 'codex', 'codex'));
+  harness.setTerminal(terminal(43, project.id, 'claude-code', 'claude'));
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  const rows = [...harness.element('session-table-body').rows];
+  assert.equal(rows.length, 2);
+  for (const [row, chat, identifier] of [[rows[1], chats[1], 43], [rows[0], chats[0], 42]]) {
+    row.querySelector('.session-title').click(); await flush();
+    assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1)?.args.identifier, identifier);
+    assert.equal(harness.element('terminal-status').querySelector('.agent-logo').dataset.agentKind, chat.agentKind);
+  }
+  assert.notEqual(rows[0].dataset.sessionId, rows[1].dataset.sessionId);
+  for (const chat of [chats[0], chats[1], chats[0]]) {
+    harness.element('usage-for-' + fixtureConversationKey(id, chat)).click(); await flush();
+    assert.match(harness.element('session-usage-details').textContent, new RegExp(chat.agentKind + ' usage'));
+    harness.element('close-session-usage').click(); await flush();
+  }
+  const targets = command => harness.calls.filter(call => call.command === command).map(({ args }) => [args.identifier, args.environmentId, args.agentKind, args.sessionId]);
+  const expected = chats.map(chat => [project.id, environmentId, chat.agentKind, id]);
+  assert.deepEqual(targets('conversation_usage'), expected);
+
+  const sidebar = harness.element('sidebar-session-list');
+  assert.equal(sidebar.querySelectorAll('button').length, 2);
+  for (const [chat, identifier] of [[chats[1], 43], [chats[0], 42]]) {
+    const key = fixtureConversationKey(id, chat);
+    sidebar.querySelector('[data-session-id="' + key + '"]').click(); await flush();
+    assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1)?.args.identifier, identifier);
+    assert.equal(sidebar.querySelectorAll('[aria-current="true"]').length, 1);
+    assert.equal(sidebar.querySelector('[aria-current="true"]').dataset.sessionId, key);
+    harness.element('close-terminal').click(); await flush();
+    assert.equal(harness.terminals.has(identifier), false);
+  }
+  assert.deepEqual([...harness.terminals.keys()], [41]);
+  assert.deepEqual(harness.calls.filter(call => call.command === 'terminal_close').map(call => call.args.identifier), [43, 42]);
+  assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 0);
+  for (const name of ['Codex', 'Claude Code']) {
+    harness.element('session-table-body').querySelector('[aria-label="Archive Same chat, ' + name + '"]').click(); await flush();
+  }
+  assert.deepEqual(targets('change_conversation_state'), expected);
+});
+
+test('a mismatched or superseded execution plan cannot launch a saved chat', async t => {
+  const other = { ...project, id: 'other-project', environmentId: 'b'.repeat(32), name: 'Other project' };
+  for (const condition of ['wrong environment', 'wrong project', 'superseded']) {
+    const pending = deferred();
+    const chat = { id: '11111111-1111-4111-8111-111111111111', environmentId: project.environmentId, agentKind: 'claude-code', title: 'Claude chat', updatedAt: 1 };
+    const harness = await interfaceHarness({
+      recent_projects: () => [project, other],
+      open_project: ({ identifier }) => identifier === project.id ? project : other,
+      saved_project_dashboard: () => sessionDashboard([chat]),
+      project_dashboard: () => sessionDashboard([chat]),
+      preview_project: ({ identifier }) => identifier === project.id ? pending.promise : { project: other, plan, fingerprint: 'other-plan' },
+    });
+    t.after(() => harness.dom.window.close());
+    await harness.ready; harness.element('choose-folder').click(); await flush();
+    harness.element('session-table-body').querySelector('.session-title').click(); await flush();
+    assert.equal(harness.calls.filter(call => call.command === 'preview_project').length, 2, condition);
+    if (condition === 'superseded') {
+      harness.element('project-navigation').click(); await flush();
+      harness.element('recent-project-list').querySelector('[data-project-id="other-project"]').click(); await flush();
+    }
+    const target = condition === 'wrong environment' ? { ...project, environmentId: other.environmentId }
+      : condition === 'wrong project' ? { ...project, id: other.id } : project;
+    pending.resolve({ project: target, plan, fingerprint: 'plan-a' }); await flush();
+    assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 0, condition);
+    assert.equal(harness.element('agent-choice').value, 'codex', condition);
+    assert.equal(harness.element('terminal-panel').hidden, true, condition);
+  }
+});
+
+test('a delayed saved-chat selection cannot hide a running terminal chosen afterward', async t => {
+  const pending = deferred();
+  const id = '11111111-1111-4111-8111-111111111111';
+  const claude = { ...claudeProject, environmentId: project.environmentId };
+  const chats = [
+    { id, environmentId: project.environmentId, agentKind: 'codex', title: 'Running Codex chat', updatedAt: 1 },
+    { id, environmentId: claude.environmentId, agentKind: 'claude-code', title: 'Saved Claude chat', updatedAt: 1 },
+  ];
+  const harness = await interfaceHarness({
+    saved_project_dashboard: () => sessionDashboard(chats),
+    project_dashboard: () => sessionDashboard(chats),
+    preview_project: () => pending.promise,
+  });
+  t.after(() => harness.dom.window.close());
+  harness.setTerminal({ identifier: 42, projectId: project.id, environmentId: project.environmentId, agentKind: 'codex', purpose: 'codex', running: true, exitCode: null, conversationId: id, busy: false });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('session-table-body').rows[1].querySelector('.session-title').click(); await flush();
+  harness.element('sidebar-session-list').querySelector('[data-session-id="' + fixtureConversationKey(id) + '"]').click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'preview_project').length, 2);
+  pending.resolve({ project, plan, fingerprint: 'plan-a' }); await flush();
+  assert.equal(harness.element('agent-choice').value, 'codex');
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1)?.args.identifier, 42);
+  assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 0);
 });
 
 test('Claude missing usage shows known subtotals plus unknown and keeps details available', async () => {
@@ -3438,7 +3525,7 @@ test('Claude missing usage shows known subtotals plus unknown and keeps details 
   details.agents[0].turns.push({ id: 'msg_missing_cache', status: 'complete', requests: [], originThreadId: identifier, rootTurnId: null, parentTurnId: null });
   details.agentTurnCount++;
   const claude = conversationFixture({ id: identifier, environmentId: claudeProject.environmentId, agentKind: 'claude-code', title: 'Partial Claude chat', usageAvailable: true, available: false, usage, coverage: 'partial' });
-  const harness = await twoAgentHarness({ project_dashboard: () => sessionDashboard([claude], { usage, coverage: 'partial', usageAvailable: true }), conversation_usage: () => details });
+  const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([claude], { usage, coverage: 'partial', usageAvailable: true }), conversation_usage: () => details });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const row = harness.element('session-table-body').rows[0];
   assert.equal(row.cells[1].textContent, '82.5K + unknown');
@@ -3462,7 +3549,8 @@ test('Claude missing usage shows known subtotals plus unknown and keeps details 
 
 test('native priced Claude family exposes separate main and nested costs with saved source metadata', async () => {
   const contract = JSON.parse(fs.readFileSync(root + 'tests/fixtures/claude-code/priced-subagents/native-contract.json', 'utf8'));
-  const harness = await twoAgentHarness({ project_dashboard: () => structuredClone(contract.dashboard), conversation_usage: () => structuredClone(contract.details) });
+  contract.details.agentKind = 'claude-code';
+  const harness = await interfaceHarness({ project_dashboard: () => structuredClone(contract.dashboard), conversation_usage: () => structuredClone(contract.details) });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const rows = harness.element('session-table-body').rows;
   assert.equal(rows.length, 1);
@@ -3492,9 +3580,10 @@ test('native priced Claude family exposes separate main and nested costs with sa
 
 test('native Claude family output keeps one root row and refreshes nested usage after child-only growth', async () => {
   const contract = JSON.parse(fs.readFileSync(root + 'tests/fixtures/claude-code/subagents/native-contract.json', 'utf8'));
+  contract.details.agentKind = 'claude-code';
   const dashboard = structuredClone(contract.dashboard), details = structuredClone(contract.details);
   const rootSession = dashboard.conversations.find(conversation => conversation.id === details.sessionId);
-  const harness = await twoAgentHarness({ project_dashboard: () => dashboard, conversation_usage: () => structuredClone(details) });
+  const harness = await interfaceHarness({ project_dashboard: () => dashboard, conversation_usage: () => structuredClone(details) });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   assert.equal(harness.element('session-table-body').rows.length, 1);
   assert.equal(harness.element('sidebar-session-list').children.length, 1);
@@ -3523,55 +3612,50 @@ test('native Claude family output keeps one root row and refreshes nested usage 
   harness.dom.window.close();
 });
 
-test('late Claude account and preparation results keep the selected Codex environment', async () => {
-  const preparation = deferred(), account = deferred();
-  let deferPreparation = true;
-  const harness = await twoAgentHarness({
-    prepare_project: args => args.environmentId === claudeProject.environmentId && deferPreparation ? preparation.promise : ({ project, plan, fingerprint: 'codex-plan', message: null, candidates: [] }),
-  });
+test('a late Claude account update preserves a running Codex chat and the shared environment', async t => {
+  const account = deferred();
+  const harness = await interfaceHarness();
+  t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
   harness.element('start-codex').click(); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
-  const accountStatusCount = harness.calls.filter(call => call.command === 'shared_claude_status').length;
   harness.handlers.shared_claude_status = () => account.promise;
   const accountRefresh = harness.listeners.get('records-changed')({ payload: ['claude'] }); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'shared_claude_status').length, accountStatusCount + 1);
   assert.equal(harness.element('agent-choice').disabled, false);
+  chooseAgent(harness, 'codex'); await flush();
   const liveCodex = harness.element('sidebar-session-list').querySelector('button');
   assert.equal(liveCodex.disabled, false);
   liveCodex.click(); await flush();
-  assert.equal(harness.element('start-codex').disabled, false);
-  deferPreparation = false;
-  preparation.resolve({ project: claudeProject, plan: environmentPlan(claudeProject), fingerprint: 'claude-plan', message: null, candidates: [] });
   account.resolve({ ...sharedClaudeAccount, generation: 2, state: 'signed-out', email: null, message: 'Late Claude sign-out.' });
   await accountRefresh; await flush();
   assert.equal(harness.element('claude-account-status').textContent, 'Late Claude sign-out.');
   assert.equal(harness.element('agent-choice').value, 'codex');
   assert.equal(harness.element('project-reference').textContent, project.profile + '@' + project.label);
   assert.equal(harness.element('start-codex').disabled, false);
-  harness.element('start-codex').click(); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').at(-1).args.environmentId, project.environmentId);
-  harness.dom.window.close();
+  assert.equal(harness.element('terminal-status').querySelector('.agent-logo').dataset.agentKind, 'codex');
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_project').length, 0);
+  assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 1);
 });
 
 test('a new project can select Claude beside New Chat', async () => {
-  const harness = await twoAgentHarness();
+  const harness = await interfaceHarness();
   await harness.ready; harness.element('choose-folder').click(); await flush();
   const accountSyncCount = harness.calls.filter(call => call.command === 'sync_project_chatgpt').length;
   chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.element('agent-choice').value, 'claude-code');
   assert.equal(harness.calls.filter(call => call.command === 'sync_project_chatgpt').length, accountSyncCount);
-  assert.equal(harness.calls.filter(call => call.command === 'prepare_project').at(-1).args.environmentId, claudeProject.environmentId);
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_project').length, 0);
   harness.element('start-codex').click(); await flush();
   const launch = harness.calls.find(call => call.command === 'start_agent_session');
-  assert.equal(launch.args.environmentId, claudeProject.environmentId);
+  assert.equal(launch.args.environmentId, project.environmentId);
+  assert.equal(launch.args.agentKind, 'claude-code');
   assert.equal(launch.args.action, 'new-chat');
   assert.equal(launch.args.useBrigBoundary, true);
   harness.dom.window.close();
 });
 
 test('an unavailable shared Claude account blocks its chats and preserves the Codex account', async () => {
-  const harness = await twoAgentHarness({ shared_claude_status: () => { throw Error('Claude account is unavailable.'); } });
+  const harness = await interfaceHarness({ shared_claude_status: () => { throw Error('Claude account is unavailable.'); } });
   await harness.ready; harness.element('choose-folder').click(); await flush(); chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.element('start-codex').disabled, true);
   assert.match(harness.element('claude-account-status').textContent, /unavailable/);
@@ -3580,31 +3664,74 @@ test('an unavailable shared Claude account blocks its chats and preserves the Co
   harness.dom.window.close();
 });
 
-test('selected and all-environment removal keep distinct preview and confirmation scopes', async () => {
-  for (const all of [false, true]) {
+test('both chat agents use the same project removal preview and confirmation scope', async t => {
+  for (const agentKind of ['codex', 'claude-code']) {
     const previews = [], removals = [];
-    const reference = all ? project.name : claudeProject.profile + '@' + claudeProject.label;
-    const harness = await twoAgentHarness({
-      preview_removal: args => { previews.push(args); return { reference, workspace: '/fixture/state', description: all ? 'Codex and Claude resources' : 'Claude resources', fingerprint: 'removal-proof', external: false, logout: false }; },
-      remove_project: args => { removals.push(args); return 'Removed selected environments.'; },
+    const reference = project.profile + '@' + project.label;
+    const harness = await interfaceHarness({
+      preview_removal: args => { previews.push(args); return { reference, workspace: '/fixture/state', description: 'Shared project resources', fingerprint: 'removal-proof', external: false }; },
+      remove_project: args => { removals.push(args); return 'Removed the shared environment.'; },
     });
-    await harness.ready; harness.element('choose-folder').click(); await flush(); chooseAgent(harness, 'claude-code'); await flush();
+    t.after(() => harness.dom.window.close());
+    await harness.ready; harness.element('choose-folder').click(); await flush(); chooseAgent(harness, agentKind); await flush();
     harness.element('project-settings-button').click(); await flush();
-    harness.element(all ? 'preview-project-removal' : 'preview-removal').click(); await flush();
+    harness.element('preview-removal').click(); await flush();
     assert.equal(previews.length, 1);
-    assert.equal(previews[0].environmentId, all ? undefined : claudeProject.environmentId);
+    assert.equal(previews[0].identifier, project.id);
+    assert.equal(previews[0].environmentId, project.environmentId);
     harness.element('removal-confirmation').value = reference;
     harness.element('removal-confirmation').dispatchEvent(new harness.dom.window.Event('input'));
     harness.element('confirm-removal').click(); await flush();
     assert.equal(removals.length, 1);
-    assert.equal(removals[0].environmentId, all ? undefined : claudeProject.environmentId);
+    assert.equal(removals[0].identifier, project.id);
+    assert.equal(removals[0].environmentId, project.environmentId);
     assert.equal(removals[0].confirmation, reference);
-    harness.dom.window.close();
   }
 });
 
+test('Project settings shows shared trust and the running processes affected by Stop', async t => {
+  const nativeId = '11111111-1111-4111-8111-111111111111';
+  const chats = ['codex', 'claude-code'].map(agentKind => conversationFixture({
+    id: nativeId, title: agentKind + ' fixture', agentKind, updatedAt: 1,
+  }));
+  let current = project;
+  const harness = await interfaceHarness({
+    project_dashboard: () => sessionDashboard(chats),
+    preview_project: () => ({ project: current, plan, fingerprint: 'plan-a' }),
+    stop_project: ({ identifier, environmentId }) => {
+      assert.equal(identifier, project.id);
+      assert.equal(environmentId, project.environmentId);
+      for (const terminalId of [1, 2, 3]) {
+        harness.setTerminal({ ...harness.terminals.get(terminalId), running: false });
+      }
+      current = { ...project, stage: 'ready' };
+      return current;
+    },
+  });
+  t.after(() => harness.dom.window.close());
+  const base = { projectId: project.id, environmentId: project.environmentId, running: true, exitCode: null, busy: false, conversationId: nativeId };
+  harness.setTerminal({ ...base, identifier: 1, agentKind: 'codex', purpose: 'codex' });
+  harness.setTerminal({ ...base, identifier: 2, agentKind: 'claude-code', purpose: 'claude' });
+  harness.setTerminal({ ...base, identifier: 3, purpose: 'shell', conversationId: null });
+  harness.setTerminal({ ...base, identifier: 4, environmentId: null, purpose: 'local', conversationId: null });
+  harness.setTerminal({ ...base, identifier: 5, projectId: 'other-project', agentKind: 'codex', purpose: 'codex' });
+  await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  assert.match(harness.element('project-sharing-details').textContent, /same project files and guest processes.*same network permissions.*sign-in and token renewal on this Mac/);
+  assert.deepEqual([...harness.element('stop-impact-list').children].map(item => item.textContent), [
+    'Codex · codex fixture · Terminal 1',
+    'Claude Code · claude-code fixture · Terminal 2',
+    'Guest terminal · Terminal 3',
+  ]);
+  harness.element('stop-project').click(); await flush();
+  assert.equal(harness.element('stop-impact').hidden, true);
+  assert.equal(harness.terminals.get(4).running, true);
+  assert.equal(harness.terminals.get(5).running, true);
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
+});
+
 test('a changed removal scope is shown for review and requires a new confirmation', async t => {
-  const original = { reference: 'codex@sample-a', workspace: '/fixture/original-home', description: 'Remove the guest and its old home.', fingerprint: 'original', external: false };
+  const original = { reference: 'tugboat-project@sample-a', workspace: '/fixture/original-home', description: 'Remove the guest and its old home.', fingerprint: 'original', external: false };
   const replacement = { ...original, reference: 'codex@sample-b', workspace: '/fixture/current-home', description: 'Current target codex@sample-b. Remove the guest only.', fingerprint: 'current' };
   let preview = original;
   const harness = await interfaceHarness({
@@ -3650,7 +3777,7 @@ test('a changed removal scope is shown for review and requires a new confirmatio
 
 
 test('a background shared Claude update preserves the current Codex account feedback and focus', async () => {
-  const harness = await twoAgentHarness({ shared_claude_status: () => ({ ...sharedClaudeAccount, state: 'signed-out', email: null }) });
+  const harness = await interfaceHarness({ shared_claude_status: () => ({ ...sharedClaudeAccount, state: 'signed-out', email: null }) });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.element('start-codex').disabled, true);
@@ -3666,7 +3793,7 @@ test('a background shared Claude update preserves the current Codex account feed
 
 test('shared Claude checks retain Sign out and recover keyboard focus after status changes', { timeout: 5000 }, async context => {
   const checking = deferred();
-  const harness = await twoAgentHarness({ retry_shared_claude: () => checking.promise });
+  const harness = await interfaceHarness({ retry_shared_claude: () => checking.promise });
   context.after(() => harness.dom.window.close());
   await harness.ready; harness.element('settings-navigation').click(); await flush();
   harness.element('settings-tab-providers').click(); await flush(); harness.element('claude-sign-out').focus();
@@ -3697,7 +3824,7 @@ test('shared Claude checks retain Sign out and recover keyboard focus after stat
 
 test('a delayed shared Claude sign-out cannot replace a newer account or browser sign-in', async () => {
   const logout = deferred();
-  const harness = await twoAgentHarness({ disconnect_shared_claude: () => logout.promise });
+  const harness = await interfaceHarness({ disconnect_shared_claude: () => logout.promise });
   await harness.ready; harness.element('choose-folder').click(); await flush(); chooseAgent(harness, 'claude-code'); await flush();
   harness.element('settings-navigation').click(); await flush(); harness.element('claude-sign-out').click(); await flush();
   await harness.listeners.get('shared-claude-changed')({ payload: { ...sharedClaudeAccount, generation: 8, email: 'new@example.invalid' } });
@@ -3712,7 +3839,7 @@ test('a delayed shared Claude sign-out cannot replace a newer account or browser
 test('a delayed Claude check preserves a new focus target or Settings tab', { timeout: 5000 }, async context => {
   for (const destination of ['shared-chatgpt-sign-in', 'settings-tab-general']) {
     const checking = deferred();
-    const harness = await twoAgentHarness({ retry_shared_claude: () => checking.promise });
+    const harness = await interfaceHarness({ retry_shared_claude: () => checking.promise });
     context.after(() => harness.dom.window.close());
     await harness.ready; harness.element('settings-navigation').click(); await flush();
     harness.element('settings-tab-providers').click();
@@ -3731,23 +3858,28 @@ test('a delayed Claude check preserves a new focus target or Settings tab', { ti
   }
 });
 
-test('returning to an environment with pending preparation applies that one result to its new view', async () => {
+test('changing the next chat agent reuses the pending project preparation', async t => {
   const pending = deferred();
-  const harness = await twoAgentHarness({ prepare_project: args => args.environmentId === claudeProject.environmentId ? pending.promise : ({ project, plan, fingerprint: 'codex-plan', message: null, candidates: [] }) });
+  const harness = await interfaceHarness({
+    register_project: () => ({ ...project, stage: 'selected' }),
+    prepare_project: () => pending.promise,
+  });
+  t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
   chooseAgent(harness, 'codex'); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'prepare_project' && call.args.environmentId === claudeProject.environmentId).length, 1);
-  pending.resolve({ project: claudeProject, plan: environmentPlan(claudeProject), fingerprint: 'claude-plan', message: null, candidates: [] });
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_project').length, 1);
+  pending.resolve({ project, plan, fingerprint: 'plan-a', message: null });
   await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'prepare_project').length, 1);
   assert.equal(harness.element('agent-choice').value, 'claude-code');
   assert.equal(harness.element('start-codex').disabled, false);
   harness.element('start-codex').click(); await flush();
   const launch = harness.calls.filter(call => call.command === 'start_agent_session').at(-1);
-  assert.equal(launch.args.environmentId, claudeProject.environmentId);
-  assert.equal(launch.args.fingerprint, 'claude-plan');
-  harness.dom.window.close();
+  assert.equal(launch.args.environmentId, project.environmentId);
+  assert.equal(launch.args.agentKind, 'claude-code');
+  assert.equal(launch.args.fingerprint, 'plan-a');
 });
 
 
@@ -3768,7 +3900,7 @@ test('recheck a saved width arriving during a drag cannot replace the new width'
 
 test('recheck a cancelled removal confirmation cannot issue another command', async () => {
   const harness = await interfaceHarness({
-    preview_removal: () => ({reference:'codex@sample-a',workspace:'/fixture',description:'Review fixture',fingerprint:'fixture-preview',external:false}),
+    preview_removal: () => ({reference:'tugboat-project@sample-a',workspace:'/fixture',description:'Review fixture',fingerprint:'fixture-preview',external:false}),
     remove_project: () => 'Fixture only',
   });
   try {
@@ -3776,7 +3908,7 @@ test('recheck a cancelled removal confirmation cannot issue another command', as
     harness.element('choose-folder').click(); await flush();
     harness.element('preview-removal').click(); await flush();
     const field = harness.element('removal-confirmation');
-    field.value = 'codex@sample-a'; field.dispatchEvent(new harness.dom.window.Event('input'));
+    field.value = 'tugboat-project@sample-a'; field.dispatchEvent(new harness.dom.window.Event('input'));
     harness.element('cancel-removal').click();
     assert.equal(harness.element('removal-dialog').open, false);
     harness.element('confirm-removal').click(); await flush();

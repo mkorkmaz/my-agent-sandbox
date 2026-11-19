@@ -1,4 +1,5 @@
 use crate::{
+    agents::AgentKind,
     desktop::settings::{self, Settings},
     platform::brig::{self, Brig},
     projects::{self, EnvironmentId, Project, Projects, Registry},
@@ -10,12 +11,16 @@ use serde_json::Value;
 use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 pub(crate) mod boundaries;
+mod codex_package;
 mod gate;
 pub(crate) mod managed_profile;
 #[cfg(test)]
 mod plan_tests;
 pub(crate) mod preparation;
+pub(crate) mod project_home;
+pub(crate) mod shared_runtime;
 pub(crate) use gate::EnvironmentOperation;
+pub(crate) use preparation::GuestHomes;
 
 pub struct CheckedProject {
     pub project: Project,
@@ -38,7 +43,7 @@ pub fn plan_fingerprint(
         .ok_or("Invalid Brig plan.")?
         .remove("network");
     brig::fingerprint(&serde_json::json!({
-        "projectId":project.id,"environmentId":project.environment_id,"agentKind":project.agent_kind,"profile":profile,"plan":snapshot
+        "projectId":project.id,"environmentId":project.environment_id,"profile":profile,"plan":snapshot
     }))
 }
 
@@ -47,10 +52,14 @@ pub fn brig_for_project(
     project: &Project,
     settings: &Settings,
 ) -> Result<Brig, String> {
-    Brig::new(settings)?.for_project(
-        project,
-        &crate::storage::data_location::directory(app)?.join("profiles"),
-    )
+    let mut checked = settings.clone();
+    checked.cli_path = None;
+    let directory = crate::storage::data_location::directory(app)?;
+    let mut brig = Brig::new(&checked)?.for_project(project, &directory.join("profiles"))?;
+    if project.github_access.is_some() {
+        brig.enable_host_keychain(&directory)?;
+    }
+    Ok(brig)
 }
 
 pub fn checked_project(
@@ -68,8 +77,29 @@ pub fn checked_environment(
     expected: Option<&str>,
 ) -> Result<CheckedProject, String> {
     let registry = Registry::load(&projects::file(app)?)?;
-    crate::storage::data_location::validate_project_records(app, &registry)?;
     let project = registry.resolve_environment(identifier, environment_id)?;
+    check_registered_environment(app, &registry, project, expected)
+}
+
+pub(crate) fn checked_agent_environment(
+    app: &AppHandle,
+    identifier: &str,
+    environment_id: &EnvironmentId,
+    agent_kind: AgentKind,
+    expected: Option<&str>,
+) -> Result<CheckedProject, String> {
+    let registry = Registry::load(&projects::file(app)?)?;
+    let project = registry.agent_environment(identifier, environment_id, agent_kind)?;
+    check_registered_environment(app, &registry, project, expected)
+}
+
+fn check_registered_environment(
+    app: &AppHandle,
+    registry: &Registry,
+    project: Project,
+    expected: Option<&str>,
+) -> Result<CheckedProject, String> {
+    crate::storage::data_location::validate_project_records(app, registry)?;
     let settings = project.settings(settings::load(&settings::file(app)?)?)?;
     let brig = brig_for_project(app, &project, &settings)?;
     check_environment(
@@ -98,9 +128,7 @@ pub(crate) fn check_environment(
         return Err("Complete project setup first.".into());
     }
     let profile = brig.agent_profile(&project.profile)?;
-    project
-        .agent_kind
-        .validate_profile(&project.profile, &profile)?;
+    managed_profile::validate(&project, &profile)?;
     let policy = project
         .policy
         .as_ref()
@@ -114,6 +142,7 @@ pub(crate) fn check_environment(
         );
     }
     let plan = brig.plan(&project, &settings)?;
+    projects::project_github_access::verify_plan(&brig, &project, &plan)?;
     let paths = brig::validate_plan(&plan, &project, &settings)?;
     crate::storage::data_location::require_private_plan_records(private_records, &plan)?;
     let fingerprint = plan_fingerprint(&plan, &project, &profile)?;
@@ -189,6 +218,11 @@ pub(crate) fn is_running(
                 .into(),
         );
     }
+    let sandbox = format!("brig-{}-{}", project.profile, project.label);
+    if info["data"]["sandbox"] != sandbox {
+        return Err("The running Brig environment has an unexpected instance name.".into());
+    }
+    brig.verify_running_image(project, &sandbox)?;
     Ok(true)
 }
 
@@ -229,16 +263,19 @@ pub fn command(checked: &CheckedProject, arguments: Vec<String>) -> Command {
     command
 }
 
-pub fn run_arguments(checked: &CheckedProject, agent_arguments: &[String]) -> Vec<String> {
+pub fn run_arguments(
+    checked: &CheckedProject,
+    agent_arguments: &[String],
+) -> Result<Vec<String>, String> {
     let mut arguments = vec!["run".into()];
-    arguments.extend(checked.settings.arguments());
-    arguments.extend([
-        checked.project.reference(),
-        checked.project.path.to_string_lossy().into_owned(),
-        "--".into(),
-    ]);
+    arguments.extend(
+        checked
+            .brig
+            .project_arguments(&checked.project, &checked.settings)?,
+    );
+    arguments.push("--".into());
     arguments.extend_from_slice(agent_arguments);
-    arguments
+    Ok(arguments)
 }
 
 #[tauri::command]
@@ -250,13 +287,63 @@ pub async fn prepare_environment(
     fingerprint: String,
     layout: Layout,
 ) -> Result<u64, String> {
+    use gate::SharedPreparation;
+    let environment_id = environment_id.unwrap_or_else(|| EnvironmentId::for_project(&identifier));
+    match SharedPreparation::begin(&identifier, &environment_id, &fingerprint)? {
+        SharedPreparation::Join(result) => tauri::async_runtime::spawn_blocking(move || {
+            result
+                .recv()
+                .map_err(|_| "Project preparation was interrupted. Try again.")?
+        })
+        .await
+        .map_err(|_| "Could not wait for project preparation.")?,
+        SharedPreparation::Start(operation) => {
+            let result = launch_preparation_terminal(
+                window,
+                projects.0.clone(),
+                identifier,
+                environment_id,
+                fingerprint,
+                layout,
+            )
+            .await;
+            operation.finish(result)
+        }
+    }
+}
+
+async fn launch_preparation_terminal(
+    window: WebviewWindow,
+    registry_lock: std::sync::Arc<std::sync::Mutex<()>>,
+    identifier: String,
+    environment_id: EnvironmentId,
+    fingerprint: String,
+    layout: Layout,
+) -> Result<u64, String> {
     let app = window.app_handle().clone();
     let preparation_app = app.clone();
-    let registry_lock = projects.0.clone();
     let project_id = identifier.clone();
-    let environment_id = environment_id
-        .unwrap_or_else(|| EnvironmentId::for_agent(&identifier, crate::agents::AgentKind::Codex));
-    let _operation = EnvironmentOperation::begin(&environment_id)?;
+    if let Some(status) = terminal::terminal_sessions(identifier.clone())
+        .into_iter()
+        .find(|status| {
+            status.running
+                && status.purpose == "environment"
+                && status.belongs_to_environment(&identifier, &environment_id)
+        })
+    {
+        let project =
+            Registry::load(&projects::file(&app)?)?.environment(&identifier, &environment_id)?;
+        if project.environment_attempt.as_ref().is_some_and(|attempt| {
+            attempt.terminal_identifier == status.identifier
+                && attempt.plan_fingerprint.as_deref() == Some(&fingerprint)
+        }) {
+            return Ok(status.identifier);
+        }
+        return Err(
+            "A different project plan is preparing. Review its result before starting this plan."
+                .into(),
+        );
+    }
     let pending_environment = environment_id.clone();
     let terminal_identifier = terminal::reserve_identifier();
     let token = format!(
@@ -269,17 +356,14 @@ pub async fn prepare_environment(
     );
     let pending_token = token.clone();
     let (command, terminal_target) = tauri::async_runtime::spawn_blocking(move || {
+        let checked = checked_environment(
+            &preparation_app,
+            &identifier,
+            Some(&pending_environment),
+            Some(&fingerprint),
+        )?;
+        shared_runtime::install_codex(&checked)?;
         let _guard = registry_lock.lock().map_err(|error| error.to_string())?;
-        if terminal::terminal_sessions(identifier.clone())
-            .iter()
-            .any(|status| {
-                status.purpose == "environment"
-                    && status.environment_id.as_ref() == Some(&pending_environment)
-                    && status.running
-            })
-        {
-            return Err("Environment preparation is already running for this project.".into());
-        }
         let file = projects::file(&preparation_app)?;
         let _file_guard = storage::lock(&file)?;
         let mut checked = checked_environment(
@@ -288,21 +372,13 @@ pub async fn prepare_environment(
             Some(&pending_environment),
             Some(&fingerprint),
         )?;
-        let home = checked
-            .brig
-            .environment
-            .get("HOME")
-            .ok_or("The current home directory is unavailable.")?;
+        let home = checked.brig.runtime_home()?;
         let sandbox = checked.plan["data"]["sandbox"]
             .as_str()
-            .ok_or("The plan does not identify the hull instance.")?;
-        crate::platform::hull::check_instance_socket_paths(std::path::Path::new(home), sandbox)?;
-        let version = checked
-            .project
-            .agent_kind
-            .command(crate::agents::AgentCommand::Version)?
-            .in_profile();
-        let command = command(&checked, run_arguments(&checked, &version));
+            .ok_or("The plan does not identify the Hull instance.")?;
+        crate::platform::hull::check_instance_socket_paths(home, sandbox)?;
+        let version = vec!["--version".into()];
+        let command = command(&checked, run_arguments(&checked, &version)?);
         checked
             .project
             .begin_environment(projects::EnvironmentAttempt::pending(
@@ -442,9 +518,7 @@ fn verify_running_attempt(
     if !is_running(&checked.brig, &checked.project, &checked.paths)? {
         return Err("The Brig environment did not remain running. Prepare it again.".into());
     }
-    checked
-        .brig
-        .verify_agent_version(checked.project.agent_kind, checked.project.reference())
+    shared_runtime::verify_versions(&checked).map(|_| ())
 }
 
 fn complete_environment(
@@ -499,8 +573,8 @@ pub async fn finish_environment(
         let file = projects::file(&app)?;
         let project =
             Registry::load(&file)?.resolve_environment(&identifier, environment_id.as_ref())?;
-        if !status.belongs_to(&project) {
-            return Err("This terminal belongs to another agent environment.".into());
+        if !status.belongs_to_environment(&project.id, &project.environment_id) {
+            return Err("This terminal belongs to another project environment.".into());
         }
         let environment_id = project.environment_id;
         let attempt = project
@@ -535,86 +609,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn preparation_results_and_running_plan_fingerprints_belong_to_one_environment() {
+    fn both_agent_projections_share_one_attempt_and_plan() {
         let root =
-            std::env::temp_dir().join(format!("tugboat-selected-attempt-{}", std::process::id()));
+            std::env::temp_dir().join(format!("tugboat-shared-attempt-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("projects.json");
         let mut registry = Registry::default();
-        let mut codex = registry.register(&root, "codex").unwrap();
-        let added = registry
-            .ensure_environment(
-                &codex.id,
-                crate::agents::AgentKind::ClaudeCode,
-                &Settings::default(),
-            )
-            .unwrap();
-        let mut claude = registry
-            .environment(&codex.id, &added.environment_id)
+        let mut codex = registry.register(&root).unwrap();
+        let claude = registry
+            .agent_environment(&codex.id, &codex.environment_id, AgentKind::ClaudeCode)
             .unwrap();
         let plan = serde_json::json!({"data":{"project":{"host":root},"network":"inspection"}});
-        let definition = serde_json::json!({"binary":"fixture"});
-        let codex_fingerprint = plan_fingerprint(&plan, &codex, &definition).unwrap();
-        let claude_fingerprint = plan_fingerprint(&plan, &claude, &definition).unwrap();
-        assert_ne!(codex_fingerprint, claude_fingerprint);
-        codex.stage = crate::projects::ProjectStage::EnvironmentStarting;
-        codex.environment_attempt = Some(projects::EnvironmentAttempt {
-            plan_fingerprint: Some(codex_fingerprint.clone()),
-            token: "codex-attempt".into(),
-            terminal_identifier: 10,
-            completed: false,
-            error: None,
-        });
-        claude.stage = crate::projects::ProjectStage::EnvironmentStarting;
-        claude.environment_attempt = Some(projects::EnvironmentAttempt {
-            plan_fingerprint: Some(claude_fingerprint.clone()),
-            token: "claude-attempt".into(),
-            terminal_identifier: 20,
-            completed: false,
-            error: None,
-        });
-        registry.update(codex.clone()).unwrap();
-        registry.update(claude.clone()).unwrap();
+        let definition = managed_profile::expected_definition();
+        let fingerprint = plan_fingerprint(&plan, &codex, &definition).unwrap();
+        assert_eq!(
+            fingerprint,
+            plan_fingerprint(&plan, &claude, &definition).unwrap()
+        );
+        codex.stage = projects::ProjectStage::Ready;
+        codex
+            .begin_environment(projects::EnvironmentAttempt::pending(
+                "shared".into(),
+                10,
+                fingerprint.clone(),
+            ))
+            .unwrap();
+        registry.update(codex).unwrap();
         storage::write(&file, &registry).unwrap();
         let original = std::fs::read(&file).unwrap();
         assert!(complete_attempt(
             &file,
             &claude.id,
             &claude.environment_id,
-            "codex-attempt",
-            10,
+            "stale",
+            9,
             Ok(()),
-            || panic!("Another environment must not be verified")
+            || panic!("Stale verification")
         )
         .unwrap()
         .is_none());
         assert_eq!(std::fs::read(&file).unwrap(), original);
-        let result = complete_attempt(
+        complete_attempt(
             &file,
             &claude.id,
             &claude.environment_id,
-            "claude-attempt",
-            20,
+            "shared",
+            10,
             Ok(()),
             || Ok(()),
         )
         .unwrap()
         .unwrap();
-        assert_eq!(result.project.environment_id, claude.environment_id);
-        assert_eq!(result.project.stage, "environment-ready");
-        assert_eq!(
-            result.project.environment_stage(true, &claude_fingerprint),
-            "environment-ready"
-        );
-        assert_eq!(
-            result.project.environment_stage(true, &codex_fingerprint),
-            "ready"
-        );
-        assert_eq!(
-            serde_json::to_value(Registry::load(&file).unwrap().project(&codex.id).unwrap())
-                .unwrap(),
-            serde_json::to_value(codex).unwrap()
-        );
+        let registry = Registry::load(&file).unwrap();
+        for project in registry.agent_views(&claude.id).unwrap() {
+            assert_eq!(
+                project.environment_stage(true, &fingerprint),
+                "environment-ready"
+            );
+            assert_eq!(project.environment_attempt.unwrap().terminal_identifier, 10);
+        }
         std::fs::remove_dir_all(root).unwrap();
     }
 
@@ -627,7 +680,7 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let file = root.join("projects.json");
         let mut registry = Registry::load(&file).unwrap();
-        let mut project = registry.register(&root, "codex").unwrap();
+        let mut project = registry.register(&root).unwrap();
         let set_attempt =
             |registry: &mut Registry, project: &mut Project, token: &str, terminal_identifier| {
                 project.stage = crate::projects::ProjectStage::EnvironmentStarting;
@@ -776,7 +829,7 @@ mod tests {
         std::fs::create_dir_all(root.join("project")).unwrap();
         let project = Registry::load(&root.join("projects.json"))
             .unwrap()
-            .register(&root.join("project"), "codex")
+            .register(&root.join("project"))
             .unwrap();
         let executable = root.join("brig-fixture");
         std::fs::write(&executable, "#!/bin/sh\ncase \"$2\" in\nls) [ \"$TUGBOAT_INVENTORY_FAIL\" != 1 ] || exit 1; printf '%s' \"$TUGBOAT_LIST\";;\ninfo) printf '%s' \"$TUGBOAT_INFO\";;\n*) exit 1;;\nesac\n").unwrap();
@@ -784,7 +837,13 @@ mod tests {
         let inventory = |state| {
             serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[{"ref":project.reference(),"state":state}]}}).to_string()
         };
-        let info = serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":project.profile,"session":project.label,"project":{"host":project.path},"workspace":"/fixture/home"}});
+        let sandbox = format!("brig-{}-{}", project.profile, project.label);
+        let digest = project.image_ref.split_once('@').unwrap().1;
+        let instance = serde_json::json!({"id":sandbox,"imageDigest":digest,"status":"running","backend":"hvi"});
+        let hull = root.join("hull");
+        std::fs::write(&hull, "#!/bin/sh\nprintf '%s' \"$TUGBOAT_INSTANCE\"\n").unwrap();
+        std::fs::set_permissions(&hull, std::fs::Permissions::from_mode(0o700)).unwrap();
+        let info = serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":project.profile,"session":project.label,"sandbox":sandbox,"project":{"host":project.path},"workspace":"/fixture/home"}});
         let plan = serde_json::json!({"data":{"home":{"host":"/fixture/home"},"project":{"guest":"/work/project"}}});
         let paths = brig::PlanPaths::from_plan(&plan).unwrap();
         let mut brig = Brig {
@@ -795,7 +854,22 @@ mod tests {
             .insert("TUGBOAT_LIST".into(), inventory("running"));
         brig.environment
             .insert("TUGBOAT_INFO".into(), info.to_string());
+        brig.environment.insert(
+            "BRIG_RUNTIME_BIN".into(),
+            hull.to_string_lossy().into_owned(),
+        );
+        brig.environment
+            .insert("TUGBOAT_INSTANCE".into(), instance.to_string());
         assert!(is_running(&brig, &project, &paths).unwrap());
+        let mut wrong_image = instance.clone();
+        wrong_image["imageDigest"] = "sha256:unknown".into();
+        brig.environment
+            .insert("TUGBOAT_INSTANCE".into(), wrong_image.to_string());
+        assert!(is_running(&brig, &project, &paths)
+            .unwrap_err()
+            .contains("verified image"));
+        brig.environment
+            .insert("TUGBOAT_INSTANCE".into(), instance.to_string());
         brig.environment
             .insert("TUGBOAT_LIST".into(), inventory("stopped"));
         assert!(!is_running(&brig, &project, &paths).unwrap());
@@ -826,8 +900,8 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("tugboat-plan-snapshot-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
-        let project = Registry::default().register(&root, "codex").unwrap();
-        let profile = serde_json::json!({"name":"codex","binary":"codex"});
+        let project = Registry::default().register(&root).unwrap();
+        let profile = managed_profile::expected_definition();
         let first = plan_fingerprint(&plan, &project, &profile).unwrap();
         plan["data"]["network"] = "runtime inspection became available".into();
         assert_eq!(first, plan_fingerprint(&plan, &project, &profile).unwrap());

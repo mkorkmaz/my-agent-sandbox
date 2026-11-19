@@ -1,8 +1,10 @@
 mod account;
 mod claude;
-pub(crate) mod codex;
+mod codex;
 mod launch;
 mod resume;
+#[cfg(test)]
+pub(crate) mod shared_project_proof;
 
 use crate::{
     agents::{AgentKind, SessionId},
@@ -18,7 +20,6 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Action {
-    Login,
     NewChat,
     Resume,
     Shell,
@@ -27,7 +28,6 @@ pub enum Action {
 impl Action {
     fn purpose(self) -> &'static str {
         match self {
-            Self::Login => "login",
             Self::NewChat => "claude",
             Self::Resume => "claude-resume",
             Self::Shell => "shell",
@@ -36,7 +36,6 @@ impl Action {
 
     fn codex(self) -> codex::Action {
         match self {
-            Self::Login => codex::Action::Login,
             Self::NewChat => codex::Action::Codex,
             Self::Resume => codex::Action::Resume,
             Self::Shell => codex::Action::Shell,
@@ -62,9 +61,10 @@ impl Action {
 fn selected(
     app: &AppHandle,
     identifier: &str,
-    environment_id: Option<&EnvironmentId>,
+    environment_id: &EnvironmentId,
+    agent_kind: AgentKind,
 ) -> Result<Project, String> {
-    Registry::load(&projects::file(app)?)?.resolve_environment(identifier, environment_id)
+    Registry::load(&projects::file(app)?)?.agent_environment(identifier, environment_id, agent_kind)
 }
 
 enum Launch {
@@ -80,25 +80,59 @@ enum Launch {
 pub async fn start_agent_session(
     window: WebviewWindow,
     identifier: String,
-    environment_id: Option<EnvironmentId>,
+    environment_id: EnvironmentId,
+    agent_kind: AgentKind,
     fingerprint: String,
     action: Action,
     use_brig_boundary: Option<bool>,
     session_id: Option<String>,
     layout: Layout,
 ) -> Result<u64, String> {
-    if action == Action::Login {
-        return Err(
-            "Connect the provider in Settings, Providers. Sign-in does not require a project."
-                .into(),
-        );
-    }
     let app = window.app_handle().clone();
-    let project = selected(&app, &identifier, environment_id.as_ref())?;
-    if project.agent_kind == AgentKind::Codex {
+    let project = selected(&app, &identifier, &environment_id, agent_kind)?;
+    let _operation =
+        environment::EnvironmentOperation::begin(&project.id, &project.environment_id)?;
+    if action == Action::Shell {
+        action.session(session_id.as_deref())?;
+        let target = terminal::AgentTarget::for_project(&project);
+        let shell_app = app.clone();
+        let command = tauri::async_runtime::spawn_blocking(move || {
+            let checked = environment::checked_agent_environment(
+                &shell_app,
+                &identifier,
+                &environment_id,
+                agent_kind,
+                Some(&fingerprint),
+            )?;
+            if checked.project.stage != crate::projects::ProjectStage::EnvironmentReady {
+                return Err(
+                    "Prepare the shared project environment before opening its guest shell.".into(),
+                );
+            }
+            let arguments = vec!["sh".into(), checked.project.reference()];
+            Ok::<_, String>(environment::command(&checked, arguments))
+        })
+        .await
+        .map_err(|_| "Could not prepare the guest shell.")??;
+        return terminal::start_reserved(
+            window,
+            project.id,
+            "shell",
+            command,
+            layout,
+            None,
+            terminal::Reservation {
+                identifier: terminal::reserve_identifier(),
+                on_exit: None,
+                target: Some(target),
+            },
+        )
+        .await;
+    }
+    if agent_kind == AgentKind::Codex {
         return codex::start_codex_session(
             window,
-            identifier,
+            project,
             fingerprint,
             action.codex(),
             use_brig_boundary,
@@ -123,10 +157,11 @@ pub async fn start_agent_session(
     let prepare_app = app.clone();
     let prepared = tauri::async_runtime::spawn_blocking(move || {
         let session = action.session(session_id.as_deref())?;
-        let checked = environment::checked_environment(
+        let checked = environment::checked_agent_environment(
             &prepare_app,
             &project.id,
-            Some(&project.environment_id),
+            &project.environment_id,
+            agent_kind,
             Some(&fingerprint),
         )?;
         if checked.project.stage != crate::projects::ProjectStage::EnvironmentReady {

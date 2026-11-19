@@ -1,10 +1,13 @@
-use crate::{agents::AgentKind, projects::Project, storage};
+use crate::{
+    projects::{EnvironmentId, Project, DEFAULT_ENVIRONMENT_IMAGE, ENVIRONMENT_PROFILE},
+    storage,
+};
+use serde_json::{json, Value};
 use std::fs::{self, DirBuilder};
 use std::os::unix::fs::DirBuilderExt;
 use std::path::Path;
 
-pub const CLAUDE_PROFILE: &str = "tugboat-claude";
-const DOCUMENT: &[u8] = include_bytes!("../../profiles/tugboat-claude.yaml");
+const DOCUMENT: &[u8] = include_bytes!("../../profiles/tugboat-project.yaml");
 
 enum ProfileState {
     Absent,
@@ -13,36 +16,74 @@ enum ProfileState {
 }
 
 impl ProfileState {
-    fn inspect(file: &Path) -> Result<Self, String> {
+    fn inspect(file: &Path, expected: &[u8]) -> Result<Self, String> {
         match storage::read_regular_bytes(file)? {
             None => Ok(Self::Absent),
-            Some(bytes) if bytes == DOCUMENT => Ok(Self::Verified),
+            Some(bytes) if bytes == expected => Ok(Self::Verified),
             Some(_) => Ok(Self::Changed),
         }
     }
 
-    fn install(self, file: &Path) -> Result<(), String> {
+    fn install(self, file: &Path, document: &[u8]) -> Result<(), String> {
         match self {
-            Self::Absent => storage::write_bytes(file, DOCUMENT),
+            Self::Absent => storage::write_bytes(file, document),
             Self::Verified => Ok(()),
-            Self::Changed => Err("The managed Claude profile changed. Its contents were preserved. Restore the Tugboat profile before preparing this environment.".into()),
+            Self::Changed => Err("The managed Tugboat profile changed. Restore the bundled profile before preparing this environment.".into()),
         }
     }
 }
 
-pub fn owns(project: &Project) -> bool {
-    project.agent_kind == AgentKind::ClaudeCode
+pub fn shared(project: &Project) -> bool {
+    project.profile == ENVIRONMENT_PROFILE
         && project.owns_session
-        && project.profile == CLAUDE_PROFILE
+        && !project.adopted_managed_profile
+        && project.environment_id == EnvironmentId::for_project(&project.id)
 }
 
-pub fn uses_profile(project: &Project) -> bool {
-    project.agent_kind == AgentKind::ClaudeCode
-        && project.profile == CLAUDE_PROFILE
-        && (project.owns_session || project.adopted_managed_profile)
+pub(crate) fn expected_definition() -> Value {
+    json!({
+        "name": ENVIRONMENT_PROFILE, "desc": "Shared Tugboat project guest",
+        "kind": "agent", "binary": "bash", "image": DEFAULT_ENVIRONMENT_IMAGE,
+        "guestHome": "/root", "headless": true, "genericBoot": true,
+        "hypervisor": "hvi", "network": "isolated", "mem": 4096, "cpus": 4,
+        "env": [
+            {"name":"IS_SANDBOX","value":"1"},
+            {"name":"CLAUDE_CONFIG_DIR","value":"/brig/claude"},
+            {"name":"DISABLE_UPDATES","value":"1"}
+        ],
+        "deny": ["OPENAI_API_KEY", "CODEX_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"],
+        "volumes": [
+            {"kind":"tmpfs","path":".claude","size":"512m","at":"/brig/claude"},
+            {"kind":"hostmount","path":".claude/.claude.json","file":true},
+            {"kind":"hostmount","path":".claude/settings.json","file":true},
+            {"kind":"hostmount","path":".claude/CLAUDE.md","file":true},
+            {"kind":"hostmount","path":".claude/sessions"},
+            {"kind":"hostmount","path":".claude/projects"},
+            {"kind":"hostmount","path":".claude/plugins"},
+            {"kind":"hostmount","path":".claude/skills"},
+            {"kind":"hostmount","path":".claude/history.jsonl","file":true}
+        ],
+        "staleCredentialFiles": [".claude/.credentials.json"],
+        "onboarding": {
+            "file": ".claude/.claude.json",
+            "seed": {"hasCompletedOnboarding": true, "hasTrustDialogAccepted": true},
+            "trustKey": ["projects", "hasTrustDialogAccepted"]
+        }
+    })
+}
+
+pub fn validate(project: &Project, definition: &Value) -> Result<(), String> {
+    if !shared(project) || definition != &expected_definition() {
+        return Err("The shared Tugboat profile or guest layout could not be verified.".into());
+    }
+    Ok(())
 }
 
 pub fn install(directory: &Path) -> Result<(), String> {
+    install_document(directory, ENVIRONMENT_PROFILE, DOCUMENT)
+}
+
+fn install_document(directory: &Path, name: &str, document: &[u8]) -> Result<(), String> {
     match DirBuilder::new().mode(0o700).create(directory) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -54,9 +95,9 @@ pub fn install(directory: &Path) -> Result<(), String> {
     {
         return Err("The managed profile directory is not a regular directory.".into());
     }
-    let file = directory.join(format!("{CLAUDE_PROFILE}.yaml"));
+    let file = directory.join(format!("{name}.yaml"));
     let _lock = storage::lock(&file)?;
-    ProfileState::inspect(&file)?.install(&file)
+    ProfileState::inspect(&file, document)?.install(&file, document)
 }
 
 #[cfg(test)]
@@ -74,7 +115,7 @@ mod tests {
         fs::create_dir(&root).unwrap();
         let directory = root.join("profiles");
         install(&directory).unwrap();
-        let file = directory.join("tugboat-claude.yaml");
+        let file = directory.join("tugboat-project.yaml");
         assert_eq!(
             fs::metadata(&directory).unwrap().permissions().mode() & 0o777,
             0o700
@@ -100,7 +141,7 @@ mod tests {
         fs::create_dir(&root).unwrap();
         let directory = root.join("profiles");
         install(&directory).unwrap();
-        let file = directory.join("tugboat-claude.yaml");
+        let file = directory.join("tugboat-project.yaml");
         fs::remove_file(&file).unwrap();
         fs::write(root.join("private"), b"synthetic private record").unwrap();
         symlink(root.join("private"), &file).unwrap();

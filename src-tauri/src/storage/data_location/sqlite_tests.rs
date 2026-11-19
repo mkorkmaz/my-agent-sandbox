@@ -79,8 +79,10 @@ fn reopening_a_registered_custom_folder_repairs_permissions_before_usage_activat
         fs::set_permissions(&custom, fs::Permissions::from_mode(0o755)).unwrap();
         let reopened = fixture.open();
         let records = RecordsDirectory::fixture_existing(&custom, &id);
-        crate::usage_store::importer::activate(&records).unwrap();
-        Store::open(&records).unwrap().close().unwrap();
+        crate::usage_store::bootstrap::open_or_initialize(&records)
+            .unwrap()
+            .close()
+            .unwrap();
         assert_eq!(fs::metadata(&custom).unwrap().mode() & 0o777, 0o700);
         assert_eq!(fs::read(&settings).unwrap(), b"{\"sidebarWidth\":371}");
         assert!(reopened.status().unwrap().message.is_none());
@@ -743,7 +745,7 @@ fn located_runtime_records_flush_the_final_native_request_before_pointer_commit(
     let project = "1".repeat(32);
     let environment = Environment::new(
         project.clone(),
-        crate::projects::EnvironmentId::for_agent(&project, crate::agents::AgentKind::Codex),
+        crate::projects::EnvironmentId::for_project(&project),
         crate::agents::AgentKind::Codex,
     )
     .unwrap();

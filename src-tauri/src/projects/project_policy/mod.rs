@@ -93,6 +93,7 @@ fn view(
         .ok_or("Prepare the project policy first.")?;
     let document = brig.policy(&link.name)?.ok_or("Policy not found.")?;
     let plan = brig.plan(project, settings)?;
+    crate::projects::project_github_access::verify_plan(brig, project, &plan)?;
     crate::storage::data_location::require_private_plan_records(private_records, &plan)?;
     let attached = plan["data"]["policies"]
         .as_array()
@@ -289,7 +290,8 @@ pub async fn change_project_policy(
             .iter()
             .any(|process| {
                 process.running
-                    && (process.environment_id.is_none() || process.belongs_to(&project))
+                    && (process.environment_id.is_none()
+                        || process.belongs_to_environment(&project.id, &project.environment_id))
             })
         {
             return Err(

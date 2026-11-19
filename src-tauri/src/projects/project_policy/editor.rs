@@ -20,6 +20,18 @@ impl PolicyEditor {
         {
             return Err("Use a valid policy name and allowed hosts.".into());
         }
+        let mut document = format!("apiVersion: brig.sh/v1alpha1\nkind: Policy\nmetadata:\n  name: {name}\n  description: Prepared by Tugboat\nspec:\n  egress:\n    default: deny\n    allow:");
+        if hosts.is_empty() {
+            document.push_str(" []\n");
+        }
+        for host in hosts {
+            document.push_str(&format!("\n      - host: {host}"));
+        }
+        document.push('\n');
+        Self::create_document(document.as_bytes())
+    }
+
+    pub(crate) fn create_document(document: &[u8]) -> Result<Self, String> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| error.to_string())?
@@ -44,16 +56,8 @@ impl PolicyEditor {
             .mode(0o600)
             .open(&editor.source)
             .map_err(|error| error.to_string())?;
-        let mut document = format!("apiVersion: brig.sh/v1alpha1\nkind: Policy\nmetadata:\n  name: {name}\n  description: Prepared by Tugboat\nspec:\n  egress:\n    default: deny\n    allow:");
-        if hosts.is_empty() {
-            document.push_str(" []\n");
-        }
-        for host in hosts {
-            document.push_str(&format!("\n      - host: {host}"));
-        }
-        document.push('\n');
         source
-            .write_all(document.as_bytes())
+            .write_all(document)
             .map_err(|error| error.to_string())?;
         let mut executable = OpenOptions::new()
             .write(true)

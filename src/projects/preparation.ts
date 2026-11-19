@@ -18,10 +18,10 @@ export interface Plan {
     credentials: { name: string; state: string }[];
   };
 }
-interface Preparation { project: Project; plan: Plan | null; candidates: string[]; message: string | null; fingerprint: string | null }
+interface Preparation { project: Project; plan: Plan | null; message: string | null; fingerprint: string | null }
 
-export async function prepareProject(project: Project, chosenReference: string | null = null): Promise<Preparation> {
-  return invoke<Preparation>('prepare_project', { identifier: project.id, environmentId: project.environmentId, chosenReference });
+export async function prepareProject(project: Project): Promise<Preparation> {
+  return invoke<Preparation>('prepare_project', { identifier: project.id, environmentId: project.environmentId });
 }
 
 export function renderPlan(plan: Plan): void {

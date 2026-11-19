@@ -2,7 +2,6 @@ use super::Removal;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RemovalStep {
-    SignOut,
     Environment,
     Binding,
     Policy,
@@ -13,8 +12,6 @@ impl Removal {
     pub fn validate(&self) -> Result<(), String> {
         if (self.policy_handled && !self.binding_detached)
             || (self.binding_detached && !self.environment_removed)
-            || (self.logged_out && !self.logout)
-            || (self.logout && !self.logged_out && self.environment_removed)
         {
             return Err(
                 "The saved removal checkpoints are out of order. Review the removal record.".into(),
@@ -24,9 +21,6 @@ impl Removal {
     }
 
     pub fn next_step(&self) -> RemovalStep {
-        if self.logout && !self.logged_out {
-            return RemovalStep::SignOut;
-        }
         if !self.environment_removed {
             return RemovalStep::Environment;
         }
@@ -49,7 +43,6 @@ impl Removal {
             return Err("The removal checkpoint changed. Refresh the removal preview.".into());
         }
         match step {
-            RemovalStep::SignOut => self.logged_out = true,
             RemovalStep::Environment => self.environment_removed = true,
             RemovalStep::Binding => self.binding_detached = true,
             RemovalStep::Policy => self.policy_handled = true,
@@ -68,9 +61,7 @@ mod tests {
         let mut removal = Removal {
             reference: "codex@project".into(),
             workspace: "/project".into(),
-            logout: true,
             had_environment: true,
-            logged_out: false,
             stopped: false,
             environment_removed: false,
             binding_detached: false,
@@ -78,7 +69,6 @@ mod tests {
             preserved_policy: false,
         };
         assert!(removal.complete(RemovalStep::Policy).is_err());
-        removal.complete(RemovalStep::SignOut).unwrap();
         assert!(removal.needs_stop(false));
         removal.stopped = true;
         assert!(!removal.needs_stop(false));

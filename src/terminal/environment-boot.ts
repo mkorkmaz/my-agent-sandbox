@@ -1,8 +1,8 @@
-import { agentName, type Project } from '../projects/projects';
+import type { Project } from '../projects/projects';
 import { startBootAnimation } from './boot-animation';
 import type { TerminalRectangle } from './terminal-adapter';
 
-type BootProject = Pick<Project, 'id' | 'environmentId' | 'agentKind'>;
+type BootProject = Pick<Project, 'id' | 'environmentId'>;
 type BootState = { phase: 'idle' } | { phase: 'starting'; project: BootProject }
   | { phase: 'booting'; project: BootProject; identifier: number }
   | { phase: 'settled'; project: BootProject; identifier: number | null };
@@ -42,7 +42,7 @@ export class EnvironmentBoot {
     }
     if (this.state.phase === 'booting' && this.state.identifier !== identifier) { this.hide(); return; }
     if (this.state.phase === 'starting' && identifier !== null) { this.hide(); return; }
-    const message = agentName(this.state.project.agentKind) + ' environment booting';
+    const message = 'Brig environment booting';
     if (this.view.message.textContent !== message) this.view.message.textContent = message;
     this.view.overlay.hidden = false;
     if (!this.view.stop) this.view.stop = startBootAnimation(this.view.canvas);

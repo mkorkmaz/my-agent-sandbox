@@ -78,7 +78,7 @@ fn a_missing_records_folder_fails_close_without_recreating_files() {
     let project = "1".repeat(32);
     let environment = crate::usage_store::Environment::new(
         project.clone(),
-        crate::projects::EnvironmentId::for_agent(&project, crate::agents::AgentKind::Codex),
+        crate::projects::EnvironmentId::for_project(&project),
         crate::agents::AgentKind::Codex,
     )
     .unwrap();

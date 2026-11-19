@@ -15,6 +15,7 @@ pub fn command(command: AgentCommand<'_>, boundary: Boundary) -> Result<GuestCom
             "login".into(),
             "status".into(),
         ],
+        #[cfg(test)]
         AgentCommand::Logout => vec![
             "-c".into(),
             "cli_auth_credentials_store=\"file\"".into(),
@@ -28,7 +29,10 @@ pub fn command(command: AgentCommand<'_>, boundary: Boundary) -> Result<GuestCom
             chat_arguments(vec!["resume".into(), session.argument()], boundary)
         }
     };
-    Ok(GuestCommand::new("codex", arguments))
+    Ok(GuestCommand::new(
+        crate::environment::shared_runtime::program(super::AgentKind::Codex),
+        arguments,
+    ))
 }
 
 fn chat_arguments(session: Vec<String>, boundary: Boundary) -> Vec<String> {

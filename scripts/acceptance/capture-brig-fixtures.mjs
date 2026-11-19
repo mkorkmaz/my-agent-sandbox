@@ -19,8 +19,13 @@ fs.mkdirSync(runtimeDirectory);
 fs.mkdirSync(profileDirectory);
 // Plan capture needs an available executable. This fixture never starts a VM or a hull store.
 fs.writeFileSync(path.join(runtimeDirectory, 'hull'), '#!/bin/sh\nexit 1\n', { mode: 0o700 });
-const claudeProfile = path.join(projectRoot, 'src-tauri/profiles/tugboat-claude.yaml');
-fs.copyFileSync(claudeProfile, path.join(profileDirectory, 'tugboat-claude.yaml'));
+const profileName = 'tugboat-project';
+const profileSource = 'src-tauri/profiles/tugboat-project.yaml';
+const profilePath = path.join(projectRoot, profileSource);
+const profile = fs.readFileSync(profilePath);
+const image = /^image: (ghcr\.io\/brig-sh\/claude-code-stock@sha256:[0-9a-f]{64})$/m.exec(profile.toString())?.[1];
+assert.ok(image, 'The managed profile must declare a pinned image.');
+fs.copyFileSync(profilePath, path.join(profileDirectory, profileName + '.yaml'));
 fs.writeFileSync(editorPath, '#!/bin/sh\nexec /bin/cp "$BRIG_FIXTURE_POLICY" "$1"\n', { mode: 0o700 });
 fs.writeFileSync(policyPath, `apiVersion: brig.sh/v1alpha1
 kind: Policy
@@ -30,6 +35,9 @@ spec:
   egress:
     default: deny
     allow:
+      - host: api.anthropic.com
+      - host: claude.ai
+      - host: platform.claude.com
       - host: auth.openai.com
       - host: chatgpt.com
       - host: api.openai.com
@@ -62,7 +70,7 @@ function invoke(args, environment = childEnvironment, binary = brigPath) {
     maxBuffer: 1024 * 1024,
   });
   return {
-    command: [binary, ...args],
+    command: [binary === brigPath ? "brig" : binary, ...args],
     exitCode: result.status,
     signal: result.signal,
     errorCode: result.error?.code ?? null,
@@ -84,10 +92,11 @@ try {
   assert.match(release.version, /^v\d+\.\d+\.\d+$/);
   const outputDirectory = path.resolve(process.argv[3] ?? path.join(projectRoot, 'tests/fixtures/brig', release.version));
   successful(['policy', 'create', 'bd01-fixture']);
-  successful(['policy', 'attach', 'bd01-fixture', 'codex', '-n', 'bd01-fixture']);
-  successful(['policy', 'check', 'codex', '-n', 'bd01-fixture']);
+  successful(['policy', 'attach', 'bd01-fixture', profileName, '-n', 'bd01-fixture']);
+  successful(['policy', 'check', profileName, '-n', 'bd01-fixture']);
 
-  const args = ['--json', 'plan', '--network', 'isolated', 'codex@bd01-fixture', selectedProject];
+  const args = ['--json', 'plan', '--network', 'isolated', '--cpus', '4', '--mem', '4096',
+    '--image', image, '--home', path.join(fixtureRoot, 'project-home'), profileName + '@bd01-fixture', selectedProject];
   const ready = invoke(args);
   const refused = invoke(args, { ...childEnvironment, BRIG_HYPERVISOR: 'vz' });
   const missingRuntime = invoke(args, { ...childEnvironment, PATH: '/usr/bin:/bin' });
@@ -104,7 +113,7 @@ try {
   assert.equal(JSON.parse(missingRuntime.stdout).data.runtime.available, false);
   assert.equal(missingBrig.errorCode, 'ENOENT');
 
-  const cases = { version, ready, refused, 'missing-runtime': missingRuntime, 'missing-brig': missingBrig };
+  const cases = { version, profile: successful(['agent', 'show', profileName, '--json']), ready, refused, 'missing-runtime': missingRuntime, 'missing-brig': missingBrig };
   fs.mkdirSync(outputDirectory, { recursive: true });
   for (const [name, result] of Object.entries(cases)) {
     const sanitized = JSON.stringify(result, null, 2).replaceAll(fixtureRoot, '/fixture');
@@ -118,55 +127,11 @@ try {
     host: 'darwin/arm64',
     rootReplacement: '/fixture',
     cases: Object.keys(cases),
-    planScope: 'No-boot CLI plan. The runtime is an executable fixture. Native, VM, and account acceptance are separate.',
+    profileSource,
+    profileSha256: createHash('sha256').update(profile).digest('hex'),
+    planScope: 'Real Brig CLI with a disposable profile, policy, home, and runtime executable. No VM or account operation.',
   }, null, 2) + '\n');
-  fs.writeFileSync(policyPath, `apiVersion: brig.sh/v1alpha1
-kind: Policy
-metadata:
-  name: bd01-claude
-spec:
-  egress:
-    default: deny
-    allow:
-      - host: api.anthropic.com
-      - host: platform.claude.com
-      - host: claude.ai
-`);
-  successful(['policy', 'create', 'bd01-claude']);
-  successful(['policy', 'attach', 'bd01-claude', 'tugboat-claude', '-n', 'bd01-claude']);
-  successful(['policy', 'check', 'tugboat-claude', '-n', 'bd01-claude']);
-  const claudeArguments = ['--json', 'plan', '--network', 'isolated', '--home', path.join(fixtureRoot, 'guest-claude'), 'tugboat-claude@bd01-claude', selectedProject];
-  const claudeCases = {
-    profile: successful(['agent', 'show', 'tugboat-claude', '--json']),
-    ready: invoke(claudeArguments),
-    refused: invoke(claudeArguments, { ...childEnvironment, BRIG_HYPERVISOR: 'vz' }),
-    'missing-runtime': invoke(claudeArguments, { ...childEnvironment, PATH: '/usr/bin:/bin' }),
-  };
-  const claudePlan = JSON.parse(claudeCases.ready.stdout).data;
-  assert.equal(claudePlan.runtime.available, true);
-  assert.equal(claudePlan.runtime.backend, 'hvi');
-  assert.equal(claudePlan.home.host, path.join(fixtureRoot, 'guest-claude-bd01-claude'));
-  assert.deepEqual(claudePlan.credentials, []);
-  assert.equal(claudePlan.verify.mode, 'require');
-  assert.ok(JSON.parse(claudeCases.refused.stdout).data.refused.reason);
-  assert.equal(JSON.parse(claudeCases['missing-runtime'].stdout).data.runtime.available, false);
-  const claudeDirectory = path.join(outputDirectory, 'claude-code');
-  fs.mkdirSync(claudeDirectory, { recursive: true });
-  for (const [name, result] of Object.entries(claudeCases)) {
-    assert.equal(result.errorCode, null);
-    assert.equal(result.exitCode, 0, result.stderr);
-    fs.writeFileSync(path.join(claudeDirectory, name + '.json'), JSON.stringify(result, null, 2).replaceAll(fixtureRoot, '/fixture') + '\n');
-  }
-  fs.writeFileSync(path.join(claudeDirectory, 'manifest.json'), JSON.stringify({
-    capturedAt: new Date().toISOString(), brigVersion: release.version, brigCommit: release.commit,
-    apiVersion: 'brig.sh/v1alpha1', agentKind: 'claude-code', rootReplacement: '/fixture',
-    profileSource: 'src-tauri/profiles/tugboat-claude.yaml',
-    profileSha256: createHash('sha256').update(fs.readFileSync(claudeProfile)).digest('hex'),
-    cases: Object.keys(claudeCases),
-    planScope: 'Real Brig CLI with a temporary runtime executable, profile, policy, home, and state. No VM or account operation.',
-  }, null, 2) + '\n');
-  console.log('Captured ' + Object.keys(cases).length + ' cases in ' + outputDirectory);
-  console.log('Captured ' + Object.keys(claudeCases).length + ' Claude cases in ' + claudeDirectory);
+  console.log('Captured ' + Object.keys(cases).length + ' shared project cases in ' + outputDirectory);
 } finally {
   fs.rmSync(fixtureRoot, { recursive: true, force: true });
 }

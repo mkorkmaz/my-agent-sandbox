@@ -195,6 +195,7 @@ dialog { width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 48px); 
 dialog::backdrop { background: #00000045; }
 dialog h2 { margin: 0 0 18px; font-size: 20px; }
 dialog pre { font: inherit; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--surface); border-radius: 5px; }
+#project-gateway-log { max-height: 260px; overflow: auto; }
 .policy-document { font: inherit; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
 .project-view:has(.terminal-panel:not([hidden])) { height: 100%; min-height: 0; overflow: hidden; }
 .project-view:has(.terminal-panel:not([hidden])) .workspace-header { min-height: 86px; padding: 16px 24px; }

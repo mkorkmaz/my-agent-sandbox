@@ -14,7 +14,7 @@ function bootGeometry(dom) {
 }
 
 async function stoppedEnvironment() {
-  let current = { ...project, stage: 'ready' };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -42,7 +42,7 @@ async function stoppedEnvironment() {
 
 test('environment startup shows setup logs and the matching agent boot overlay', async t => {
   for (const [agentKind, name] of [['codex', 'Codex'], ['claude-code', 'Claude Code']]) await t.test(name, async t => {
-    let current = { ...project, agentKind, environmentId: agentKind === 'codex' ? project.environmentId : 'b'.repeat(32), stage: 'ready' };
+    let current = { ...project, agentKind, stage: 'ready', approvedPlan: 'saved-plan' };
     const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
     const harness = await interfaceHarness({
       register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -60,7 +60,7 @@ test('environment startup shows setup logs and the matching agent boot overlay',
     harness.element('choose-folder').click(); await flush();
     assert.equal(harness.element('terminal-panel').hidden, false);
     assert.equal(overlay.hidden, false);
-    assert.equal(harness.element('environment-boot-message').textContent, name + ' environment booting');
+    assert.equal(harness.element('environment-boot-message').textContent, 'Brig environment booting');
     assert.equal(harness.element('environment-boot-canvas').tagName, 'CANVAS');
     const request = harness.calls.find(call => call.command === 'prepare_environment');
     assert.equal(request.args.environmentId, current.environmentId);
@@ -148,7 +148,7 @@ test('completion before a delayed environment start response closes setup withou
 });
 
 test('a completed environment snapshot closes setup without a completion event', async t => {
-  let current = { ...project, stage: 'ready' };
+  let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
@@ -181,7 +181,7 @@ test('foreign and superseded environment events cannot stop the active boot over
   await harness.listeners.get('environment-preparation-finished')({ payload: { project: { ...fixture.prepared().project, stage: 'environment-ready' }, terminalIdentifier: 69, message: null } });
   await harness.listeners.get('environment-preparation-error')({ payload: { projectId: project.id, environmentId: project.environmentId, terminalIdentifier: 69, message: 'Old attempt failed.' } }); await flush();
   assert.equal(harness.element('environment-boot-overlay').hidden, false);
-  assert.equal(harness.element('environment-boot-message').textContent, 'Codex environment booting');
+  assert.equal(harness.element('environment-boot-message').textContent, 'Brig environment booting');
   assert.equal(harness.element('folder-error').hidden, true);
   await fixture.finish();
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
@@ -276,54 +276,46 @@ test('selecting a live local shell prevents a late setup response from taking th
   assert.equal(harness.calls.find(call => call.command === 'terminal_close').args.identifier, 70);
 });
 
-test('switching agents detaches and restores the matching environment boot overlay', async t => {
+test('choosing the next chat agent preserves the shared boot overlay', async t => {
   const fixture = await stoppedEnvironment(), { harness } = fixture;
   t.after(() => harness.dom.window.close());
-  const claude = { ...project, agentKind: 'claude-code', environmentId: 'b'.repeat(32), profile: 'tugboat-claude' };
-  harness.handlers.ensure_project_environment = ({ agentKind }) => agentKind === 'claude-code' ? claude : fixture.prepared().project;
-  const prepared = ({ environmentId }) => environmentId === claude.environmentId ? { project: claude, plan, fingerprint: 'claude-plan', message: null, candidates: [] } : fixture.prepared();
-  harness.handlers.prepare_project = prepared; harness.handlers.preview_project = prepared;
   const choose = async kind => {
     harness.element('agent-choice').value = kind;
     harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change')); await flush();
   };
   await fixture.start();
   await choose('claude-code');
-  assert.equal(harness.element('environment-boot-overlay').hidden, true);
+  assert.equal(harness.element('environment-boot-overlay').hidden, false);
   assert.equal(harness.element('agent-choice').value, 'claude-code');
   await choose('codex');
   assert.equal(harness.element('environment-boot-overlay').hidden, false);
-  assert.equal(harness.element('environment-boot-message').textContent, 'Codex environment booting');
+  assert.equal(harness.element('environment-boot-message').textContent, 'Brig environment booting');
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
 });
 
 test('setup completed while another agent is selected closes only its own terminal', async t => {
   const fixture = await stoppedEnvironment(), { harness } = fixture;
   t.after(() => harness.dom.window.close());
-  const claude = { ...project, agentKind: 'claude-code', environmentId: 'b'.repeat(32), profile: 'tugboat-claude' };
-  harness.handlers.ensure_project_environment = ({ agentKind }) => agentKind === 'claude-code' ? claude : fixture.prepared().project;
-  const prepared = ({ environmentId }) => environmentId === claude.environmentId ? { project: claude, plan, fingerprint: 'claude-plan', message: null, candidates: [] } : fixture.prepared();
-  harness.handlers.prepare_project = prepared; harness.handlers.preview_project = prepared;
   const choose = async kind => {
     harness.element('agent-choice').value = kind;
     harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change')); await flush();
   };
   await fixture.start();
   await choose('claude-code');
-  harness.setTerminal({ identifier: 80, projectId: project.id, environmentId: claude.environmentId, agentKind: 'claude-code', purpose: 'shell', running: true, exitCode: null, conversationId: null, busy: false });
+  harness.setTerminal({ identifier: 80, projectId: project.id, environmentId: project.environmentId, agentKind: 'claude-code', purpose: 'shell', running: true, exitCode: null, conversationId: null, busy: false });
   await harness.listeners.get('terminal-sessions-changed')({ payload: project.id }); await flush();
   harness.element('sidebar-terminal-list').querySelector('[data-terminal-id="80"]').click(); await flush();
   await fixture.finish();
   await harness.listeners.get('terminal-exit')({ payload: { identifier: 70, projectId: project.id, environmentId: project.environmentId, agentKind: 'codex', purpose: 'environment', code: 0 } }); await flush();
   assert.equal(harness.element('agent-choice').value, 'claude-code');
-  assert.equal(harness.element('project-reference').textContent, claude.profile + '@' + claude.label);
+  assert.equal(harness.element('project-reference').textContent, project.profile + '@' + project.label);
   assert.equal(harness.element('terminal-panel').hidden, false);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 80);
   assert.equal(harness.terminals.get(80).running, true);
   assert.equal(harness.terminals.has(70), false);
   await choose('codex');
   assert.equal(harness.element('sidebar-terminal-list').querySelector('[data-terminal-id="70"]'), null);
-  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 1);
@@ -361,7 +353,7 @@ test('a previous project cannot replace the new workspace when environment start
   const other = { ...project, id: 'project-b', environmentId: 'c'.repeat(32), name: 'Other project', path: '/fixture/other-project' };
   harness.handlers.recent_projects = () => [fixture.prepared().project, other];
   harness.handlers.open_project = ({ identifier }) => identifier === other.id ? other : fixture.prepared().project;
-  const prepared = ({ identifier }) => identifier === other.id ? { project: other, plan, fingerprint: 'other-plan', message: null, candidates: [] } : fixture.prepared();
+  const prepared = ({ identifier }) => identifier === other.id ? { project: other, plan, fingerprint: 'saved-plan', message: null, candidates: [] } : fixture.prepared();
   harness.handlers.prepare_project = prepared; harness.handlers.preview_project = prepared;
   await harness.listeners.get('records-changed')({ payload: ['projects'] }); await flush();
   await fixture.start();
@@ -385,7 +377,7 @@ test('completed setup from another project waits for an unrelated launch and the
   const other = { ...project, id: 'project-b', environmentId: 'c'.repeat(32), name: 'Other project', path: '/fixture/other-project' };
   harness.handlers.recent_projects = () => [fixture.prepared().project, other];
   harness.handlers.open_project = ({ identifier }) => identifier === other.id ? other : fixture.prepared().project;
-  const prepared = ({ identifier }) => identifier === other.id ? { project: other, plan, fingerprint: 'other-plan', message: null, candidates: [] } : fixture.prepared();
+  const prepared = ({ identifier }) => identifier === other.id ? { project: other, plan, fingerprint: 'saved-plan', message: null, candidates: [] } : fixture.prepared();
   harness.handlers.prepare_project = prepared; harness.handlers.preview_project = prepared;
   harness.handlers.terminal_start = () => launch.promise;
   await harness.listeners.get('records-changed')({ payload: ['projects'] }); await flush();
@@ -419,7 +411,7 @@ test('terminal checking releases completed setup cleanup when it reuses a shell 
     const other = { ...project, id: 'project-b', environmentId: 'c'.repeat(32), name: 'Other project', path: '/fixture/other-project' };
     harness.handlers.recent_projects = () => [fixture.prepared().project, other];
     harness.handlers.open_project = ({ identifier }) => identifier === other.id ? other : fixture.prepared().project;
-    const prepared = ({ identifier }) => identifier === other.id ? { project: other, plan, fingerprint: 'other-plan', message: null, candidates: [] } : fixture.prepared();
+    const prepared = ({ identifier }) => identifier === other.id ? { project: other, plan, fingerprint: 'saved-plan', message: null, candidates: [] } : fixture.prepared();
     harness.handlers.prepare_project = prepared; harness.handlers.preview_project = prepared;
     await harness.listeners.get('records-changed')({ payload: ['projects'] }); await flush();
     await fixture.start();

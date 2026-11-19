@@ -16,6 +16,11 @@ impl EnvironmentId {
         Self(crate::hash::hex(digest)[..32].into())
     }
 
+    pub fn for_project(project: &str) -> Self {
+        let digest = Sha256::digest(format!("tugboat-project-environment-v1\0{project}"));
+        Self(crate::hash::hex(digest)[..32].into())
+    }
+
     #[cfg(test)]
     pub(super) fn filename(&self) -> String {
         format!("{}.json", self.0)
@@ -33,7 +38,7 @@ impl<'de> Deserialize<'de> for EnvironmentId {
         let value = String::deserialize(deserializer)?;
         if value.len() != 32 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(serde::de::Error::custom(
-                "Invalid agent environment identity.",
+                "Invalid project environment identity.",
             ));
         }
         Ok(Self(value))

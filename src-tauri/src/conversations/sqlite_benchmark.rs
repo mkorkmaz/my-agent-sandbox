@@ -112,7 +112,7 @@ fn turn(index: usize) -> String {
 fn target(project: usize, kind: AgentKind) -> environment_history::Target {
     environment_history::Target {
         project_id: PROJECTS[project].into(),
-        environment_id: projects::EnvironmentId::for_agent(PROJECTS[project], kind),
+        environment_id: projects::EnvironmentId::for_project(PROJECTS[project]),
         agent_kind: kind,
     }
 }
@@ -234,8 +234,17 @@ impl Worker {
         let guard = crate::storage::data_location::RecordsDirectory::fixture(&records);
         #[cfg(not(tugboat_json_baseline))]
         let shared = {
-            crate::usage_store::importer::activate(&guard).unwrap();
-            crate::usage_store::SharedStore::new(crate::usage_store::Store::open(&guard).unwrap())
+            let mut store = crate::usage_store::bootstrap::open_or_initialize(&guard).unwrap();
+            for project in 0..2 {
+                for kind in [AgentKind::Codex, AgentKind::ClaudeCode] {
+                    let target = target(project, kind);
+                    let ledger = load_ledger(&ledger_path(&records, &target)).unwrap();
+                    store
+                        .save_environment(&target.usage_environment().unwrap(), &ledger)
+                        .unwrap();
+                }
+            }
+            crate::usage_store::SharedStore::new(store)
         };
         let mut watches = Vec::new();
         for project in 0..2 {
@@ -385,12 +394,14 @@ impl Worker {
         storage::write(&file, &ledger).unwrap();
         let guard = crate::storage::data_location::RecordsDirectory::fixture(&path);
         let start = Instant::now();
-        crate::usage_store::importer::activate(&guard).unwrap();
-        let import = start.elapsed().as_nanos();
+        let environment = environment.usage_environment().unwrap();
+        let mut store = crate::usage_store::bootstrap::open_or_initialize(&guard).unwrap();
+        seed_unpriced(&mut store, &environment, &ledger);
+        store.close().unwrap();
+        let seed = start.elapsed().as_nanos();
         let start = Instant::now();
         let mut store = crate::usage_store::Store::open(&guard).unwrap();
         let open = start.elapsed().as_nanos();
-        let environment = environment.usage_environment().unwrap();
         let start = Instant::now();
         assert!(store.prepare_claude(&environment).unwrap());
         let prepare = start.elapsed().as_nanos();
@@ -400,7 +411,7 @@ impl Worker {
         let disk = fs::metadata(path.join("usage.sqlite3")).unwrap().len();
         store.close().unwrap();
         fs::remove_dir_all(path).unwrap();
-        json!({"importNs":import,"prepareNs":prepare,"openNs":open,"databaseBytes":disk})
+        json!({"seedNs":seed,"prepareNs":prepare,"openNs":open,"databaseBytes":disk})
     }
     #[cfg(not(tugboat_json_baseline))]
     fn changes(&self) -> u64 {
@@ -455,11 +466,13 @@ impl Worker {
             }
             storage::write(&file, &ledger).unwrap();
             let records = crate::storage::data_location::RecordsDirectory::fixture(&template);
-            crate::usage_store::importer::activate(&records).unwrap();
-            crate::usage_store::Store::open(&records)
-                .unwrap()
-                .close()
-                .unwrap();
+            let mut store = crate::usage_store::bootstrap::open_or_initialize(&records).unwrap();
+            seed_unpriced(
+                &mut store,
+                &environment.usage_environment().unwrap(),
+                &ledger,
+            );
+            store.close().unwrap();
         }
         let path = self.root.join(format!("first-prep-{step}"));
         fs::create_dir(&path).unwrap();
@@ -677,4 +690,23 @@ fn worker() {
             json!({"op":op,"step":step,"endToEndNs":elapsed,"guestParseNs":timing.parser,"backendNs":timing.backend,"otherNs":elapsed.saturating_sub(timing.parser+timing.backend),"detailNs":timing.details,"dataChanges":changes,"result":output}),
         );
     }
+}
+
+#[cfg(not(tugboat_json_baseline))]
+fn seed_unpriced(
+    store: &mut crate::usage_store::Store,
+    environment: &crate::usage_store::Environment,
+    ledger: &Ledger,
+) {
+    store.save_environment(environment, ledger).unwrap();
+    let key = crate::usage_store::codecs::environment_key(&store.connection, environment)
+        .unwrap()
+        .unwrap();
+    store
+        .connection
+        .execute(
+            "UPDATE usage_environments SET claude_pricing_version=0 WHERE environment_key=?1",
+            [key],
+        )
+        .unwrap();
 }

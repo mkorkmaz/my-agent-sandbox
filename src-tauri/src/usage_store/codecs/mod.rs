@@ -53,7 +53,7 @@ pub(crate) fn decode_cursor(row: &Row<'_>, column: &str) -> rusqlite::Result<cra
         .as_str()
         .map_err(|_| invalid("The stored usage cursor does not match its type."))?;
     std::io::copy(
-        &mut super::importer::guard::GuardedRead::new(source.as_bytes()),
+        &mut super::bounded_json::GuardedRead::new(source.as_bytes()),
         &mut std::io::sink(),
     )
     .map_err(|_| invalid("The stored usage cursor exceeds its decoding limits."))?;
@@ -95,7 +95,7 @@ pub(crate) fn ensure_environment(
     pricing_version: i64,
     warnings: &[String],
 ) -> Result<i64, String> {
-    connection.execute("INSERT INTO usage_environments(project_id,environment_id,agent_kind,claude_pricing_version,warnings_json) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(project_id,environment_id) DO NOTHING",params![environment.project_id,environment.environment_id.to_string(),kind(environment.agent_kind),pricing_version,json(&warnings)?]).map_err(error)?;
+    connection.execute("INSERT INTO usage_environments(project_id,environment_id,agent_kind,claude_pricing_version,warnings_json) VALUES(?1,?2,?3,?4,?5) ON CONFLICT(project_id,environment_id,agent_kind) DO NOTHING",params![environment.project_id,environment.environment_id.to_string(),kind(environment.agent_kind),pricing_version,json(&warnings)?]).map_err(error)?;
     environment_key(connection, environment)?
         .ok_or_else(|| "The saved usage environment has a conflicting identity.".into())
 }

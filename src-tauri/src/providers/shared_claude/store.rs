@@ -69,11 +69,12 @@ impl Session {
                     .project_id
                     .bytes()
                     .all(|byte| byte.is_ascii_hexdigit())
-                || binding.environment_id
-                    != EnvironmentId::for_agent(
-                        &binding.project_id,
-                        crate::agents::AgentKind::ClaudeCode,
-                    )
+                || (binding.environment_id != EnvironmentId::for_project(&binding.project_id)
+                    && binding.environment_id
+                        != EnvironmentId::for_agent(
+                            &binding.project_id,
+                            crate::agents::AgentKind::ClaudeCode,
+                        ))
                 || !environments.insert(binding.environment_id.clone())
             {
                 return Err(INVALID.into());

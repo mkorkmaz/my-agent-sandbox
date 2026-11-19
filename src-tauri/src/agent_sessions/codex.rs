@@ -1,15 +1,14 @@
 use crate::{
     agents::{self, AgentCommand, AgentKind, SessionId},
-    environment::{self, CheckedProject},
+    environment::{self, shared_runtime, CheckedProject},
+    projects::Project,
     terminal::{self, Layout},
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{Manager, WebviewWindow};
 
-#[derive(Clone, Copy, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum Action {
-    Login,
+#[derive(Clone, Copy)]
+pub(super) enum Action {
     Codex,
     Resume,
     Shell,
@@ -18,7 +17,6 @@ pub enum Action {
 impl Action {
     fn purpose(self) -> &'static str {
         match self {
-            Self::Login => "login",
             Self::Codex => "codex",
             Self::Resume => "resume",
             Self::Shell => "shell",
@@ -66,8 +64,11 @@ fn login(checked: &CheckedProject) -> Result<LoginStatus, String> {
     }
     let arguments = AgentKind::Codex
         .command(AgentCommand::LoginStatus)?
-        .in_guest(checked.project.reference());
+        .in_output(checked.project.reference());
     let output = checked.brig.run(&arguments, Some(&checked.project.path))?;
+    if output.timed_out || output.cancelled || output.output_exceeded {
+        return Err("Could not verify guest Codex sign-in status.".into());
+    }
     // Status can print part of an API key. Return only the classified method.
     Ok(classify_login(
         output.exit_code,
@@ -105,12 +106,6 @@ fn arguments(
     let session = session_id.map(SessionId::new).transpose()?;
     let request = match action {
         Action::Shell => return admission.prepare(vec!["sh".into(), checked.project.reference()]),
-        Action::Login => {
-            return Err(
-                "Sign in with ChatGPT from Settings, Providers. Project sign-in is no longer used."
-                    .into(),
-            )
-        }
         Action::Codex => AgentCommand::NewChat(None),
         Action::Resume => AgentCommand::Resume(
             session
@@ -124,7 +119,7 @@ fn arguments(
         &[
             "sh".into(),
             checked.project.reference(),
-            "codex".into(),
+            shared_runtime::program(AgentKind::Codex).into(),
             "--help".into(),
         ],
         None,
@@ -141,34 +136,64 @@ fn arguments(
         true => agents::codex::Boundary::Brig,
         false => agents::codex::Boundary::Workspace,
     };
-    let arguments = agents::codex::command(request, boundary)?.in_profile();
+    let command = agents::codex::command(request, boundary)?;
+    let arguments = shared_runtime::interactive(&checked.project, command);
     admission.capabilities()?;
-    admission.prepare(environment::run_arguments(checked, &arguments))
+    admission.prepare(arguments)
 }
 
-#[tauri::command]
-pub async fn start_codex_session(
+#[cfg(test)]
+pub(super) fn proof_resume_arguments(
+    checked: &CheckedProject,
+    session: &SessionId,
+) -> Result<Vec<String>, String> {
+    arguments(
+        checked,
+        Action::Resume,
+        Some(true),
+        Some(&session.argument()),
+    )
+}
+
+pub(super) async fn start_codex_session(
     window: WebviewWindow,
-    identifier: String,
+    project: Project,
     fingerprint: String,
     action: Action,
     use_brig_boundary: Option<bool>,
     session_id: Option<String>,
     layout: Layout,
 ) -> Result<u64, String> {
-    if matches!(action, Action::Login) {
-        return Err(
-            "Sign in with ChatGPT from Settings, Providers. Project sign-in is no longer used."
-                .into(),
-        );
-    }
     let app = window.app_handle().clone();
     crate::providers::provider_login::require_idle(
         &app,
         crate::providers::provider_login::Provider::Chatgpt,
     )?;
-    let project_id = identifier.clone();
+    let project_id = project.id.clone();
+    let target = terminal::AgentTarget::for_project(&project);
     let conversation_id = session_id.clone();
+    if let Some(identifier) = session_id
+        .as_deref()
+        .filter(|_| matches!(action, Action::Resume))
+        .and_then(|session| terminal::running_conversation(&project, session))
+    {
+        return Ok(identifier);
+    }
+    let verification_app = app.clone();
+    let verification_project = project.clone();
+    let verification_fingerprint = fingerprint.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let checked = environment::checked_agent_environment(
+            &verification_app,
+            &verification_project.id,
+            &verification_project.environment_id,
+            AgentKind::Codex,
+            Some(&verification_fingerprint),
+        )?;
+        shared_runtime::verify_codex(&checked)
+    })
+    .await
+    .map_err(|_| "Could not verify the guest Codex package.")??;
     let runtime = app
         .state::<crate::providers::shared_chatgpt::SharedChatgpt>()
         .0
@@ -179,8 +204,13 @@ pub async fn start_codex_session(
     let (command, runtime) = tauri::async_runtime::spawn_blocking(move || {
         let app = command_app;
         let mut runtime = runtime;
-        let checked = environment::checked_project(&app, &identifier, Some(&fingerprint))?;
-        checked.project.require_codex()?;
+        let checked = environment::checked_agent_environment(
+            &app,
+            &project.id,
+            &project.environment_id,
+            AgentKind::Codex,
+            Some(&fingerprint),
+        )?;
         crate::conversations::observe(&app, &checked)?;
         if matches!(action, Action::Resume) {
             let selected = session_id
@@ -205,7 +235,7 @@ pub async fn start_codex_session(
     let terminal_id = terminal::reserve_identifier();
     let result = terminal::start_reserved(
         window,
-        project_id.clone(),
+        project_id,
         action.purpose(),
         command,
         layout,
@@ -213,7 +243,7 @@ pub async fn start_codex_session(
         terminal::Reservation {
             identifier: terminal_id,
             on_exit: None,
-            target: Some(terminal::AgentTarget::codex(&project_id)),
+            target: Some(target),
         },
     )
     .await;
@@ -259,23 +289,15 @@ mod tests {
     }
 
     #[test]
-    fn a_claude_only_project_cannot_use_legacy_codex_account_or_terminal_commands() {
+    fn the_claude_projection_cannot_use_codex_account_or_terminal_commands() {
         let root =
             std::env::temp_dir().join(format!("tugboat-claude-only-codex-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let mut registry = crate::projects::Registry::default();
-        let codex = registry.register(&root, "codex").unwrap();
-        registry
-            .ensure_environment(
-                &codex.id,
-                AgentKind::ClaudeCode,
-                &crate::desktop::settings::Settings::default(),
-            )
+        let codex = registry.register(&root).unwrap();
+        let mut project = registry
+            .agent_environment(&codex.id, &codex.environment_id, AgentKind::ClaudeCode)
             .unwrap();
-        registry
-            .remove_environment(&codex.id, &codex.environment_id)
-            .unwrap();
-        let mut project = registry.project(&codex.id).unwrap();
         assert_eq!(project.agent_kind, AgentKind::ClaudeCode);
         project.stage = crate::projects::ProjectStage::EnvironmentReady;
         let plan = serde_json::json!({"data":{"home":{"host":root.join("home")},"project":{"guest":"/work/project"}}});
@@ -292,7 +314,6 @@ mod tests {
         };
         assert!(login(&checked).err().unwrap().contains("only for Codex"));
         for (action, session) in [
-            (Action::Login, None),
             (Action::Codex, None),
             (Action::Shell, None),
             (Action::Resume, Some("1a5bc5b5-af21-432d-bf07-e2218dd9f9bf")),
@@ -313,7 +334,7 @@ mod tests {
         std::fs::create_dir_all(root.join("sample project")).unwrap();
         let mut project = crate::projects::Registry::load(&root.join("projects.json"))
             .unwrap()
-            .register(&root.join("sample project"), "codex")
+            .register(&root.join("sample project"))
             .unwrap();
         project.stage = crate::projects::ProjectStage::EnvironmentReady;
         let executable = root.join("brig-fixture");
@@ -322,7 +343,7 @@ mod tests {
             r#"#!/bin/sh
 case "$*" in
     *" login status") printf '%s\n' 'Logged in using ChatGPT' ;;
-    *" codex --help") printf '%s\n' '--sandbox --ask-for-approval --no-daemon' ;;
+    *"/codex --help") printf '%s\n' '--sandbox --ask-for-approval --no-daemon' ;;
     *) exit 1 ;;
 esac
 "#,
@@ -381,11 +402,7 @@ esac
             Some("1a5bc5b5-af21-432d-bf07-e2218dd9f9bf")
         )
         .is_err());
-        assert!(arguments(&checked, Action::Login, None, None)
-            .unwrap_err()
-            .contains("Settings, Providers"));
         checked.settings.network = Network::Offline;
-        assert!(arguments(&checked, Action::Login, None, None).is_err());
         assert!(arguments(&checked, Action::Codex, None, None).is_err());
         assert!(arguments(
             &checked,

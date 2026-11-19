@@ -27,10 +27,11 @@ function renderSessionRows(body: HTMLElement, sessions: Conversation[], state: S
   body.replaceChildren();
   for (const conversation of sessions) {
     const row = document.createElement('tr'); row.dataset.sessionId = conversationKey(conversation);
+    const actionTarget = conversation.title + ', ' + agentName(conversation.agentKind);
     const titleCell = document.createElement('td');
     const title = document.createElement(readOnly ? 'span' : 'button'); title.className = 'session-title'; title.title = conversation.title; title.textContent = conversation.title;
     if (title.tagName === 'BUTTON') {
-      title.setAttribute('aria-label', conversation.title + (conversation.agentKind ? ', ' + agentName(conversation.agentKind) : '')); (title as HTMLButtonElement).disabled = state === 'deleted' || busy || conversation.available === false;
+      title.setAttribute('aria-label', actionTarget); (title as HTMLButtonElement).disabled = state === 'deleted' || busy || conversation.available === false;
       title.addEventListener('click', () => { void resume(conversation); });
     }
     const date = document.createElement('span'); date.className = 'session-date';
@@ -46,7 +47,6 @@ function renderSessionRows(body: HTMLElement, sessions: Conversation[], state: S
     for (const value of conversation.usageAvailable === false ? ['—', '—', '—', '—', 'Usage unavailable'] : [usageCount(totals, 'input', true), cachedCount(totals, true), usageCount(totals, 'output', true), usageCount(totals, 'total', true), money(totals)]) {
       const cell = document.createElement('td'); cell.className = 'number-column'; cell.textContent = value; cell.title = conversation.usageAvailable === false ? 'No token measurements are available for this chat.' : [usageCount(totals, 'input') + ' input', cachedCount(totals) + ' cached input', cacheWrites(totals) + ' cache writes', usageCount(totals, 'output') + ' output', usageCount(totals, 'total') + ' total tokens', money(totals) + ' API equivalent', 'Recorded source coverage: ' + conversation.coverage].join(' · '); row.append(cell);
     }
-    const actionTarget = conversation.title + (conversation.agentKind ? ', ' + agentName(conversation.agentKind) : '');
     const actions = document.createElement('td'); actions.className = 'session-row-actions';
     const usage = actionButton('usage', 'Usage for ' + actionTarget, () => { void details(conversation); });
     usage.id = usageButtonId(conversationKey(conversation));
@@ -75,7 +75,7 @@ export function renderDashboard(dashboard: Dashboard, state: SessionState, resum
     }
   });
   const hasClaude = dashboard.conversations.some(conversation => conversation.agentKind === 'claude-code');
-  const hasCodex = dashboard.conversations.some(conversation => conversation.agentKind !== 'claude-code');
+  const hasCodex = dashboard.conversations.some(conversation => conversation.agentKind === 'codex');
   const notes = ['Token API equivalent in USD', 'Includes archived and deleted sessions'];
   if (hasCodex) notes.push('OpenAI catalogue checked ' + dashboard.pricingDate);
   if (hasClaude) notes.push(dashboard.anthropicPricingDate ? 'Anthropic catalogue checked ' + dashboard.anthropicPricingDate : 'See request details for dated Anthropic rates');

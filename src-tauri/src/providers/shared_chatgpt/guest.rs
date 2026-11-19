@@ -5,7 +5,7 @@ use super::{
     store::{Binding, PendingLogin, Session, Store},
 };
 use crate::{
-    environment::{self, CheckedProject},
+    environment::{self, managed_profile, CheckedProject},
     terminal,
 };
 use serde_json::Value;
@@ -46,17 +46,14 @@ pub fn directory(checked: &CheckedProject) -> Result<PathBuf, String> {
     )?;
     let profile: Value =
         serde_json::from_str(&output.stdout).map_err(|_| "Could not verify the Codex profile.")?;
-    if profile["env"]
-        .as_array()
-        .is_some_and(|env| env.iter().any(|item| item["name"] == "CODEX_HOME"))
-        || profile["volumes"]
-            .as_array()
-            .is_some_and(|volumes| !volumes.is_empty())
-        || profile["files"]
-            .as_array()
-            .is_some_and(|files| !files.is_empty())
+    managed_profile::validate(&checked.project, &profile)?;
+    if home != checked.brig.shared_project_home(&checked.project)?
+        || home != checked.paths.host_home
+        || checked.project.stage != crate::projects::ProjectStage::EnvironmentReady
     {
-        return Err("This Codex profile uses a custom credential location. Shared sign-in supports the standard guest .codex directory.".into());
+        return Err(
+            "Prepare the verified project guest before connecting its ChatGPT access copy.".into(),
+        );
     }
     let directory = home.join(".codex");
     match DirBuilder::new().mode(0o700).create(&directory) {
@@ -87,7 +84,12 @@ pub fn require_idle(checked: &CheckedProject, skip_login: bool) -> Result<(), St
         .iter()
         .any(|process| {
             process.running
-                && process.belongs_to(&checked.project)
+                && (process.belongs_to(&checked.project)
+                    || (process.purpose == "shell"
+                        && process.belongs_to_environment(
+                            &checked.project.id,
+                            &checked.project.environment_id,
+                        )))
                 && ["codex", "resume", "shell", "login"].contains(&process.purpose)
                 && !(skip_login && process.purpose == "login" && process.exit_code.is_some())
         })
@@ -116,6 +118,9 @@ pub fn bind(
     checked.project.require_codex()?;
     let replacement = Binding {
         project_id: checked.project.id.clone(),
+        environment_id: (checked.project.environment_id
+            == crate::projects::EnvironmentId::for_project(&checked.project.id))
+        .then(|| checked.project.environment_id.clone()),
         auth_hash: current_hash(&directory)?,
         access_hash: None,
         identity: identity(&directory)?,
@@ -125,7 +130,7 @@ pub fn bind(
     if let Some(binding) = session
         .bindings
         .iter_mut()
-        .find(|binding| binding.belongs_to(&checked.project))
+        .find(|binding| binding.project_id == checked.project.id)
     {
         *binding = replacement;
         return Ok(());
@@ -134,7 +139,7 @@ pub fn bind(
     Ok(())
 }
 
-fn same_access(bytes: &[u8], guest: &Value) -> bool {
+pub(super) fn same_access(bytes: &[u8], guest: &Value) -> bool {
     serde_json::from_slice::<Value>(bytes).is_ok_and(|value| {
         value["tokens"]["refresh_token"] == ""
             && value["tokens"]["access_token"] == guest["tokens"]["access_token"]
@@ -174,6 +179,9 @@ pub fn publish(store: &Store, session: &mut Session) -> Result<(), String> {
         .map_err(|_| "Could not prepare the shared ChatGPT sign-in.")?;
     for index in 0..session.bindings.len() {
         let binding = &session.bindings[index];
+        if !binding.is_current() {
+            continue;
+        }
         let directory = Directory::open(&binding.directory, Some(binding.identity));
         if directory.is_err() {
             if binding.phase() == BindingPhase::Pending {

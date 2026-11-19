@@ -55,8 +55,9 @@ test('dashboard commits require the current project, request, and backend order'
 test('usage commits require the active attempt and release only their own pending read', async () => {
   const { UsageDetailsState } = await source('usage/usage-details-state');
   const usage = new UsageDetailsState();
-  const details = { sessionId: 'session', agents: [{ sessionId: 'session' }] };
-  usage.open('project', 'session', 'environment', 'v1');
+  const target = { projectId: 'project', sessionId: 'session', environmentId: 'environment', agentKind: 'codex' };
+  const details = { agentKind: 'codex', sessionId: 'session', agents: [{ sessionId: 'session' }] };
+  usage.open(target, 'v1');
   const previous = usage.begin();
   assert.equal(usage.begin(), null);
   usage.refresh('v2');
@@ -69,10 +70,10 @@ test('usage commits require the active attempt and release only their own pendin
   assert.equal(usage.show(current, details), true);
   assert.equal(usage.fail(current), false);
   usage.close();
-  usage.open('project', 'session', 'environment', 'v2');
+  usage.open(target, 'v2');
   assert.equal(usage.show(current, details), false);
   assert.equal(usage.details(), details);
-  usage.open('other-project', 'session', 'environment', 'v2');
+  usage.open({ ...target, projectId: 'other-project' }, 'v2');
   assert.equal(usage.details(), null);
 });
 

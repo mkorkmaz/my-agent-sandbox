@@ -1,0 +1,56 @@
+# Managed profile for both agents. The Linux ARM64 Claude base has a Brig signature.
+name: tugboat-project
+desc: Shared Tugboat project guest
+# Brig 0.5.2 accepts a session policy only on an agent profile.
+kind: agent
+binary: bash
+image: ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce
+guestHome: /root
+hypervisor: hvi
+network: isolated
+genericBoot: true
+headless: true
+mem: 4096
+cpus: 4
+secrets: []
+files: []
+env:
+  - name: IS_SANDBOX
+    value: "1"
+  - name: CLAUDE_CONFIG_DIR
+    value: /brig/claude
+  - name: DISABLE_UPDATES
+    value: "1"
+deny: [OPENAI_API_KEY, CODEX_API_KEY, ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, CLAUDE_CODE_OAUTH_TOKEN, GH_TOKEN, GITHUB_TOKEN]
+volumes:
+  - kind: tmpfs
+    path: .claude
+    at: /brig/claude
+    size: 512m
+  - kind: hostmount
+    path: .claude/.claude.json
+    file: true
+  - kind: hostmount
+    path: .claude/settings.json
+    file: true
+  - kind: hostmount
+    path: .claude/CLAUDE.md
+    file: true
+  - kind: hostmount
+    path: .claude/sessions
+  - kind: hostmount
+    path: .claude/projects
+  - kind: hostmount
+    path: .claude/plugins
+  - kind: hostmount
+    path: .claude/skills
+  - kind: hostmount
+    path: .claude/history.jsonl
+    file: true
+staleCredentialFiles: [.claude/.credentials.json]
+onboarding:
+  file: .claude/.claude.json
+  seed:
+    hasCompletedOnboarding: true
+    hasTrustDialogAccepted: true
+  trustKey: [projects, hasTrustDialogAccepted]

@@ -14,6 +14,7 @@ pub enum ProjectStage {
     EnvironmentStarting,
     EnvironmentReady,
     Stopping,
+    UpdatingImage,
     Removing,
 }
 
@@ -58,6 +59,7 @@ mod tests {
             "environment-starting",
             "environment-ready",
             "stopping",
+            "updating-image",
             "removing",
         ] {
             let stage: ProjectStage = serde_json::from_value(serde_json::json!(name)).unwrap();

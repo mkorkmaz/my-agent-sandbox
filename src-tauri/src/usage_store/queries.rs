@@ -19,7 +19,7 @@ impl Store {
                  JOIN usage_environments e ON e.environment_key=g.environment_key
                  WHERE q.source_guest=?1 AND q.model_provider=?2 AND q.response_id=?3
                  AND q.response_id IS NOT NULL AND r.variant_key IS NULL
-                 AND e.project_id=?4 AND e.environment_id=?5"
+                 AND e.project_id=?4 AND e.environment_id=?5 AND e.agent_kind=?6"
             )
             .map_err(error)?;
         let mut ids = BTreeSet::new();
@@ -31,7 +31,8 @@ impl Store {
                         provider,
                         response,
                         environment.project_id,
-                        environment.environment_id.to_string()
+                        environment.environment_id.to_string(),
+                        codecs::kind(environment.agent_kind),
                     ],
                     |row| row.get::<_, String>(0),
                 )
@@ -281,14 +282,7 @@ fn environment_ledger(connection: &rusqlite::Connection, key: i64) -> Result<Led
         .map_err(error)?
         .query_row([key], |row| row.get(0))
         .map_err(error)?;
-    let version: Option<u32> = connection
-        .prepare_cached("SELECT ledger_version FROM legacy_imports WHERE environment_key=?1")
-        .map_err(error)?
-        .query_row([key], |row| row.get(0))
-        .optional()
-        .map_err(error)?;
     Ok(Ledger {
-        schema_version: version.unwrap_or(2),
         warnings: serde_json::from_str(&warnings_json).map_err(error)?,
         ..Ledger::default()
     })

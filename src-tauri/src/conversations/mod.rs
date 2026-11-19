@@ -1202,6 +1202,39 @@ fn resume_dashboard(watch: &Watch, session_id: &str) -> Result<Dashboard, String
     Ok(dashboard)
 }
 
+#[cfg(test)]
+pub(crate) fn image_update_witness(
+    checked: &CheckedProject,
+    records: &crate::storage::data_location::RecordsDirectory,
+    sessions: [(AgentKind, &str); 2],
+) -> Result<(Dashboard, Dashboard), String> {
+    let store = crate::usage_store::SharedStore::new(
+        crate::usage_store::bootstrap::open_or_initialize(records)?,
+    );
+    let targets = sessions.map(|(agent_kind, _)| {
+        let mut target = environment_history::Target::for_project(&checked.project);
+        target.agent_kind = agent_kind;
+        target
+    });
+    let recorded = environment_history::recorded_snapshot(&targets, &store)?;
+    let mut verified = Vec::new();
+    for ((agent_kind, session_id), target) in sessions.into_iter().zip(targets) {
+        let mut project = checked.project.clone();
+        project.agent_kind = agent_kind;
+        let watch = Watch {
+            target: Some(target),
+            records_directory: Some(records.clone()),
+            store: Some(store.clone()),
+            home: checked.paths.host_home.clone(),
+            project: project.guest_project_scope(&checked.paths.guest_project),
+            ledger: project.ledger_file(records.path())?,
+        };
+        verified.push(resume_dashboard(&watch, session_id)?);
+    }
+    store.close()?;
+    Ok((recorded, environment_history::combine(verified.into_iter())))
+}
+
 pub fn require_resume(
     app: &AppHandle,
     checked: &CheckedProject,
@@ -1294,12 +1327,10 @@ pub async fn saved_project_dashboard(
 ) -> Result<Dashboard, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let registry = projects::Registry::load(&projects::file(&app)?)?;
-        let environments = registry.environments(&identifier)?;
-        let mut targets = Vec::new();
-        for environment in environments.iter() {
-            let project = registry.environment(&identifier, &environment.environment_id)?;
-            targets.push(environment_history::Target::for_project(&project));
-        }
+        let targets = registry
+            .agent_views(&identifier)?
+            .each_ref()
+            .map(environment_history::Target::for_project);
         let store = app.state::<crate::usage_store::Runtime>().wait()?;
         environment_history::saved_snapshot(&targets, &store)
     })
@@ -1314,12 +1345,10 @@ pub async fn recorded_project_dashboard(
 ) -> Result<RecordedDashboardUpdate, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let registry = projects::Registry::load(&projects::file(&app)?)?;
-        let environments = registry.environments(&identifier)?;
-        let mut targets = Vec::new();
-        for environment in environments.iter() {
-            let project = registry.environment(&identifier, &environment.environment_id)?;
-            targets.push(environment_history::Target::for_project(&project));
-        }
+        let targets = registry
+            .agent_views(&identifier)?
+            .each_ref()
+            .map(environment_history::Target::for_project);
         let store = app.state::<crate::usage_store::Runtime>().wait()?;
         let history = app.state::<History>();
         let _guard = history.lock.lock().map_err(|error| error.to_string())?;
@@ -1355,16 +1384,16 @@ pub async fn project_dashboard(
 ) -> Result<DashboardUpdate, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let registry = projects::Registry::load(&projects::file(&app)?)?;
-        let environments = registry.environments(&identifier)?;
+        let agents = registry.agent_views(&identifier)?;
         let store = app.state::<crate::usage_store::Runtime>().wait()?;
         let mut checked_watches = Vec::new();
-        for environment in environments.iter() {
-            let project = registry.environment(&identifier, &environment.environment_id)?;
+        for project in agents {
             let target = environment_history::Target::for_project(&project);
-            let watch = environment::checked_environment(
+            let watch = environment::checked_agent_environment(
                 &app,
                 &identifier,
-                Some(&project.environment_id),
+                &project.environment_id,
+                project.agent_kind,
                 None,
             )
             .and_then(|checked| paths(&app, &checked));
@@ -1418,32 +1447,26 @@ pub async fn change_conversation_state(
     identifier: String,
     session_id: String,
     state: SessionState,
-    environment_id: Option<projects::EnvironmentId>,
+    environment_id: projects::EnvironmentId,
+    agent_kind: AgentKind,
 ) -> Result<(), String> {
     if !valid_id(&session_id) {
         return Err("Invalid saved session identity.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        let checked =
-            environment::checked_environment(&app, &identifier, environment_id.as_ref(), None)?;
+        let checked = environment::checked_agent_environment(
+            &app,
+            &identifier,
+            &environment_id,
+            agent_kind,
+            None,
+        )?;
         let watch = paths(&app, &checked)?;
         let history = app.state::<History>();
         let _guard = history.lock.lock().map_err(|error| error.to_string())?;
         synchronize(&watch)?;
         change_state(&watch, &session_id, state, |ids| {
-            if checked.project.agent_kind == AgentKind::Codex {
-                return terminal::conversations_running(&identifier, ids);
-            }
-            terminal::terminal_sessions(identifier.clone())
-                .iter()
-                .any(|process| {
-                    process.belongs_to(&checked.project)
-                        && process.running
-                        && process
-                            .conversation_id
-                            .as_ref()
-                            .is_some_and(|id| ids.contains(id))
-                })
+            terminal::conversations_running(&checked.project, ids)
         })
     })
     .await
@@ -1483,15 +1506,19 @@ pub async fn conversation_usage(
     app: AppHandle,
     identifier: String,
     session_id: String,
-    environment_id: Option<projects::EnvironmentId>,
-) -> Result<ConversationUsageDetails, String> {
+    environment_id: projects::EnvironmentId,
+    agent_kind: AgentKind,
+) -> Result<AgentConversationUsageDetails, String> {
     if !valid_id(&session_id) {
         return Err("Invalid saved session identity.".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
+        let project = projects::Registry::load(&projects::file(&app)?)?.agent_environment(
+            &identifier,
+            &environment_id,
+            agent_kind,
+        )?;
         let store = app.state::<crate::usage_store::Runtime>().wait()?;
-        let project = projects::Registry::load(&projects::file(&app)?)?
-            .resolve_environment(&identifier, environment_id.as_ref())?;
         let history = app.state::<History>();
         let _guard = history.lock.lock().map_err(|error| error.to_string())?;
         let target = environment_history::Target::for_project(&project);
@@ -1501,27 +1528,40 @@ pub async fn conversation_usage(
             .map_err(|error| error.to_string())?
             .get(&target.key())
             .cloned();
-        sql_backend::details(&target, &store, &session_id, |has_variants| {
+        let details = sql_backend::details(&target, &store, &session_id, |has_variants| {
             if let Some(watch) = watch {
                 return Ok(Some(watch.namespace()));
             }
             if !has_variants {
                 return Ok(None);
             }
-            let checked = environment::checked_environment(
+            let checked = environment::checked_agent_environment(
                 &app,
                 &identifier,
-                Some(&project.environment_id),
+                &environment_id,
+                agent_kind,
                 None,
             )?;
             let home = &checked.paths.host_home;
             Ok(Some(guest_namespace(
                 &fs::canonicalize(home).unwrap_or_else(|_| home.into()),
             )))
+        })?;
+        Ok(AgentConversationUsageDetails {
+            agent_kind,
+            details,
         })
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConversationUsageDetails {
+    agent_kind: AgentKind,
+    #[serde(flatten)]
+    details: ConversationUsageDetails,
 }
 
 #[cfg(test)]

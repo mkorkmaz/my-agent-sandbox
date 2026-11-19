@@ -7,6 +7,8 @@ use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+pub(super) mod retired_history;
+
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum RecoveryState {
     Verified,
@@ -217,7 +219,7 @@ impl Store {
                 .is_none_or(|name| name != "usage.sqlite3")
         {
             return Err(
-                "The usage database is not active. Finish the verified import first.".into(),
+                "The usage database is not active. Finish records setup first.".into(),
             );
         }
         Ok(())
