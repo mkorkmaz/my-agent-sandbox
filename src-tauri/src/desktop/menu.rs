@@ -15,7 +15,10 @@ pub fn create(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
                 Some(AboutMetadata {
                     name: Some(name.clone()),
                     version: Some(package.version.to_string()),
-                    credits: Some(package.description.to_owned()),
+                    credits: Some(format!(
+                        "{}\n\nHGM | reformo\nhttps://hgm.com.tr/en\nhttps://reformo.net/en",
+                        package.description,
+                    )),
                     ..Default::default()
                 }),
             )?,

@@ -1,7 +1,8 @@
 use crate::{
     agents::AgentKind,
     environment::{self, CheckedProject},
-    projects, storage, terminal, usage,
+    projects::{self, GuestProjectScope},
+    storage, terminal, usage,
 };
 use graph::Graph;
 use serde::{Deserialize, Serialize};
@@ -242,12 +243,12 @@ fn read_history(home: &Path, guest_project: &Path) -> Result<Vec<Conversation>, 
 
 #[cfg(test)]
 fn scan_history(home: &Path, guest_project: &Path) -> Result<HistoryScan, String> {
-    scan_history_known(home, guest_project, &BTreeMap::new())
+    scan_history_known(home, &guest_project.to_path_buf().into(), &BTreeMap::new())
 }
 
 fn scan_history_known(
     home: &Path,
-    guest_project: &Path,
+    guest_project: &GuestProjectScope,
     known: &BTreeMap<String, SessionRecord>,
 ) -> Result<HistoryScan, String> {
     #[cfg(test)]
@@ -422,7 +423,7 @@ fn scan_history_known(
                         .as_ref()
                         .filter(|exclusion| exclusion.root_session_id == *id)
                         .map(|exclusion| exclusion.root_cwd.clone())
-                        .unwrap_or_else(|| guest_project.into()),
+                        .unwrap_or_else(|| guest_project.current().into()),
                     source_root_id: record.source_root_id.clone(),
                 },
             );
@@ -630,7 +631,7 @@ struct Watch {
     records_directory: Option<crate::storage::data_location::RecordsDirectory>,
     store: Option<crate::usage_store::SharedStore>,
     home: PathBuf,
-    project: PathBuf,
+    project: GuestProjectScope,
     #[cfg(test)]
     ledger: PathBuf,
 }
@@ -751,7 +752,9 @@ fn paths(app: &AppHandle, checked: &CheckedProject) -> Result<Watch, String> {
         records_directory: Some(records),
         store: Some(store),
         home: checked.paths.host_home.clone(),
-        project: checked.paths.guest_project.clone(),
+        project: checked
+            .project
+            .guest_project_scope(&checked.paths.guest_project),
     })
 }
 
@@ -2707,7 +2710,7 @@ mod tests {
             format!("{header}\nthis body must never be parsed\n"),
         )
         .unwrap();
-        let scan = scan_history(&watch.home, &watch.project).unwrap();
+        let scan = scan_history(&watch.home, watch.project.current()).unwrap();
         assert_eq!(scan.sessions.len(), 1);
         assert_eq!(
             scan.lineage_problems.get(SECOND),
@@ -2742,7 +2745,7 @@ mod tests {
         );
         let scan = scan_history_known(
             &home,
-            Path::new("/work/project"),
+            &"/work/project".into(),
             &BTreeMap::from([(FIRST.into(), record)]),
         )
         .unwrap();
@@ -2858,7 +2861,7 @@ mod tests {
             ),
         )
         .unwrap();
-        let sessions = read_history(&watch.home, &watch.project).unwrap();
+        let sessions = read_history(&watch.home, watch.project.current()).unwrap();
         assert_eq!(sessions.len(), 1);
         assert_eq!(sessions[0].id, "00000000-0000-4000-8000-000000000009");
         assert_eq!(sessions[0].lineage.kind, lineage::Kind::Subagent);

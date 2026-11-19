@@ -63,7 +63,6 @@ pub(super) fn arguments(
     use crate::agent_sessions::launch::{Admission, LaunchMode};
     let mode = match action {
         Action::Shell => LaunchMode::Shell,
-        Action::Login => LaunchMode::Login,
         _ => LaunchMode::Chat,
     };
     let mut admission = Admission::begin(
@@ -75,6 +74,12 @@ pub(super) fn arguments(
     if action == Action::Shell {
         return admission.prepare(vec!["sh".into(), checked.project.reference()]);
     }
+    if action == Action::Login {
+        return Err(
+            "Connect the provider in Settings, Providers. Sign-in does not require a project."
+                .into(),
+        );
+    }
     admission.online(
         &checked.settings.network,
         "Claude sign-in and chats are unavailable in offline mode.",
@@ -82,14 +87,6 @@ pub(super) fn arguments(
     if use_brig_boundary == Some(false) {
         return Err(
             "Claude uses the Brig boundary. Enable it before starting this session.".into(),
-        );
-    }
-    if action == Action::Login {
-        admission.capabilities()?;
-        return admission.prepare(
-            AgentKind::ClaudeCode
-                .command(AgentCommand::Login)?
-                .in_guest(checked.project.reference()),
         );
     }
     admission.authorize(
@@ -126,22 +123,6 @@ pub(super) fn arguments(
         checked,
         &AgentKind::ClaudeCode.command(command)?.in_profile(),
     ))
-}
-
-#[cfg(test)]
-pub(super) fn logout(checked: &CheckedProject) -> Result<bool, String> {
-    let arguments = AgentKind::ClaudeCode
-        .command(AgentCommand::Logout)?
-        .in_guest(checked.project.reference());
-    let output = checked.brig.run(&arguments, Some(&checked.project.path))?;
-    if output.exit_code != Some(0) || output.timed_out || output.cancelled || output.output_exceeded
-    {
-        return Err("Claude sign-out failed. Check this environment and try again.".into());
-    }
-    if signed_in(checked)? {
-        return Err("Claude is still signed in. Refresh its status before trying again.".into());
-    }
-    Ok(false)
 }
 
 #[cfg(test)]

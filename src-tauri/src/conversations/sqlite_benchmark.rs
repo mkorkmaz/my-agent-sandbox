@@ -133,7 +133,7 @@ fn watch(root: &Path, records: &Path, project: usize, kind: AgentKind) -> Watch 
             .join("guests")
             .join(PROJECTS[project])
             .join(kind.binary()),
-        project: PathBuf::from(format!("/work/benchmark-{project}")),
+        project: PathBuf::from(format!("/work/benchmark-{project}")).into(),
         ledger: ledger_path(records, &target),
         target: Some(target),
         records_directory: None,
@@ -164,7 +164,7 @@ fn generate_native(watch: &Watch, count: usize) {
                 json!("cli")
             };
             let mut lines = vec![
-                json!({"type":"session_meta","payload":{"id":id,"cwd":watch.project,"source":source,"cli_version":"0.167.0","model_provider":"openai"}}),
+                json!({"type":"session_meta","payload":{"id":id,"cwd":watch.project.current(),"source":source,"cli_version":"0.167.0","model_provider":"openai"}}),
             ];
             for ordinal in 0..8 {
                 lines.push(json!({"type":"turn_context","payload":{"turn_id":turn(ordinal),"model":"gpt-6.1-sol","root_turn_id":turn(ordinal)}}));
@@ -187,10 +187,10 @@ fn generate_native(watch: &Watch, count: usize) {
             .join(format!("{id}.jsonl"));
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         let mut lines = vec![
-            json!({"type":"user","uuid":format!("user-{id}"),"sessionId":id,"cwd":watch.project,"version":"2.1.318","isSidechain":false,"timestamp":"2026-11-13T00:00:00Z","message":{"role":"user","content":"Generated benchmark fixture."}}),
+            json!({"type":"user","uuid":format!("user-{id}"),"sessionId":id,"cwd":watch.project.current(),"version":"2.1.318","isSidechain":false,"timestamp":"2026-11-13T00:00:00Z","message":{"role":"user","content":"Generated benchmark fixture."}}),
         ];
         for ordinal in 0..8 {
-            lines.push(json!({"type":"assistant","uuid":format!("assistant-{id}-{ordinal}"),"sessionId":id,"cwd":watch.project,"version":"2.1.318","isSidechain":false,"timestamp":format!("2026-11-13T00:00:{ordinal:02}Z"),"message":{"id":format!("claude-benchmark-{id}-{ordinal}"),"role":"assistant","model":"claude-opus-5-5","stop_reason":"end_turn","content":[],"usage":{"input_tokens":90,"cache_read_input_tokens":10,"cache_creation_input_tokens":0,"output_tokens":20}}}));
+            lines.push(json!({"type":"assistant","uuid":format!("assistant-{id}-{ordinal}"),"sessionId":id,"cwd":watch.project.current(),"version":"2.1.318","isSidechain":false,"timestamp":format!("2026-11-13T00:00:{ordinal:02}Z"),"message":{"id":format!("claude-benchmark-{id}-{ordinal}"),"role":"assistant","model":"claude-opus-5-5","stop_reason":"end_turn","content":[],"usage":{"input_tokens":90,"cache_read_input_tokens":10,"cache_creation_input_tokens":0,"output_tokens":20}}}));
         }
         fs::write(
             path,

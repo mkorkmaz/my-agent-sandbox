@@ -25,6 +25,8 @@ typedef NS_ENUM(NSUInteger, BrigSelectionState) {
     GhosttyRenderStateRowCells cells;
     GhosttyKeyEncoder keyEncoder;
     GhosttyKeyEvent keyEvent;
+    GhosttyMouseEncoder mouseEncoder;
+    GhosttyMouseEvent mouseEvent;
     uint64_t identifier;
     BrigTerminalInput input;
     BrigTerminalResize resize;
@@ -41,12 +43,14 @@ typedef NS_ENUM(NSUInteger, BrigSelectionState) {
     GhosttyFormatter formatter;
     GhosttyTrackedGridRef selectionAnchor;
     BrigSelectionState selectionState;
+    BOOL rectangularDrag;
     NSCache<NSString *, id> *glyphCache;
     NSTimer *cursorTimer;
     NSTimer *dragTimer;
     NSPoint dragPoint;
     CGFloat scrollRemainder;
     NSTimeInterval lastAccessibilityUpdate;
+    NSRect overlayRectangle;
 }
 - (void)updateGrid;
 @end

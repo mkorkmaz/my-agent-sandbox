@@ -14,6 +14,8 @@ use std::time::Duration;
 mod paths;
 pub use paths::PlanPaths;
 
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+
 #[derive(Clone)]
 pub struct Brig {
     pub executable: PathBuf,
@@ -40,7 +42,7 @@ impl Brig {
         profiles: &std::path::Path,
     ) -> Result<Self, String> {
         let mut brig = self.without_profile_override();
-        if crate::environment::managed_profile::owns(project) {
+        if crate::environment::managed_profile::uses_profile(project) {
             crate::environment::managed_profile::install(profiles)?;
             brig.environment
                 .insert("BRIG_PROFILE_DIR".into(), profiles.to_string_lossy().into());
@@ -58,7 +60,7 @@ impl Brig {
             arguments,
             directory,
             &self.environment,
-            Duration::from_secs(30),
+            COMMAND_TIMEOUT,
             &AtomicBool::new(false),
         )
     }
@@ -69,14 +71,7 @@ impl Brig {
         directory: Option<&std::path::Path>,
     ) -> Result<command::CommandOutput, String> {
         let output = self.run(arguments, directory)?;
-        if output.cancelled
-            || output.timed_out
-            || output.output_exceeded
-            || output.exit_code != Some(0)
-        {
-            let detail: String = output.stderr.chars().take(2000).collect();
-            return Err(format!("Brig operation failed. {detail}"));
-        }
+        check_completion(&output)?;
         Ok(output)
     }
 
@@ -144,6 +139,32 @@ impl Brig {
         let output = self.checked(&arguments, None)?;
         kind.validate_version(&output.stdout)
     }
+}
+
+fn check_completion(output: &command::CommandOutput) -> Result<(), String> {
+    if output.cancelled {
+        return Err("The Brig command was cancelled.".into());
+    }
+    if output.timed_out {
+        return Err(format!(
+            "Brig did not respond within {} seconds.",
+            COMMAND_TIMEOUT.as_secs()
+        ));
+    }
+    if output.output_exceeded {
+        return Err("Brig output exceeded the size limit.".into());
+    }
+    if output.exit_code != Some(0) {
+        let detail: String = output.stderr.chars().take(2000).collect();
+        if !detail.trim().is_empty() {
+            return Err(format!("Brig operation failed. {detail}"));
+        }
+        return Err(match output.exit_code {
+            Some(code) => format!("Brig exited with status {code}."),
+            None => "Brig terminated without an exit status.".into(),
+        });
+    }
+    Ok(())
 }
 
 pub fn fingerprint(value: &Value) -> Result<String, String> {
@@ -241,6 +262,22 @@ pub fn validate_plan_context(
 mod tests {
     use super::*;
     use crate::projects::{Policy, Registry};
+    #[test]
+    fn a_command_timeout_with_empty_stderr_reports_the_time_limit() {
+        let output = command::CommandOutput {
+            stdout: String::new(),
+            stderr: String::new(),
+            exit_code: None,
+            cancelled: false,
+            timed_out: true,
+            output_exceeded: false,
+        };
+        assert_eq!(
+            check_completion(&output).unwrap_err(),
+            "Brig did not respond within 30 seconds."
+        );
+    }
+
     #[test]
     fn successful_refused_and_mismatched_plans_are_checked_by_fields() {
         let fixture: Value = serde_json::from_str(include_str!(

@@ -36,7 +36,7 @@ pub(in crate::conversations) fn read(
     file: File,
     path: PathBuf,
     expected: &str,
-    guest_project: &Path,
+    guest_project: &GuestProjectScope,
     namespace: &str,
     agent: Option<&str>,
 ) -> Result<Option<Transcript>, String> {
@@ -111,7 +111,7 @@ pub(in crate::conversations) fn read(
         {
             return Ok(None);
         }
-        let belongs = directory.starts_with(guest_project);
+        let belongs = guest_project.contains(directory);
         if project_scope.is_some_and(|previous| previous != belongs) {
             return Err("Claude transcript records disagree about their project path.".into());
         }

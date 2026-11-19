@@ -1,6 +1,7 @@
 use super::{AgentEnvironment, EnvironmentId, Environments, Project, ProjectOptions};
 use crate::{agents::AgentKind, desktop::settings};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -51,6 +52,8 @@ pub struct ProjectRecord {
     pub id: String,
     pub name: String,
     pub path: PathBuf,
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    previous_guest_project_names: BTreeSet<String>,
     pub(super) device: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(super) volume_uuid: Option<[u8; 16]>,
@@ -69,6 +72,7 @@ impl From<Project> for ProjectRecord {
             id: project.id,
             name: project.name,
             path: project.path,
+            previous_guest_project_names: project.previous_guest_project_names,
             device: project.device,
             volume_uuid: project.volume_uuid,
             inode: project.inode,
@@ -88,6 +92,7 @@ impl ProjectRecord {
             id: self.id.clone(),
             name: self.name.clone(),
             path: self.path.clone(),
+            previous_guest_project_names: self.previous_guest_project_names.clone(),
             device: self.device,
             volume_uuid: self.volume_uuid,
             inode: self.inode,
@@ -106,6 +111,7 @@ impl ProjectRecord {
             policy: environment.policy.clone(),
             stage: environment.stage.clone(),
             owns_session: environment.owns_session,
+            adopted_managed_profile: environment.adopted_managed_profile,
             owns_binding: environment.owns_binding,
             policy_detached: environment.policy_detached,
             environment_verified: environment.environment_verified,
@@ -170,6 +176,13 @@ impl ProjectRecord {
     }
 
     pub(super) fn validate(&self) -> Result<(), String> {
+        if !self
+            .previous_guest_project_names
+            .iter()
+            .all(|name| super::guest_project_scope::valid_folder_name(name))
+        {
+            return Err("Invalid former guest project folder name.".into());
+        }
         for environment in self.environments.iter() {
             if environment.environment_id
                 != EnvironmentId::for_agent(&self.id, environment.agent_kind)
@@ -179,6 +192,20 @@ impl ProjectRecord {
             self.project(&environment.environment_id)?.validate()?;
         }
         Ok(())
+    }
+
+    pub(super) fn relink_verified_folder(&mut self, path: PathBuf) {
+        let current = path.file_name().and_then(|name| name.to_str());
+        let previous = self.path.file_name().and_then(|name| name.to_str());
+        if let Some(previous) = previous.filter(|name| {
+            Some(*name) != current && super::guest_project_scope::valid_folder_name(name)
+        }) {
+            self.previous_guest_project_names.insert(previous.into());
+        }
+        if let Some(current) = current {
+            self.previous_guest_project_names.remove(current);
+        }
+        self.path = path;
     }
 
     pub(super) fn matches_folder(

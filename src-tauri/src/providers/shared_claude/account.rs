@@ -4,7 +4,11 @@ use super::{
     store::{Account, Binding, Session, Store},
 };
 use crate::{
-    environment::CheckedProject, projects::Registry, storage::data_location::RecordsDirectory,
+    desktop::settings::{self, Settings},
+    environment::{self, CheckedProject},
+    platform::brig::Brig,
+    projects::{Project, Registry},
+    storage::data_location::{self, RecordsDirectory},
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -101,6 +105,38 @@ pub(super) fn announce(app: &AppHandle, status: &Status) {
     }
 }
 
+fn running_binding(
+    app: &AppHandle,
+    registry: &Registry,
+    binding: &Binding,
+) -> Result<Option<CheckedProject>, String> {
+    let Ok(project) = registry.environment(&binding.project_id, &binding.environment_id) else {
+        return Ok(None);
+    };
+    data_location::validate_project_records(app, registry)?;
+    let settings = project.settings(settings::load(&settings::file(app)?)?)?;
+    let brig = environment::brig_for_project(app, &project, &settings)?;
+    check_running_binding(
+        brig,
+        project,
+        settings,
+        &data_location::protected_directories(app)?,
+    )
+}
+
+pub(super) fn check_running_binding(
+    brig: Brig,
+    project: Project,
+    settings: Settings,
+    protected: &[std::path::PathBuf],
+) -> Result<Option<CheckedProject>, String> {
+    // A stopped Claude guest has no in-memory access copy or processes to inspect.
+    if !environment::listed_as_running(&brig, &project)? {
+        return Ok(None);
+    }
+    environment::check_environment(brig, project, settings, None, protected).map(Some)
+}
+
 pub(super) fn require_idle(app: &AppHandle, session: &Session) -> Result<(), String> {
     let registry = Registry::load(&crate::projects::file(app)?)?;
     if crate::terminal::claude_in_use() {
@@ -110,19 +146,9 @@ pub(super) fn require_idle(app: &AppHandle, session: &Session) -> Result<(), Str
         );
     }
     for binding in &session.bindings {
-        if registry
-            .environment(&binding.project_id, &binding.environment_id)
-            .is_err()
-        {
-            continue;
+        if let Some(checked) = running_binding(app, &registry, binding)? {
+            guest::require_idle(&checked)?;
         }
-        let checked = crate::environment::checked_environment(
-            app,
-            &binding.project_id,
-            Some(&binding.environment_id),
-            None,
-        )?;
-        guest::require_idle(&checked)?;
     }
     Ok(())
 }
@@ -241,19 +267,10 @@ pub(super) fn publish(app: &AppHandle, session: &Session) -> Result<(), String> 
     let registry = Registry::load(&crate::projects::file(app)?)?;
     let mut failed = 0;
     for binding in &session.bindings {
-        if registry
-            .environment(&binding.project_id, &binding.environment_id)
-            .is_err()
-        {
-            continue;
-        }
         let result = (|| {
-            let checked = crate::environment::checked_environment(
-                app,
-                &binding.project_id,
-                Some(&binding.environment_id),
-                None,
-            )?;
+            let Some(checked) = running_binding(app, &registry, binding)? else {
+                return Ok(());
+            };
             if checked.project.stage == crate::projects::ProjectStage::EnvironmentReady
                 && checked.settings.network != crate::desktop::settings::Network::Offline
             {

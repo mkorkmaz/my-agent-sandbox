@@ -272,7 +272,6 @@ pub async fn stop_project(
         drop(claude_guard);
         drop(_guard);
         terminal::stop_environment_processes(&project)?;
-        crate::agent_sessions::invalidate(&app, &project)?;
         let _guard = lock.lock().map_err(|error| error.to_string())?;
         let _file_guard = storage::lock(&file)?;
         let mut registry = Registry::load(&file)?;
@@ -308,6 +307,34 @@ pub struct RemovalPreview {
     pub environments: Vec<RemovalPreview>,
     running: bool,
     logout: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged, rename_all_fields = "camelCase")]
+pub enum RemovalError {
+    ReviewRequired {
+        current_reference: String,
+        current_description: String,
+    },
+    Failed(String),
+}
+
+impl From<String> for RemovalError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+impl RemovalPreview {
+    fn check_fingerprint(&self, expected: &str) -> Result<(), RemovalError> {
+        if self.fingerprint == expected {
+            return Ok(());
+        }
+        Err(RemovalError::ReviewRequired {
+            current_reference: self.reference.clone(),
+            current_description: self.description.clone(),
+        })
+    }
 }
 
 pub(crate) fn preview(brig: &Brig, project: &Project) -> Result<RemovalPreview, String> {
@@ -420,24 +447,22 @@ pub async fn remove_project(
     fingerprint: String,
     confirmation: String,
     logout: bool,
-) -> Result<String, String> {
+) -> Result<String, RemovalError> {
     let preflight_app = app.clone();
     let preflight_id = identifier.clone();
     let selected_environment = environment_id.clone();
     let expected = fingerprint.clone();
     let entered = confirmation.clone();
-    let targets = tauri::async_runtime::spawn_blocking(move || {
+    let targets = tauri::async_runtime::spawn_blocking(move || -> Result<_, RemovalError> {
         let registry = Registry::load(&projects::file(&preflight_app)?)?;
         crate::storage::data_location::validate_project_records(&preflight_app, &registry)?;
         let targets =
             removal_target::select(&registry, &preflight_id, selected_environment.as_ref())?;
         let snapshots = removal_target::snapshots(&preflight_app, &targets)?;
         let current = removal_target::combine(&snapshots)?;
-        if current.fingerprint != expected || current.reference != entered {
-            return Err(
-                "The preview or session name does not match. The operation was not started."
-                    .to_owned(),
-            );
+        current.check_fingerprint(&expected)?;
+        if current.reference != entered {
+            return Err("Enter the exact session name to confirm.".to_owned().into());
         }
         Ok(snapshots)
     })
@@ -461,7 +486,6 @@ pub async fn remove_project(
         .await
         .map_err(|error| error.to_string())??;
         terminal::close_environment(app.clone(), &target).await?;
-        crate::agent_sessions::invalidate(&app, &target)?;
         let remove_app = app.clone();
         let lock = projects.0.clone();
         let cleanup = tauri::async_runtime::spawn_blocking(move || {
@@ -907,6 +931,17 @@ esac
             let recovery = preview(&brig, &pending).unwrap();
             assert!(recovery.description.contains("Continue incomplete removal"));
             assert_eq!(recovery.logout, Some(true));
+            assert!(recovery.check_fingerprint(&recovery.fingerprint).is_ok());
+            let stale = recovery
+                .check_fingerprint(&initial.fingerprint)
+                .unwrap_err();
+            assert_eq!(
+                serde_json::to_value(stale).unwrap(),
+                serde_json::json!({
+                    "currentReference": recovery.reference,
+                    "currentDescription": recovery.description,
+                })
+            );
             assert!(continue_removal(
                 &brig,
                 &file,

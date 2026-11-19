@@ -1,4 +1,4 @@
-use crate::{agents::SessionId, environment::CheckedProject};
+use crate::{agents::SessionId, environment::CheckedProject, projects::GuestProjectScope};
 use serde_json::Value;
 use std::ffi::{CString, OsStr};
 use std::fs::{self, File, OpenOptions};
@@ -26,7 +26,11 @@ fn open_at(parent: &File, name: &OsStr, directory: bool) -> Result<Option<File>,
     Err("Could not safely open this Claude transcript. Symbolic links and special files are unsupported.".into())
 }
 
-fn owns_header(file: File, session: &SessionId, guest_project: &Path) -> Result<bool, String> {
+fn owns_header(
+    file: File,
+    session: &SessionId,
+    guest_project: &GuestProjectScope,
+) -> Result<bool, String> {
     if !file
         .metadata()
         .map_err(|error| error.to_string())?
@@ -71,7 +75,7 @@ fn owns_header(file: File, session: &SessionId, guest_project: &Path) -> Result<
             && !directory
                 .components()
                 .any(|part| part == Component::ParentDir)
-            && directory.starts_with(guest_project));
+            && guest_project.contains(directory));
     }
     if bytes.len() as u64 > HEADER_LIMIT {
         return Err("The Claude transcript header exceeds the supported size.".into());
@@ -84,6 +88,9 @@ fn owns_header(file: File, session: &SessionId, guest_project: &Path) -> Result<
 
 pub(super) fn require(checked: &CheckedProject, session: &SessionId) -> Result<(), String> {
     let home = &checked.paths.host_home;
+    let guest_project = checked
+        .project
+        .guest_project_scope(&checked.paths.guest_project);
     let anchor = OpenOptions::new()
         .read(true)
         .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW)
@@ -122,7 +129,7 @@ pub(super) fn require(checked: &CheckedProject, session: &SessionId) -> Result<(
         if transcript_count > 1 {
             return Err("Multiple Claude transcripts use this session ID. Resolve the copies before resuming.".into());
         }
-        found = owns_header(file, session, &checked.paths.guest_project)?;
+        found = owns_header(file, session, &guest_project)?;
     }
     if !found {
         return Err(

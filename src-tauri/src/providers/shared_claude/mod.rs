@@ -46,19 +46,6 @@ pub(crate) fn connect_provider(
     Ok(())
 }
 
-pub(crate) fn ensure(
-    app: &AppHandle,
-    checked: &crate::environment::CheckedProject,
-) -> Result<Status, String> {
-    crate::providers::provider_login::require_idle(
-        app,
-        crate::providers::provider_login::Provider::Claude,
-    )?;
-    let state = app.state::<SharedClaude>();
-    let result = account::ensure(app, &mut state.0.blocking_lock(), checked);
-    result
-}
-
 pub(crate) fn ensure_locked(
     app: &AppHandle,
     runtime: &mut Runtime,

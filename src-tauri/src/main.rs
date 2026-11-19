@@ -99,7 +99,6 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
             application_version,
-            agents::agent_definitions,
             choose_project_folder,
             data_location::storage_location,
             data_location::choose_storage_folder,
@@ -107,7 +106,6 @@ fn main() {
             data_location::cancel_storage_move,
             data_location::restart_for_storage_change,
             projects::register_project,
-            projects::project_environments,
             projects::ensure_project_environment,
             projects::recent_projects,
             projects::rescan_projects,
@@ -128,14 +126,11 @@ fn main() {
             environment::finish_environment,
             codex::start_codex_session,
             agent_sessions::start_agent_session,
-            agent_sessions::agent_account_status,
-            agent_sessions::agent_logout,
             shared_chatgpt::shared_chatgpt_status,
             shared_chatgpt::sync_project_chatgpt,
             shared_chatgpt::use_project_chatgpt,
             shared_chatgpt::retry_shared_chatgpt,
             shared_chatgpt::disconnect_shared_chatgpt,
-            shared_chatgpt::cancel_shared_chatgpt_login,
             shared_claude::shared_claude_status,
             shared_claude::retry_shared_claude,
             shared_claude::disconnect_shared_claude,
@@ -165,7 +160,10 @@ fn main() {
             terminal::terminal_snapshot
         ])
         .setup(|app| {
-            app.manage(data_location::initialize(app.handle()).map_err(std::io::Error::other)?);
+            app.manage(data_location::initialize(
+                &app.path().config_dir()?,
+                app.path().app_config_dir()?,
+            ));
             app.state::<startup::Startup>()
                 .records_resolved()
                 .map_err(std::io::Error::other)?;
@@ -175,7 +173,10 @@ fn main() {
                 .usage_started()
                 .map_err(std::io::Error::other)?;
             records_watch::monitor(app.handle().clone());
-            let window = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+            let window = WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            #[cfg(dev)]
+            let window = window.title(&app.package_info().name);
+            let window = window
                 .on_navigation(|url| {
                     (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                         || (cfg!(debug_assertions)
@@ -200,4 +201,19 @@ fn main() {
         .build(context)
         .expect("Tugboat could not start")
         .run(lifecycle::event);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn application_identity_matches_the_build_mode() {
+        let context: tauri::Context<tauri::Wry> = tauri::generate_context!(test = true);
+        let expected = if tauri::is_dev() {
+            ("Tugboat Dev", "sh.brig.desktop.dev")
+        } else {
+            ("Tugboat", "sh.brig.desktop")
+        };
+        assert_eq!(context.package_info().name, expected.0);
+        assert_eq!(context.config().identifier, expected.1);
+    }
 }

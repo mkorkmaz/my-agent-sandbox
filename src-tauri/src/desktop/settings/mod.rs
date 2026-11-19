@@ -413,6 +413,14 @@ mod tests {
     fn environment_is_an_allow_list_and_telemetry_has_an_effective_value() {
         let mut settings = Settings::default();
         let environment = settings.environment();
+        let home = std::env::home_dir().unwrap();
+        let brig_home = if tauri::is_dev() {
+            home.join(".tugboat-dev")
+        } else {
+            home.clone()
+        };
+        assert_eq!(Path::new(&environment["HOME"]), brig_home);
+        assert_eq!(Path::new(&command::environment()["HOME"]), home);
         let runtime = crate::platform::runtime::directory().unwrap();
         assert_eq!(
             environment.get("PATH").map(String::as_str),

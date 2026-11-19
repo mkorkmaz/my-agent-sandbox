@@ -21,7 +21,12 @@ NSFont *brigTerminalFont(NSString *preferredName, NSURL *fallbackURL) {
 
 @implementation BrigTerminalView
 - (BOOL)isFlipped { return YES; }
-- (BOOL)isOpaque { return YES; }
+- (BOOL)isOpaque { return NSIsEmptyRect(overlayRectangle); }
+- (NSView *)hitTest:(NSPoint)point {
+    NSPoint local = [self convertPoint:point fromView:self.superview];
+    if (NSPointInRect(local, overlayRectangle)) return nil;
+    return [super hitTest:point];
+}
 - (BOOL)acceptsFirstResponder { return YES; }
 - (BOOL)becomeFirstResponder { [self setNeedsDisplay:YES]; return YES; }
 - (BOOL)resignFirstResponder { [self setNeedsDisplay:YES]; return YES; }
@@ -32,6 +37,8 @@ NSFont *brigTerminalFont(NSString *preferredName, NSURL *fallbackURL) {
     ghostty_formatter_free(formatter);
     ghostty_key_event_free(keyEvent);
     ghostty_key_encoder_free(keyEncoder);
+    ghostty_mouse_event_free(mouseEvent);
+    ghostty_mouse_encoder_free(mouseEncoder);
     ghostty_render_state_row_cells_free(cells);
     ghostty_render_state_row_iterator_free(rowIterator);
     ghostty_render_state_free(renderState);
@@ -41,7 +48,8 @@ NSFont *brigTerminalFont(NSString *preferredName, NSURL *fallbackURL) {
     if (!terminal) return;
     uint16_t nextColumns = MAX(2, MIN(1000, floor((self.bounds.size.width - BrigTerminalPaddingX * 2) / cellWidth)));
     uint16_t nextRows = MAX(2, MIN(1000, floor((self.bounds.size.height - BrigTerminalPaddingY * 2) / cellHeight)));
-    CGFloat scale = self.window.backingScaleFactor ?: 2;
+    // Ghostty uses integer pixels; two pixels per point preserve half-point cells.
+    CGFloat scale = MAX(2, self.window.backingScaleFactor);
     uint16_t nextPixelWidth = MIN(UINT16_MAX, round(nextColumns * cellWidth * scale));
     uint16_t nextPixelHeight = MIN(UINT16_MAX, round(nextRows * cellHeight * scale));
     if (columns == nextColumns && rows == nextRows && pixelWidth == nextPixelWidth && pixelHeight == nextPixelHeight) return;
@@ -85,6 +93,8 @@ void *brig_terminal_create(void *windowPointer, uint64_t session, BrigTerminalIn
         ghostty_render_state_row_cells_new(NULL, &view->cells) != GHOSTTY_SUCCESS ||
         ghostty_key_encoder_new(NULL, &view->keyEncoder) != GHOSTTY_SUCCESS ||
         ghostty_key_event_new(NULL, &view->keyEvent) != GHOSTTY_SUCCESS ||
+        ghostty_mouse_encoder_new(NULL, &view->mouseEncoder) != GHOSTTY_SUCCESS ||
+        ghostty_mouse_event_new(NULL, &view->mouseEvent) != GHOSTTY_SUCCESS ||
         ghostty_formatter_terminal_new(NULL, &view->formatter, view->terminal) != GHOSTTY_SUCCESS) return NULL;
     size_t historyBytes = 32 * 1024 * 1024;
     size_t historyLines = 10000;
@@ -111,12 +121,19 @@ void *brig_terminal_create(void *windowPointer, uint64_t session, BrigTerminalIn
     }];
     return (__bridge_retained void *)view;
 }
-void brig_terminal_layout(void *pointer, double x, double y, double width, double height, bool visible) {
+void brig_terminal_layout(void *pointer, double x, double y, double width, double height, bool visible, double overlayX, double overlayY, double overlayWidth, double overlayHeight) {
     BrigTerminalView *view = (__bridge BrigTerminalView *)pointer;
     NSView *parent = view.superview;
     NSRect content = [parent convertRect:view.window.contentLayoutRect fromView:nil];
     double originY = parent.isFlipped ? content.origin.y + y : NSMaxY(content) - y - height;
     if (width >= 20 && height >= 20) view.frame = NSMakeRect(content.origin.x + x, originY, width, height);
+    NSRect overlay = NSIntersectionRect(view.bounds, NSMakeRect(overlayX, overlayY, overlayWidth, overlayHeight));
+    if (NSIsEmptyRect(overlay)) overlay = NSZeroRect;
+    if (!NSEqualRects(view->overlayRectangle, overlay)) {
+        view->overlayRectangle = overlay;
+        [parent setNeedsDisplayInRect:view.frame];
+        [view setNeedsDisplay:YES];
+    }
     view.hidden = !visible;
 }
 void brig_terminal_feed(void *pointer, const uint8_t *data, size_t length) {

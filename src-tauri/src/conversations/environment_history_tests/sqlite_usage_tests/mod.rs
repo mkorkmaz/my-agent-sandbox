@@ -108,6 +108,79 @@ fn saved_project_snapshot_uses_only_recorded_usage_and_keeps_sessions_unavailabl
 }
 
 #[test]
+fn verified_original_folder_rename_preserves_both_agents_and_usage() {
+    let fixture = Fixture::new("sqlite-folder-rename");
+    let original_path = fixture.0.join("p");
+    let renamed_path = fixture.0.join("renamed project");
+    fs::create_dir(&original_path).unwrap();
+    let mut registry = projects::Registry::default();
+    let original = registry.register(&original_path, "codex").unwrap();
+    registry
+        .ensure_environment(
+            &original.id,
+            AgentKind::ClaudeCode,
+            &crate::desktop::settings::Settings::default(),
+        )
+        .unwrap();
+    let records_path = fixture.0.join("records");
+    fs::create_dir(&records_path).unwrap();
+    let records = crate::storage::data_location::RecordsDirectory::fixture(&records_path);
+    importer::activate(&records).unwrap();
+    let store = SharedStore::new(Store::open(&records).unwrap());
+    let mut watches = [AgentKind::Codex, AgentKind::ClaudeCode].map(|kind| {
+        let mut watch = fixture.watch(kind);
+        watch.target = Some(environment_history::Target {
+            project_id: original.id.clone(),
+            environment_id: projects::EnvironmentId::for_agent(&original.id, kind),
+            agent_kind: kind,
+        });
+        watch.records_directory = Some(records.clone());
+        watch.store = Some(store.clone());
+        watch
+    });
+    write_codex(&watches[0]);
+    write_claude(&watches[1]);
+    let original_dashboard =
+        environment_history::combine(watches.iter().map(|watch| synchronize(watch).unwrap().0));
+    assert_eq!(original_dashboard.conversations.len(), 2);
+    assert!(original_dashboard.usage.total > 0);
+
+    fs::rename(&original_path, &renamed_path).unwrap();
+    let renamed = registry.register(&renamed_path, "codex").unwrap();
+    assert_eq!(renamed.id, original.id);
+    assert_eq!(renamed.reference(), original.reference());
+    fs::create_dir(&original_path).unwrap();
+    let replacement = registry.register(&original_path, "codex").unwrap();
+    assert_ne!(replacement.id, original.id);
+    let registry_file = records_path.join("projects.json");
+    storage::write(&registry_file, &registry).unwrap();
+    let registry = projects::Registry::load(&registry_file).unwrap();
+    for watch in &mut watches {
+        let target = watch.target.as_ref().unwrap();
+        let environment = registry
+            .environment(&original.id, &target.environment_id)
+            .unwrap();
+        let guest_project = Path::new("/work").join(environment.path.file_name().unwrap());
+        // A previous refresh can have excluded the original sessions.
+        watch.project = guest_project.clone().into();
+        assert!(synchronize(watch).unwrap().0.conversations.is_empty());
+        watch.project = environment.guest_project_scope(&guest_project);
+        assert!(watch.project.contains(Path::new("/work/p/subdirectory")));
+        assert!(!watch.project.contains(Path::new("/work/p-other")));
+    }
+
+    let refreshed =
+        environment_history::combine(watches.iter().map(|watch| synchronize(watch).unwrap().0));
+    assert_eq!(refreshed.usage, original_dashboard.usage);
+    assert_eq!(refreshed.conversations, original_dashboard.conversations);
+    let targets = watches.map(|watch| watch.target.unwrap());
+    let saved = environment_history::recorded_snapshot(&targets, &store).unwrap();
+    assert_eq!(saved.usage, original_dashboard.usage);
+    assert_eq!(saved.conversations.len(), 2);
+    store.close().unwrap();
+}
+
+#[test]
 fn recorded_snapshot_reflects_an_external_database_commit() {
     let fixture = Fixture::new("sqlite-recorded-external-change");
     let legacy = fixture.watch(AgentKind::Codex);
@@ -253,8 +326,8 @@ fn sql_public_contracts_match_both_agents_and_three_claude_fixtures() {
             value(&offline_expected),
             "{name} offline"
         );
-        assert_eq!(expected.pricing_date, "2026-11-10");
-        assert_eq!(expected.anthropic_pricing_date, "2026-11-13");
+        assert_eq!(expected.pricing_date, "2026-11-17");
+        assert_eq!(expected.anthropic_pricing_date, "2026-11-17");
         if name == "main" {
             assert_eq!(expected.usage.requests, 5);
             assert_eq!(expected.usage.total, 82_948);

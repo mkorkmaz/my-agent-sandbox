@@ -84,13 +84,21 @@ fn begin(app: AppHandle, target: Target) {
                 SHUTDOWN
                     .lock()
                     .unwrap_or_else(|error| error.into_inner())
-                    .abort();
-                complete
+                    .report_failure();
+                let mut alert = complete
                     .dialog()
                     .message(errors.join("\n"))
                     .title("Could not close the app")
-                    .kind(MessageDialogKind::Error)
-                    .show(|_| {});
+                    .kind(MessageDialogKind::Error);
+                if let Some(window) = complete.get_webview_window("main") {
+                    alert = alert.parent(&window);
+                }
+                alert.show(|_| {
+                    SHUTDOWN
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .abort();
+                });
                 return;
             }
             match target {

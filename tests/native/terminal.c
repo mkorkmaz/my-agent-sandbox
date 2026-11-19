@@ -22,6 +22,35 @@ static void format_selection(GhosttyTerminal terminal, Output *output) {
     assert(ghostty_formatter_format(formatter, (GhosttyWriter){.write=capture,.userdata=output}) == GHOSTTY_SUCCESS);
     ghostty_formatter_free(formatter);
 }
+static void checkMouseScrollEncoding(GhosttyTerminal terminal) {
+    ghostty_terminal_reset(terminal);
+    GhosttyTerminalModeConfig alternateScroll = {.mode=GHOSTTY_MODE_MOUSE_ALTERNATE_SCROLL};
+    assert(ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_MODE,&alternateScroll) == GHOSTTY_SUCCESS && alternateScroll.value);
+    write_vt(terminal,"\x1b[?1007l\x1b[?1000h\x1b[?1006h");
+    assert(ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_MODE,&alternateScroll) == GHOSTTY_SUCCESS && !alternateScroll.value);
+    bool tracking=false; assert(ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING,&tracking) == GHOSTTY_SUCCESS && tracking);
+    GhosttyMouseEncoder encoder=NULL; GhosttyMouseEvent event=NULL;
+    assert(ghostty_mouse_encoder_new(NULL,&encoder) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_event_new(NULL,&event) == GHOSTTY_SUCCESS);
+    GhosttyMouseEncoderSize size=GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+    size.screen_width=96; size.screen_height=96; size.cell_width=8; size.cell_height=16;
+    assert(ghostty_mouse_encoder_set(encoder,GHOSTTY_MOUSE_ENCODER_OPT_SIZE,&size) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_encoder_set_from_terminal(encoder,terminal) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_event_set_action(event,GHOSTTY_MOUSE_ACTION_PRESS) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_event_set_position(event,(GhosttyMousePosition){8,32}) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_event_set_button(event,GHOSTTY_MOUSE_BUTTON_FOUR) == GHOSTTY_SUCCESS);
+    uint8_t bytes[128]; size_t length=0;
+    assert(ghostty_mouse_encoder_encode(encoder,event,bytes,sizeof(bytes),&length) == GHOSTTY_SUCCESS);
+    assert(length == strlen("\x1b[<64;2;3M") && memcmp(bytes,"\x1b[<64;2;3M",length) == 0);
+    assert(ghostty_mouse_event_set_button(event,GHOSTTY_MOUSE_BUTTON_FIVE) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_event_set_mods(event,GHOSTTY_MODS_SHIFT | GHOSTTY_MODS_CTRL | GHOSTTY_MODS_ALT) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_encoder_encode(encoder,event,bytes,sizeof(bytes),&length) == GHOSTTY_SUCCESS);
+    assert(length == strlen("\x1b[<93;2;3M") && memcmp(bytes,"\x1b[<93;2;3M",length) == 0);
+    write_vt(terminal,"\x1b[?1000l\x1b[?1006l\x1b[?9h");
+    assert(ghostty_mouse_encoder_set_from_terminal(encoder,terminal) == GHOSTTY_SUCCESS);
+    assert(ghostty_mouse_encoder_encode(encoder,event,bytes,sizeof(bytes),&length) == GHOSTTY_SUCCESS && length == 0);
+    ghostty_mouse_event_free(event); ghostty_mouse_encoder_free(encoder);
+}
 int main(void) {
     GhosttyTerminal terminal = NULL; assert(ghostty_terminal_new(NULL, &terminal, 80, 24) == GHOSTTY_SUCCESS);
     Output output = {0}; ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_USERDATA, &output); ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_WRITE_PTY, (const void *)reply);
@@ -46,8 +75,12 @@ int main(void) {
     assert(ghostty_terminal_resize(terminal,12,6,16,32) == GHOSTTY_SUCCESS); output.length=0; format_selection(terminal,&output); assert(strcmp((const char *)output.bytes,"İstanbul") == 0);
     for (int i=0;i<1000;i++) write_vt(terminal,"history row\r\n");
     GhosttyTerminalScrollViewport scroll={.tag=GHOSTTY_TERMINAL_SCROLL_VIEWPORT_TOP}; ghostty_terminal_scroll_viewport(terminal,scroll); bool active=true; ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE,&active); assert(!active);
+    GhosttyTerminalScrollbar before={0}, after={0}; ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_SCROLLBAR,&before);
+    write_vt(terminal,"appended row\r\n"); ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_SCROLLBAR,&after);
+    ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE,&active); assert(!active && before.offset == after.offset);
     scroll.tag=GHOSTTY_TERMINAL_SCROLL_VIEWPORT_BOTTOM; ghostty_terminal_scroll_viewport(terminal,scroll); ghostty_terminal_get(terminal,GHOSTTY_TERMINAL_DATA_VIEWPORT_ACTIVE,&active); assert(active);
+    checkMouseScrollEncoding(terminal);
     ghostty_key_event_free(event); ghostty_key_encoder_free(encoder); ghostty_terminal_free(terminal);
-    puts("Terminal engine: Unicode, replies, alternate screen, cursor keys, paste, selection/reflow and scrollback passed.");
+    puts("Terminal engine: Unicode, replies, alternate screen, cursor keys, paste, selection/reflow, retained scrollback and mouse wheel encoding passed.");
     return 0;
 }

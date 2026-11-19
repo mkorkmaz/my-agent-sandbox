@@ -76,7 +76,7 @@ pub(super) fn begin(
     target: &Project,
     expected: &str,
     logout: bool,
-) -> Result<(), String> {
+) -> Result<(), RemovalError> {
     let operation = (target.agent_kind == crate::agents::AgentKind::ClaudeCode)
         .then(|| {
             app.state::<crate::agent_sessions::Accounts>()
@@ -99,13 +99,11 @@ pub(super) fn begin(
     let settings = project.settings(settings::load(&settings::file(app)?)?)?;
     let brig = environment::brig_for_project(app, &project, &settings)?;
     let current = environment_preview(&brig, &project)?;
-    if current.fingerprint != expected {
-        return Err(
-            "The removal target or progress changed. Refresh its preview before continuing.".into(),
-        );
-    }
+    current.check_fingerprint(expected)?;
     if logout && !current.has_environment && project.removal.is_none() {
-        return Err("No guest environment exists to sign out of.".into());
+        return Err("No guest environment exists to sign out of."
+            .to_owned()
+            .into());
     }
     project.stage = crate::projects::ProjectStage::Removing;
     project.environment_verified = Some(false);
@@ -122,7 +120,8 @@ pub(super) fn begin(
         policy_handled: false,
         preserved_policy: false,
     });
-    persist_removal(&file, &project)
+    persist_removal(&file, &project)?;
+    Ok(())
 }
 
 pub(super) fn finish(

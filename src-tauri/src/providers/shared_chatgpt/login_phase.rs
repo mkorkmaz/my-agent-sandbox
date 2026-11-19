@@ -18,6 +18,7 @@ impl PendingLogin {
         LoginPhase::Pending
     }
 
+    #[cfg(test)]
     pub fn import(&mut self) -> Result<(), String> {
         if self.phase() != LoginPhase::Pending {
             return Err("This ChatGPT sign-in is no longer pending.".into());

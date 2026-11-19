@@ -6,6 +6,7 @@ import { stripTypeScriptTypes } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { createStore } from 'zustand/vanilla';
+import * as three from 'three';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const terminalStatuses = JSON.parse(fs.readFileSync(root + 'tests/fixtures/terminal-status.json', 'utf8'));
@@ -75,7 +76,7 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
   let nextTerminal = 1;
   const handlers = {
     frontend_ready: () => null, update_menu_state: () => null,
-    application_version: () => '0.3.0',
+    application_version: () => '0.4.0',
     storage_location: () => recordsLocation,
     shared_chatgpt_status: () => sharedAccount,
     sync_project_chatgpt: () => sharedAccount,
@@ -104,7 +105,6 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
     terminal_layout: () => null, terminal_focus: () => null,
     terminal_close: ({ identifier }) => { terminals.delete(identifier); },
     ensure_project_environment: ({ agentKind }) => agentKind === 'codex' ? project : { ...project, agentKind, environmentId: 'b'.repeat(32), profile: 'tugboat-claude' },
-    agent_account_status: ({ identifier, environmentId }) => ({ projectId: identifier, environmentId, state: 'signed-in', message: 'Claude ready.', terminalIdentifier: null }),
     start_agent_session: ({ identifier: projectId, environmentId, action, sessionId }) => {
       const identifier = nextTerminal++;
       const provider = environmentId === 'b'.repeat(32) || (selectedFixture.environmentId === environmentId && selectedFixture.agentKind === 'claude-code') ? 'claude' : 'codex';
@@ -131,6 +131,9 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
   }); }, { context });
   const css = new vm.SyntheticModule([], function() {}, { context });
   const zustand = new vm.SyntheticModule(['createStore'], function() { this.setExport('createStore', createStore); }, { context });
+  const graphics = new vm.SyntheticModule(Object.keys(three), function() {
+    for (const [name, value] of Object.entries(three)) this.setExport(name, value);
+  }, { context });
   function sourceModule(file) {
     if (modules.has(file)) return modules.get(file);
     const module = new vm.SourceTextModule(stripTypeScriptTypes(fs.readFileSync(file, 'utf8')), { context, identifier: file });
@@ -144,6 +147,11 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
     if (name === '@tauri-apps/api/core') return core;
     if (name === '@tauri-apps/api/event') return events;
     if (name === 'zustand/vanilla') return zustand;
+    if (name === 'three') return graphics;
+    if (name.endsWith('?raw')) {
+      const file = path.resolve(path.dirname(parent.identifier), name.slice(0, -4));
+      return new vm.SyntheticModule(['default'], function() { this.setExport('default', fs.readFileSync(file, 'utf8')); }, { context });
+    }
     return sourceModule(path.resolve(path.dirname(parent.identifier), name + '.ts'));
   });
   const ready = module.evaluate();

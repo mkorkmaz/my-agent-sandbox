@@ -5,7 +5,6 @@ mod directory;
 mod guest;
 mod http;
 mod login_phase;
-mod login_process;
 mod renewal;
 mod session_state;
 mod store;
@@ -45,14 +44,6 @@ pub fn ensure(
     account::ensure(app, runtime, checked)
 }
 
-pub fn begin_login(
-    app: &AppHandle,
-    runtime: &mut account::Runtime,
-    checked: &crate::environment::CheckedProject,
-) -> Result<(String, String), String> {
-    account::begin_login(app, runtime, checked)
-}
-
 pub fn detach_project(
     app: &AppHandle,
     runtime: &mut account::Runtime,
@@ -68,24 +59,6 @@ pub fn detach_project(
         return Err("Complete or cancel this project's ChatGPT sign-in first.".into());
     }
     guest::detach(&store, &mut session, project_id, remove_auth)
-}
-
-pub fn finish_login(
-    app: &AppHandle,
-    project: &str,
-    nonce: &str,
-    success: bool,
-) -> Result<account::Status, String> {
-    let state = app.state::<SharedChatgpt>();
-    let mut runtime = state.0.blocking_lock();
-    runtime.record_login_exit(nonce, success);
-    let result = account::finish_login(app, &mut runtime, project, nonce, success);
-    if result.is_err() {
-        if let Ok((_, session)) = account::load(app, &mut runtime) {
-            let _ = app.emit("shared-chatgpt-changed", account::status(&session));
-        }
-    }
-    result
 }
 
 #[tauri::command]
@@ -184,21 +157,6 @@ pub async fn disconnect_shared_chatgpt(app: AppHandle) -> Result<account::Status
         let _ = app.emit("shared-chatgpt-changed", &response);
         Ok(response)
     }).await.map_err(|_| "Could not disconnect the shared ChatGPT account.")?
-}
-
-#[tauri::command]
-pub async fn cancel_shared_chatgpt_login(app: AppHandle) -> Result<account::Status, String> {
-    // Resolve only a terminal registered by this app instance; persisted IDs are never trusted.
-    let mut runtime = app.state::<SharedChatgpt>().0.clone().lock_owned().await;
-    let handle = app.clone();
-    let identifier =
-        tauri::async_runtime::spawn_blocking(move || account::cancel_login(&handle, &mut runtime))
-            .await
-            .map_err(|_| "Could not cancel ChatGPT sign-in.")??;
-    if let Some(identifier) = identifier {
-        crate::terminal::terminal_close(app.clone(), identifier).await?;
-    }
-    shared_chatgpt_status(app).await
 }
 
 pub fn monitor(app: AppHandle) {

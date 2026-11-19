@@ -14,7 +14,9 @@ use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, State};
 
 mod selection;
+mod session_index;
 use selection::SessionSelection;
+use session_index::SessionIndex;
 
 #[derive(Default)]
 pub struct PreparationLocks(pub Mutex<HashMap<(String, EnvironmentId), Arc<Mutex<()>>>>);
@@ -73,6 +75,32 @@ fn matches_template(policy: &Value, settings: &Settings, kind: AgentKind) -> boo
 }
 
 fn candidates(brig: &Brig, project: &Project) -> Result<Vec<String>, String> {
+    let index = SessionIndex::read(brig);
+    if !brig.environment.contains_key("BRIG_PROFILE_DIR") {
+        return inventory_candidates(brig, project, &index, |_| true);
+    }
+    // Brig classifies only profiles visible in the directory used for ls.
+    let managed = crate::environment::managed_profile::CLAUDE_PROFILE;
+    let mut matches = inventory_candidates(
+        &brig.without_profile_override(),
+        project,
+        &index,
+        |profile| profile != managed,
+    )?;
+    matches.extend(inventory_candidates(brig, project, &index, |profile| {
+        profile == managed
+    })?);
+    matches.sort();
+    matches.dedup();
+    Ok(matches)
+}
+
+fn inventory_candidates(
+    brig: &Brig,
+    project: &Project,
+    index: &SessionIndex,
+    in_scope: impl Fn(&str) -> bool,
+) -> Result<Vec<String>, String> {
     let list = brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
     let sandboxes = list["data"]["sandboxes"]
         .as_array()
@@ -94,30 +122,33 @@ fn candidates(brig: &Brig, project: &Project) -> Result<Vec<String>, String> {
         let Some((profile, label)) = reference.split_once('@') else {
             continue;
         };
-        if (project.agent_kind == AgentKind::Codex && profile != project.profile)
+        if !in_scope(profile)
+            || (project.agent_kind == AgentKind::Codex && profile != project.profile)
             || !settings::valid_identifier(profile)
             || !settings::valid_identifier(label)
         {
             continue;
         }
-        let candidate_brig = match crate::environment::managed_profile::owns(project)
-            && profile == project.profile
+        if sandbox["sandbox"]
+            .as_str()
+            .is_some_and(|name| index.excludes(reference, name, &project.path))
         {
-            true => brig.clone(),
-            false => brig.without_profile_override(),
-        };
+            continue;
+        }
         if project.agent_kind == AgentKind::ClaudeCode {
-            let definition = candidate_brig.agent_profile(profile)?;
+            let definition = brig.agent_profile(profile)?;
             if definition["kind"] != "agent" || definition["binary"] != project.agent_kind.binary()
             {
                 continue;
             }
         }
-        let info = candidate_brig.json(
-            &["--json".into(), "info".into(), reference.into()],
-            "Info",
-            None,
-        )?;
+        let info = brig
+            .json(
+                &["--json".into(), "info".into(), reference.into()],
+                "Info",
+                None,
+            )
+            .map_err(|error| format!("brig --json info {reference}: {error}"))?;
         let Some(path) = info["data"]["project"]["host"].as_str() else {
             continue;
         };
@@ -216,13 +247,15 @@ fn prepare_selected(
             });
         }
         if let SessionSelection::Adopt(reference) = selection {
-            let managed = crate::environment::managed_profile::owns(&project)
-                && project.reference() == reference;
             let (profile, label) = reference.split_once('@').ok_or("Invalid Brig session.")?;
+            let managed_profile = brig.environment.contains_key("BRIG_PROFILE_DIR")
+                && profile == crate::environment::managed_profile::CLAUDE_PROFILE;
+            let owned = managed_profile && project.owns_session && project.reference() == reference;
             project.profile = profile.into();
             project.label = label.into();
-            project.owns_session = managed;
-            if !managed {
+            project.owns_session = owned;
+            project.adopted_managed_profile = managed_profile && !owned;
+            if !managed_profile {
                 brig = brig.without_profile_override();
             }
             brig.validate_agent_profile(&project.profile, project.agent_kind)?;

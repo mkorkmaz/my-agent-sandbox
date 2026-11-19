@@ -142,11 +142,7 @@ pub(crate) fn check_environment(
     })
 }
 
-pub(crate) fn is_running(
-    brig: &Brig,
-    project: &Project,
-    paths: &brig::PlanPaths,
-) -> Result<bool, String> {
+pub(crate) fn listed_as_running(brig: &Brig, project: &Project) -> Result<bool, String> {
     let list = brig
         .json(&["--json".into(), "ls".into()], "SandboxList", None)
         .map_err(|message| {
@@ -166,6 +162,17 @@ pub(crate) fn is_running(
     }
     if session["state"] != "running" {
         return Err("The Brig environment state could not be verified. Refresh the project before continuing.".into());
+    }
+    Ok(true)
+}
+
+pub(crate) fn is_running(
+    brig: &Brig,
+    project: &Project,
+    paths: &brig::PlanPaths,
+) -> Result<bool, String> {
+    if !listed_as_running(brig, project)? {
+        return Ok(false);
     }
     let info = brig.json(
         &["--json".into(), "info".into(), project.reference()],

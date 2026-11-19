@@ -180,6 +180,13 @@ export async function checkBundledRuntime(application, requestedRoot, { cleanMac
         assert.equal((await brig(['sh', agent.reference, 'uname', '-s'])).stdout.trim(), 'Linux');
         const instance = JSON.parse((await command(path.join(bin, 'hull'), ['--store-dir', store, 'inspect', plan.sandbox])).stdout);
         assert.equal(instance.backend, 'hvi');
+        const gatewayOption = instance.cmdLine.indexOf('--net-gateway');
+        assert.ok(gatewayOption >= 0, 'The isolated guest must have a network gateway.');
+        const gatewaySocket = instance.cmdLine[gatewayOption + 1];
+        assert.equal(path.dirname(gatewaySocket), path.join(environment.HOME, '.brig'));
+        assert.ok(gatewaySocket.endsWith('.sock.qemu'));
+        const gatewayRecord = gatewaySocket.slice(0, -'.sock.qemu'.length) + '.pid';
+        agent.processesBeforeStop = { hvi: instance.pid, gateway: Number(fs.readFileSync(gatewayRecord, 'utf8').trim()) };
         assert.equal(instance.cmdLine.includes('--no-sandbox'), false, 'The hvi guest must retain its own sandbox.');
         const disks = instance.cmdLine.filter((value, index) => instance.cmdLine[index - 1] === '--disk');
         assert.equal(disks.length, 2, 'The guest must use read-only lower and writable upper ext4 disks.');
@@ -202,7 +209,14 @@ export async function checkBundledRuntime(application, requestedRoot, { cleanMac
       assert.equal(sharedFiles.stdout.trim(), 'bundled-runtime-host');
       assert.equal(fs.readFileSync(path.join(project, agent.label + '-guest.txt'), 'utf8'), agent.kind);
       await check(agent.kind + '-stop-restart-preserves-home', async () => {
+        for (const pid of Object.values(agent.processesBeforeStop)) {
+          assert.ok(Number.isSafeInteger(pid) && pid > 0);
+          process.kill(pid, 0);
+        }
         await brig(['stop', agent.reference]);
+        for (const [role, pid] of Object.entries(agent.processesBeforeStop)) {
+          assert.throws(() => process.kill(pid, 0), { code: 'ESRCH' }, role + ' must exit before Stop returns.');
+        }
         await brig(['run', ...agent.arguments, '--', '--version'], { timeout: 120_000 });
         assert.equal((await brig(['sh', agent.reference, 'cat', agent.marker])).stdout.trim(), agent.kind);
         assert.equal((await json(['info', agent.reference], 'Info')).workspace, agent.home);

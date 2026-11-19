@@ -49,3 +49,253 @@
  	}
  	return nil
  }
+diff --git a/cmd/hull/stop.go b/cmd/hull/stop.go
+--- a/cmd/hull/stop.go
++++ b/cmd/hull/stop.go
+@@ -24 +23,0 @@
+-	"os/exec"
+@@ -26 +25 @@
+-	"strconv"
++	"slices"
+@@ -34,0 +34 @@
++	"golang.org/x/sys/unix"
+@@ -125 +125,3 @@
+-			_ = s.SaveInstance(state)
++			if err := s.SaveInstance(state); err != nil {
++				return fmt.Errorf("record stop intent for instance %s: %w", instanceID, err)
++			}
+@@ -126,0 +129,12 @@
++		// Earlier hull builds could clear the PID of a live monitor when its
++		// executable path contained spaces. Check the exact argv on explicit Stop.
++		if state.PID == 0 && len(state.CmdLine) > 0 {
++			reaped, err := stopUnrecordedVMM(s, state, time.Duration(timeout)*time.Second)
++			if err != nil {
++				return fmt.Errorf("could not verify stop for instance %s: %w", instanceID, err)
++			}
++			if reaped {
++				fmt.Printf("Instance %s stopped\n", instanceID)
++				return nil
++			}
++		}
+@@ -261,17 +275 @@
+-// vmmProcessMatches reports whether pid's argv looks like one of our VMMs,
+-// guarding stop against pid reuse after a VMM crash.
+-// reapOrphanVMM finds and kills a VMM that was spawned but never had its pid
+-// recorded, and reports whether it killed one.
+-//
+-// The record is written before the spawn precisely so this is possible: a run
+-// killed between Start() and the pid write leaves "starting" with pid 0 and a
+-// live VMM. Without this, stop marked that record stopped, rm deleted the
+-// instance directory -- which is the running VM's rootfs, disk image and log --
+-// and the name went back into circulation while the VM was still up. The
+-// process outlived all three.
+-//
+-// The match is the whole recorded argv, not a pid and not a substring. A pid is
+-// exactly what we do not have, and a substring risks killing something else on
+-// a busy machine; argv is what we recorded, it is unique per instance because
+-// it carries that instance's own paths, and requiring all of it means a
+-// coincidence cannot satisfy it.
++// reapOrphanVMM ends a monitor whose launch did not finish recording its PID.
+@@ -278,0 +277,8 @@
++	reaped, err := stopUnrecordedVMM(s, state, 0)
++	if err != nil {
++		log.Warnf("instance %s: could not recover its monitor: %v", state.ID, err)
++	}
++	return reaped
++}
++
++func stopUnrecordedVMM(s *store.Store, state *store.InstanceState, grace time.Duration) (bool, error) {
+@@ -280 +286 @@
+-		return false
++		return false, nil
+@@ -282,4 +288 @@
+-	want := strings.Join(state.CmdLine, " ")
+-	// -ww so long argv is not truncated to the terminal width; the paths that
+-	// make this unique are at the end of the line.
+-	out, err := exec.Command("/bin/ps", "-axww", "-o", "pid=,command=").Output()
++	process, err := unrecordedVMM(state.CmdLine)
+@@ -287 +290 @@
+-		return false
++		return false, err
+@@ -289,6 +292,7 @@
+-	killed := false
+-	for _, line := range strings.Split(string(out), "\n") {
+-		line = strings.TrimSpace(line)
+-		pidStr, cmd, ok := strings.Cut(line, " ")
+-		if !ok {
+-			continue
++	if process == nil {
++		return false, nil
++	}
++	pid := int(process.Proc.P_pid)
++	if grace > 0 {
++		if err := signalUnrecordedVMM(s, state, process, syscall.SIGTERM); err != nil {
++			return false, err
+@@ -296,2 +300,2 @@
+-		if strings.TrimSpace(cmd) != want {
+-			continue
++		if waitForExit(pid, grace) {
++			return true, nil
+@@ -299,2 +303,23 @@
+-		pid, perr := strconv.Atoi(pidStr)
+-		if perr != nil || pid <= 0 {
++	}
++	if err := signalUnrecordedVMM(s, state, process, syscall.SIGKILL); err != nil {
++		return false, err
++	}
++	if !waitForExit(pid, forceKillGrace) {
++		return false, fmt.Errorf("monitor process %d is still running after SIGKILL", pid)
++	}
++	return true, nil
++}
++
++func unrecordedVMM(expected []string) (*unix.KinfoProc, error) {
++	if !isVMMExecutable(expected[0]) {
++		return nil, errors.New("recorded command does not name a supported monitor")
++	}
++	processes, err := unix.SysctlKinfoProcSlice("kern.proc.uid", unix.Geteuid())
++	if err != nil {
++		return nil, fmt.Errorf("list monitor processes: %w", err)
++	}
++	var match *unix.KinfoProc
++	for index := range processes {
++		process := &processes[index]
++		pid := int(process.Proc.P_pid)
++		if pid <= 0 {
+@@ -303,14 +328,5 @@
+-		// Re-check immediately before signalling.
+-		//
+-		// The decision to reap comes from a record read before the `ps` above,
+-		// and that `ps` costs about 50ms on a busy machine. In that window the
+-		// instance can finish starting and be recorded "running", or the pid can
+-		// be recycled. The path this replaced re-verified per pid before
+-		// signalling; the first version of this one did not, and went straight
+-		// from a stale snapshot to SIGKILL.
+-		//
+-		// Two questions, both cheap: is this still one of our VMMs, and does the
+-		// record still say nobody owns it?
+-		if !processIsAVMM(pid, nil) {
+-			log.Debugf("instance %s: pid %d is no longer one of our VMMs; not signalling it",
+-				state.ID, pid)
++		argv, err := processArgv(pid)
++		if err != nil && unix.ByteSliceToString(process.Proc.P_comm[:]) == filepath.Base(expected[0]) && !errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
++			return nil, fmt.Errorf("read monitor process %d arguments: %w", pid, err)
++		}
++		if err != nil || !slices.Equal(argv, expected) {
+@@ -319,5 +335,2 @@
+-		if fresh, ferr := s.GetInstance(state.ID); ferr == nil &&
+-			(fresh.PID > 0 || fresh.Status == "running") {
+-			log.Warnf("instance %s finished starting while we were looking for its VMM "+
+-				"(pid %d is now recorded); leaving it alone", state.ID, fresh.PID)
+-			return false
++		if match != nil {
++			return nil, errors.New("multiple monitor processes match the recorded command")
+@@ -325,7 +338 @@
+-		log.Warnf("instance %s: found a VMM (pid %d) that was started but never recorded; "+
+-			"killing it", state.ID, pid)
+-		if kerr := syscall.Kill(pid, syscall.SIGKILL); kerr != nil {
+-			log.Warnf("instance %s: could not kill pid %d: %v", state.ID, pid, kerr)
+-			continue
+-		}
+-		killed = true
++		match = process
+@@ -333 +340 @@
+-	return killed
++	return match, nil
+@@ -335,0 +343,25 @@
++func signalUnrecordedVMM(s *store.Store, state *store.InstanceState, process *unix.KinfoProc, signal syscall.Signal) error {
++	fresh, err := s.GetInstance(state.ID)
++	if err != nil {
++		return fmt.Errorf("re-read the instance record: %w", err)
++	}
++	if fresh.ID != state.ID || fresh.PID != 0 || fresh.Status != state.Status ||
++		!fresh.StartTime.Equal(state.StartTime) || !slices.Equal(fresh.CmdLine, state.CmdLine) {
++		return errors.New("the instance record changed while locating its monitor")
++	}
++	pid := int(process.Proc.P_pid)
++	argv, argvErr := processArgv(pid)
++	current, processErr := unix.SysctlKinfoProc("kern.proc.pid", pid)
++	if errors.Is(syscall.Kill(pid, 0), syscall.ESRCH) {
++		return nil
++	}
++	if argvErr != nil || processErr != nil || current.Proc.P_starttime != process.Proc.P_starttime ||
++		!slices.Equal(argv, state.CmdLine) {
++		return fmt.Errorf("could not verify monitor process %d before sending %s", pid, signal)
++	}
++	if err := syscall.Kill(pid, signal); err != nil && !errors.Is(err, syscall.ESRCH) {
++		return fmt.Errorf("send %s to monitor process %d: %w", signal, pid, err)
++	}
++	return nil
++}
++
+@@ -357,0 +390,13 @@
++func isVMMExecutable(executable string) bool {
++	base := filepath.Base(executable)
++	if vmmExecutables[base] {
++		return true
++	}
++	for _, prefix := range vmmExecutablePrefixes {
++		if strings.HasPrefix(base, prefix) {
++			return true
++		}
++	}
++	return false
++}
++
+@@ -370,2 +415,3 @@
+-	out, err := exec.Command("/bin/ps", "-p", strconv.Itoa(pid), "-o", "lstart=,command=").Output()
+-	if err != nil {
++	// ps flattens argv, which loses the argument boundaries in a bundle path.
++	argv, err := processArgv(pid)
++	if err != nil || len(argv) == 0 || !isVMMExecutable(argv[0]) {
+@@ -374,28 +419,0 @@
+-	line := strings.TrimSpace(string(out))
+-	if line == "" {
+-		return false
+-	}
+-	// ps prints lstart as a fixed 24-character date, then the command.
+-	const lstartLen = 24
+-	if len(line) <= lstartLen {
+-		return false
+-	}
+-	started, cmdline := strings.TrimSpace(line[:lstartLen]), strings.TrimSpace(line[lstartLen:])
+-
+-	fields := strings.Fields(cmdline)
+-	if len(fields) == 0 {
+-		return false
+-	}
+-	base := filepath.Base(fields[0])
+-	isVMM := vmmExecutables[base]
+-	if !isVMM {
+-		for _, prefix := range vmmExecutablePrefixes {
+-			if strings.HasPrefix(base, prefix) {
+-				isVMM = true
+-				break
+-			}
+-		}
+-	}
+-	if !isVMM {
+-		return false
+-	}
+@@ -407 +425 @@
+-	if len(state.CmdLine) > 0 && strings.Join(state.CmdLine, " ") == cmdline {
++	if slices.Equal(state.CmdLine, argv) {
+@@ -413,11 +431,3 @@
+-	// ParseInLocation, not Parse: `ps -o lstart=` prints LOCAL wall-clock time
+-	// with no zone, and parsing it as UTC makes every process look
+-	// (UTC-offset) hours out. On a UTC+3 machine that made every live VMM
+-	// appear to have started three hours in the future, so the reuse check
+-	// rejected it and stop refused to signal a VM it should have stopped.
+-	when, perr := time.ParseInLocation("Mon Jan  2 15:04:05 2006", started, time.Local)
+-	if perr != nil {
+-		// Unparseable: fall back to the name match rather than refusing to act
+-		// at all, and say so in the log rather than silently.
+-		log.Debugf("could not parse the start time %q for pid %d: %v", started, pid, perr)
+-		return true
++	process, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
++	if err != nil {
++		return false
+@@ -425 +435,2 @@
+-	return !when.After(state.StartTime.Add(5 * time.Second))
++	started := time.Unix(process.Proc.P_starttime.Unix())
++	return !started.After(state.StartTime.Add(5 * time.Second))

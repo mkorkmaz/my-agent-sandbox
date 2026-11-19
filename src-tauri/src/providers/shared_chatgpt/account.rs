@@ -1,3 +1,4 @@
+use super::login_phase::LoginPhase;
 use super::renewal::{CredentialWrite, RenewalRetry};
 use super::session_state::AccountState;
 use super::{
@@ -5,7 +6,6 @@ use super::{
     guest, http,
     store::{PendingLogin, Session, Store},
 };
-use super::{login_phase::LoginPhase, login_process::LoginProcess};
 use crate::{
     environment::{self, CheckedProject},
     projects,
@@ -21,7 +21,6 @@ use tauri::{AppHandle, Emitter};
 #[derive(Default)]
 pub struct Runtime {
     pending_write: CredentialWrite,
-    login: LoginProcess,
     retry: RenewalRetry,
     error: Option<String>,
 }
@@ -30,21 +29,6 @@ pub struct Runtime {
 pub struct SharedChatgpt(pub Arc<tauri::async_runtime::Mutex<Runtime>>);
 
 impl Runtime {
-    pub fn attach_login_process(&mut self, nonce: String, identifier: u64) -> Result<(), String> {
-        self.login.attach(nonce, identifier)
-    }
-
-    pub fn record_login_exit(&mut self, nonce: &str, success: bool) {
-        self.login.record(nonce, success);
-    }
-
-    pub fn recovery_success(&self, pending: &PendingLogin) -> bool {
-        pending.phase() == LoginPhase::Imported
-            || self
-                .login
-                .result()
-                .is_some_and(|(nonce, success)| nonce == pending.nonce && success)
-    }
     pub(crate) fn reconnect_records(
         &mut self,
         records: &data_location::RecordsDirectory,
@@ -60,7 +44,7 @@ impl Runtime {
             return Err("The pending ChatGPT write belongs to a different records dataset.".into());
         }
         *previous = records.clone();
-        // Login results and staging paths belong to their existing guest, not this folder.
+        // Saved staging paths belong to their existing guest, not this folder.
         Ok(())
     }
 
@@ -368,55 +352,11 @@ pub fn require_idle(app: &AppHandle, session: &Session, skip_login: bool) -> Res
     Ok(())
 }
 
-pub fn begin_login(
-    app: &AppHandle,
-    runtime: &mut Runtime,
-    checked: &CheckedProject,
-) -> Result<(String, String), String> {
-    checked.project.require_codex()?;
-    let (store, mut session) = load(app, runtime)?;
-    if session.pending_login.is_some() {
-        return Err("A ChatGPT sign-in is already in progress.".into());
-    }
-    session.generation_after(3)?;
-    require_idle(app, &session, false)?;
-    guest::require_idle(checked, false)?;
-    guest::publish(&store, &mut session)?;
-    let mut random = [0u8; 16];
-    if unsafe { libc::getentropy(random.as_mut_ptr().cast(), random.len()) } != 0 {
-        return Err("Could not create the ChatGPT sign-in transaction.".into());
-    }
-    let nonce = random
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    let (directory, guest_path) = guest::login_directory(checked, &nonce)?;
-    session.generation = session
-        .generation
-        .checked_add(1)
-        .ok_or("The account record generation is invalid.")?;
-    session.pending_login = Some(PendingLogin {
-        project_id: checked.project.id.clone(),
-        nonce: nonce.clone(),
-        identity: guest::identity(&directory)?,
-        directory,
-        imported: false,
-        cancelled: false,
-    });
-    if let Err(error) = store.save(&session) {
-        guest::remove_login_directory(session.pending_login.as_ref().unwrap())?;
-        return Err(error);
-    }
-    runtime.login = LoginProcess::Idle;
-    Ok((nonce, guest_path))
-}
-
 pub fn finish_login(
     app: &AppHandle,
     runtime: &mut Runtime,
     project_id: &str,
     nonce: &str,
-    success: bool,
 ) -> Result<Status, String> {
     let (store, mut session) = load(app, runtime)?;
     let Some(pending) = session.pending_login.clone() else {
@@ -425,21 +365,7 @@ pub fn finish_login(
     if pending.nonce != nonce || pending.project_id != project_id {
         return Ok(status(&session));
     }
-    let checked = if success && pending.phase() == LoginPhase::Pending {
-        require_idle(app, &session, true)?;
-        Some(environment::checked_project(app, project_id, None)?)
-    } else {
-        None
-    };
-    complete_login(
-        &store,
-        &mut session,
-        project_id,
-        nonce,
-        success,
-        checked.as_ref(),
-    )?;
-    runtime.login = LoginProcess::Idle;
+    complete_login(&store, &mut session, project_id, nonce)?;
     runtime.error = None;
     runtime.retry.allow_retry();
     let response = status(&session);
@@ -452,8 +378,6 @@ pub fn complete_login(
     session: &mut Session,
     project_id: &str,
     nonce: &str,
-    success: bool,
-    checked: Option<&CheckedProject>,
 ) -> Result<(), String> {
     session.validate()?;
     let Some(mut pending) = session.pending_login.clone() else {
@@ -462,34 +386,11 @@ pub fn complete_login(
     if pending.nonce != nonce || pending.project_id != project_id {
         return Ok(());
     }
-    let changes = if success && pending.phase() == LoginPhase::Pending {
-        2
-    } else {
-        1
-    };
-    session.generation_after(changes)?;
-    if success && pending.phase() == LoginPhase::Pending {
-        let checked = checked.ok_or(
-            "Reconnect the sign-in project's environment to finish connecting the shared account.",
-        )?;
-        if checked.project.id != project_id
-            || guest::identity(&pending.directory)? != pending.identity
-        {
-            return Err("The temporary ChatGPT sign-in directory changed.".into());
-        }
-        let credentials = guest::read(&pending.directory)?
-            .ok_or("The ChatGPT sign-in did not save credentials.")?;
-        let directory = guest::directory(checked)?;
-        guest::bind(session, checked, directory)?;
-        session.connect(credentials)?;
-        pending.import()?;
-        session.pending_login = Some(pending.clone());
-        store.save(session)?;
-    }
+    session.generation_after(1)?;
     if pending.phase() == LoginPhase::Imported {
         guest::publish(store, session)?;
     }
-    if !success && pending.phase() != LoginPhase::Imported {
+    if pending.phase() != LoginPhase::Imported {
         pending.cancel()?;
         session.pending_login = Some(pending.clone());
         store.save(session)?;
@@ -503,64 +404,15 @@ pub fn complete_login(
     store.save(session)
 }
 
-pub fn cancel_login(app: &AppHandle, runtime: &mut Runtime) -> Result<Option<u64>, String> {
-    let (store, mut session) = load(app, runtime)?;
-    let Some(pending) = &mut session.pending_login else {
-        return Ok(None);
-    };
-    if pending.phase() == LoginPhase::Imported {
-        return Err(
-            "The new account is saved. Select Retry connection to finish connecting it.".into(),
-        );
-    }
-    pending.cancel()?;
-    let nonce = pending.nonce.clone();
-    // Save cancellation before stopping the process. Restart must not adopt its late auth file.
-    session.generation = session
-        .generation
-        .checked_add(1)
-        .ok_or("The account record generation is invalid.")?;
-    store.save(&session)?;
-    let identifier = runtime
-        .login
-        .process()
-        .filter(|(registered, _)| *registered == nonce.as_str())
-        .and_then(|(_, identifier)| {
-            terminal::terminal_snapshot(identifier)
-                .filter(|process| {
-                    process.agent_kind == Some(crate::agents::AgentKind::Codex)
-                        && process.purpose == "login"
-                        && process.running
-                })
-                .map(|_| identifier)
-        });
-    if identifier.is_none() {
-        let pending = session.pending_login.as_ref().unwrap();
-        drop(store);
-        finish_login(app, runtime, &pending.project_id, &pending.nonce, false)?;
-    }
-    Ok(identifier)
-}
-
 pub fn read_status(app: &AppHandle, runtime: &mut Runtime) -> Result<Status, String> {
     let (_, session) = load(app, runtime)?;
-    if runtime.login.process().is_some_and(|(_, id)| {
-        terminal::terminal_snapshot(id).is_none_or(|process| !process.running)
-    }) {
-        runtime.login.clear_process();
-    }
     if let Some(pending) = &session.pending_login {
-        if runtime.login.process().is_none() {
-            let success = runtime.recovery_success(pending);
-            let interrupted =
-                pending.phase() != LoginPhase::Imported && runtime.login.result().is_none();
-            let mut response =
-                finish_login(app, runtime, &pending.project_id, &pending.nonce, success)?;
-            if interrupted {
-                response.message = "The interrupted ChatGPT sign-in was cancelled. Your previous shared account was preserved. Sign in again in Settings if needed.".into();
-            }
-            return Ok(response);
+        let imported = pending.phase() == LoginPhase::Imported;
+        let mut response = finish_login(app, runtime, &pending.project_id, &pending.nonce)?;
+        if !imported {
+            response.message = "The interrupted ChatGPT sign-in was cancelled. Your previous shared account was preserved. Sign in again in Settings if needed.".into();
         }
+        return Ok(response);
     }
     if session.credentials.is_none() {
         return Ok(candidate_status(&session, &candidates(app)?));
@@ -569,16 +421,9 @@ pub fn read_status(app: &AppHandle, runtime: &mut Runtime) -> Result<Status, Str
 }
 
 pub fn flush(app: &AppHandle, runtime: &mut Runtime) -> Result<(), String> {
-    if matches!(&runtime.pending_write, CredentialWrite::Clean) && runtime.login.result().is_none()
-    {
+    if matches!(&runtime.pending_write, CredentialWrite::Clean) {
         return Ok(());
     }
     load(app, runtime)?;
-    if runtime.login.result().is_some() {
-        read_status(app, runtime)?;
-    }
-    if runtime.login.result().is_some() {
-        return Err("Finish saving the ChatGPT sign-in before closing Tugboat.".into());
-    }
     Ok(())
 }

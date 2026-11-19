@@ -1,3 +1,21 @@
+fn configure_development_identity() {
+    if !tauri_build::is_dev() {
+        return;
+    }
+    let mut config: serde_json::Map<String, serde_json::Value> =
+        match std::env::var_os("TAURI_CONFIG") {
+            Some(overrides) => serde_json::from_slice(overrides.as_encoded_bytes())
+                .expect("TAURI_CONFIG must be a JSON object"),
+            None => serde_json::Map::new(),
+        };
+    config.insert("productName".into(), "Tugboat Dev".into());
+    config.insert("identifier".into(), "sh.brig.desktop.dev".into());
+    let config = serde_json::Value::Object(config);
+    // tauri-build and generate_context! run in separate processes.
+    std::env::set_var("TAURI_CONFIG", config.to_string());
+    println!("cargo:rustc-env=TAURI_CONFIG={config}");
+}
+
 fn main() {
     let install = std::path::Path::new("../.build/libghostty/install");
     assert!(
@@ -37,5 +55,6 @@ fn main() {
     println!("cargo:rerun-if-changed=native/TerminalTheme.h");
     println!("cargo:rerun-if-changed=native/WindowAppearance.m");
     println!("cargo:rerun-if-changed=native/WindowAppearance.h");
+    configure_development_identity();
     tauri_build::build();
 }

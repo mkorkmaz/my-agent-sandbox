@@ -15,47 +15,12 @@ pub enum AgentKind {
     ClaudeCode,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum AgentOperation {
-    Login,
-    LoginStatus,
-    Logout,
-    NewChat,
-    Resume,
-}
-
 pub enum AgentCommand<'a> {
     Version,
-    Login,
     LoginStatus,
     Logout,
     NewChat(Option<&'a SessionId>),
     Resume(&'a SessionId),
-}
-
-impl AgentOperation {
-    pub fn command(self, session: Option<&SessionId>) -> Result<AgentCommand<'_>, String> {
-        if session.is_some() && !matches!(self, Self::NewChat | Self::Resume) {
-            return Err("This agent operation does not accept a session ID.".into());
-        }
-        match self {
-            Self::Login => Ok(AgentCommand::Login),
-            Self::LoginStatus => Ok(AgentCommand::LoginStatus),
-            Self::Logout => Ok(AgentCommand::Logout),
-            Self::NewChat => Ok(AgentCommand::NewChat(session)),
-            Self::Resume => Ok(AgentCommand::Resume(
-                session.ok_or("Choose a saved agent session to resume.")?,
-            )),
-        }
-    }
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentDefinition {
-    kind: AgentKind,
-    operations: [AgentOperation; 5],
 }
 
 impl AgentKind {
@@ -114,20 +79,6 @@ fn valid_version(version: &str) -> bool {
         && version
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b".-+".contains(&byte))
-}
-
-#[tauri::command]
-pub fn agent_definitions() -> [AgentDefinition; 2] {
-    [AgentKind::Codex, AgentKind::ClaudeCode].map(|kind| AgentDefinition {
-        kind,
-        operations: [
-            AgentOperation::Login,
-            AgentOperation::LoginStatus,
-            AgentOperation::Logout,
-            AgentOperation::NewChat,
-            AgentOperation::Resume,
-        ],
-    })
 }
 
 #[cfg(test)]

@@ -147,7 +147,7 @@ pub(in crate::conversations) fn resolve(
     sessions: &mut BTreeMap<String, claude::metadata::Transcript>,
     known: &BTreeMap<String, SessionRecord>,
     home: &Path,
-    project: &Path,
+    project: &GuestProjectScope,
     namespace: &str,
 ) {
     let mut sources: BTreeMap<_, _> = known

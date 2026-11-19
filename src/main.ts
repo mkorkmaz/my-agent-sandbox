@@ -14,13 +14,15 @@ import { initializeProjectPolicy } from './projects/project-policy';
 import { renderDashboard, emptyUsage, savedSessionsStatus, type Dashboard, type SessionState } from './dashboard/dashboard';
 import { showDialog } from './ui/dialogs';
 import { initializeSidebar } from './sidebar/sidebar';
+import { initializeHelp } from './help/help';
 import { initializeDataLocation } from './settings/data-location';
 import { initializeChatgptAccount, type ChatgptAccount, type ChatgptAccountStatus } from './providers/chatgpt-account';
 import { initializeClaudeAccount, type ClaudeAccount } from './providers/claude-account';
 import { renderSkeleton, setBusy, setLoading } from './ui/loading';
 import { TerminalLaunch, type TerminalLaunchRequest } from './terminal/terminal-launch';
-import { updateTerminal } from './terminal/terminal-adapter';
+import { updateTerminal, type TerminalLayout } from './terminal/terminal-adapter';
 import { TerminalLayoutQueue } from './terminal/terminal-layout';
+import { EnvironmentBoot } from './terminal/environment-boot';
 import { RequestState } from './ui/request-state';
 import { ProjectRescan } from './projects/project-rescan';
 import { DashboardState, type DashboardRequest } from './dashboard/dashboard-state';
@@ -36,10 +38,14 @@ function element<T extends HTMLElement>(id: string): T {
 
 const projectView = element('project-view');
 const settingsView = element('settings-view');
+const helpView = element('help-view');
 const projectNavigation = element<HTMLButtonElement>('project-navigation');
 const settingsNavigation = element<HTMLButtonElement>('settings-navigation');
+const helpNavigation = element<HTMLButtonElement>('help-navigation');
 initializeSettingsTabs();
+initializeHelp();
 const chooseFolderButton = element<HTMLButtonElement>('choose-folder');
+const refreshSessionsButton = element<HTMLButtonElement>('refresh-sessions');
 const projectSettingsDialog = element<HTMLDialogElement>('project-settings-dialog');
 const usageDialog = element<HTMLDialogElement>('session-usage-dialog');
 const usageInfo = element<HTMLDetailsElement>('usage-info');
@@ -83,7 +89,7 @@ let selectedPlanFingerprint: string | null = null;
 const planRequests = new RequestState();
 let pendingRecordPlanRefresh: ProjectContext | null = null;
 let planRetryAction: 'prepare' | 'preview' | 'environment' = 'prepare';
-const emptyDashboard: Dashboard = { conversations: [], usage: emptyUsage, coverage: 'unknown', pricingDate: '2026-11-10', warnings: [] };
+const emptyDashboard: Dashboard = { conversations: [], usage: emptyUsage, coverage: 'unknown', pricingDate: '2026-11-17', warnings: [] };
 let sessionView: SessionState = 'active';
 const dashboardState = new DashboardState();
 let selectedConversationId: string | null = null;
@@ -96,6 +102,7 @@ const projectRescan = new ProjectRescan();
 let projectRescanError: string | null = null;
 const terminalPanel = element('terminal-panel');
 const terminalSurface = element('terminal-surface');
+const environmentBoot = new EnvironmentBoot();
 const startTerminalButton = element<HTMLButtonElement>('start-terminal');
 renderSkeleton(element('recent-project-list'), 3);
 renderSkeleton(element('sidebar-project-list'));
@@ -162,7 +169,8 @@ function planFeedback(message: string | null, retry = false, busy = false): void
   element('project-plan-status').textContent = message ?? '';
   setBusy(element('project-plan-status'), busy);
   setBusy(element('preparation-status'), busy);
-  setWorkspaceStatus('project-plan', busy ? message : null, 'project-dashboard');
+  const showingBoot = !terminalPanel.hidden && environmentBoot.pending(appData.selectedProject);
+  setWorkspaceStatus('project-plan', busy && !showingBoot ? message : null, 'project-dashboard');
   element('retry-project-plan').hidden = !retry;
   element('retry-project-plan').textContent = planRetryAction === 'environment' ? 'Retry environment' : 'Retry setup';
 }
@@ -187,7 +195,7 @@ async function ensureSelectedEnvironment(): Promise<void> {
     planFeedback('End running sessions to apply the saved environment settings.'); return;
   }
   planFeedback('Starting the project environment with your saved settings…', false, true);
-  await openTerminal('prepare_environment', { identifier: appData.selectedProject.id, environmentId: appData.selectedProject.environmentId, fingerprint: selectedPlanFingerprint }, 'Starting project environment…', false);
+  await openTerminal('prepare_environment', { identifier: appData.selectedProject.id, environmentId: appData.selectedProject.environmentId, fingerprint: selectedPlanFingerprint }, 'Starting project environment…');
 }
 
 function currentTerminal(): TerminalStatus | null {
@@ -252,6 +260,7 @@ async function refreshTerminals(projectId = appData.selectedProject?.id): Promis
 }
 
 function updateTerminalActions(): void {
+  environmentBoot.render(appData.selectedProject, terminalIdentifier, terminalVisibility() === 'visible');
   const terminalRunning = appData.terminals.some(terminal => terminal.running);
   element('close-terminal').textContent = appData.terminals.find(terminal => terminal.identifier === terminalIdentifier)?.running ? 'Close terminal' : 'Close output';
   const closing = terminalIdentifier !== null && terminalLaunch.isClosing(terminalIdentifier);
@@ -269,11 +278,14 @@ async function syncMenus(): Promise<void> {
   element<HTMLButtonElement>('start-codex').disabled = busy || !canStartChat();
   element<HTMLButtonElement>('guest-shell').disabled = busy || !environmentReady();
   projectNavigation.disabled = busy;
-  element<HTMLButtonElement>('refresh-sessions').disabled = busy || dashboardState.pending();
-  setBusy(element('refresh-sessions'), dashboardState.pending());
+  refreshSessionsButton.disabled = busy;
   setBusy(chooseFolderButton, folderChoice.pending());
   setBusy(element('terminal-status'), terminalLaunch.blocksChanges());
-  for (const button of document.querySelectorAll<HTMLButtonElement>('.sidebar-project, .sidebar-session, .recent-project, .project-record-forget')) button.disabled = (button.classList.contains('sidebar-session') ? terminalLaunch.blocksChanges() || projectSelection.pending() || folderChoice.pending() : busy) || button.dataset.available === 'false';
+  for (const button of document.querySelectorAll<HTMLButtonElement>('.sidebar-project, .sidebar-session, .recent-project, .project-record-forget')) {
+    const status = appData.terminals.find(terminal => String(terminal.identifier) === button.dataset.terminalId);
+    const inspectingSetup = pendingEnvironmentKey !== null && status && (status.purpose === 'local' || status.purpose === 'environment' && appData.selectedProject && terminalMatches(status, appData.selectedProject));
+    button.disabled = (button.classList.contains('sidebar-session') ? terminalLaunch.blocksChanges() && !inspectingSetup || projectSelection.pending() || folderChoice.pending() : busy) || button.dataset.available === 'false';
+  }
   renderSessionDashboard();
   scheduleProjectRescan();
   try { await invoke('update_menu_state', { projectId: appData.selectedProject?.id ?? null, busy }); }
@@ -288,9 +300,13 @@ function terminalVisibility(): TerminalVisibility {
   return 'visible';
 }
 
-function terminalLayout(): { x: number; y: number; width: number; height: number; visible: boolean } {
+function terminalLayout(): TerminalLayout {
+  environmentBoot.render(appData.selectedProject, terminalIdentifier, terminalVisibility() === 'visible');
   const rectangle = terminalSurface.getBoundingClientRect();
-  return { x: rectangle.x, y: rectangle.y, width: rectangle.width, height: rectangle.height, visible: terminalVisibility() === 'visible' };
+  const layout: TerminalLayout = { x: rectangle.x, y: rectangle.y, width: rectangle.width, height: rectangle.height, visible: terminalVisibility() === 'visible' };
+  const overlay = environmentBoot.bounds(rectangle);
+  if (overlay) layout.overlay = overlay;
+  return layout;
 }
 
 function terminalUpdatesAllowed(identifier: number): boolean {
@@ -298,6 +314,7 @@ function terminalUpdatesAllowed(identifier: number): boolean {
 }
 
 function updateTerminalLayout(): Promise<void> {
+  environmentBoot.render(appData.selectedProject, terminalIdentifier, terminalVisibility() === 'visible');
   return terminalLayouts.request(async () => {
     const identifier = terminalIdentifier;
     if (identifier === null || !terminalUpdatesAllowed(identifier)) return;
@@ -307,7 +324,7 @@ function updateTerminalLayout(): Promise<void> {
 }
 
 async function focusTerminal(identifier: number): Promise<void> {
-  if (!terminalUpdatesAllowed(identifier)) return;
+  if (!terminalUpdatesAllowed(identifier) || terminalVisibility() !== 'visible' || environmentBoot.blocksFocus(identifier)) return;
   await updateTerminal('terminal_focus', { identifier }, () => !terminalUpdatesAllowed(identifier));
 }
 
@@ -352,11 +369,18 @@ function projectRescanStatus(message: string | null, busy = false): void {
   if (status.textContent !== (message ?? '')) status.textContent = message ?? '';
 }
 
+function shouldRescanProjectLibrary(): boolean {
+  return projectRescan.started() && !projectView.hidden && appData.selectedProject === null
+    && (appData.projects.length > 0 || projectRescanError !== null);
+}
+
 function scheduleProjectRescan(): void {
-  const needed = projectRescan.started() && !projectView.hidden && appData.selectedProject === null
-    && (projectRescanError !== null || appData.projects.some(project => project.available === false));
   const busy = projectRescan.scanning() || folderChoice.pending() || projectSelection.pending() || preparingSelected() || terminalLaunch.blocksChanges();
-  projectRescan.schedule(needed, busy, rescanProjects);
+  projectRescan.schedule(shouldRescanProjectLibrary(), busy, rescanProjects);
+}
+
+function rescanVisibleProjectLibrary(): void {
+  if (shouldRescanProjectLibrary()) void rescanProjects();
 }
 
 const forgetProjectDialog = element<HTMLDialogElement>('forget-project-dialog');
@@ -456,8 +480,6 @@ async function refreshConversations(saved = false): Promise<void> {
   const status = element('session-list-status');
   status.hidden = true;
   status.textContent = 'Loading sessions…';
-  element<HTMLButtonElement>('refresh-sessions').disabled = true;
-  setBusy(element('refresh-sessions'), true);
   try {
     const result = await invoke<Dashboard>(saved ? 'saved_project_dashboard' : 'project_dashboard', { identifier: projectId });
     if (!dashboardState.accepts(request) || appData.selectedProject?.id !== projectId) return;
@@ -473,9 +495,7 @@ async function refreshConversations(saved = false): Promise<void> {
   } finally {
     if (dashboardState.accepts(request)) {
       dashboardState.finish(request);
-      setBusy(element('refresh-sessions'), false);
       renderSessionDashboard();
-      element<HTMLButtonElement>('refresh-sessions').disabled = terminalLaunch.blocksChanges() || projectSelection.pending() || preparingSelected();
     }
   }
 }
@@ -493,13 +513,16 @@ function applyDashboard(result: Dashboard, delivery: DashboardRequest | string):
   return true;
 }
 function renderSessionDashboard(): void {
+  const refreshing = dashboardState.pending();
+  setBusy(refreshSessionsButton, refreshing);
+  refreshSessionsButton.setAttribute('aria-disabled', String(refreshing));
   const dashboard = dashboardState.current();
   renderDashboard(dashboard ?? emptyDashboard, sessionView, resumeConversation, changeConversationState, usageDetails.open, conversationChange.pending() || terminalLaunch.blocksChanges() || projectSelection.pending() || folderChoice.pending());
   const dashboardLoaded = dashboardState.loaded();
   const dashboardError = dashboardState.error();
   const loading = !dashboardLoaded && !dashboardError;
   const checkingSessions = dashboard?.sessionAvailability === 'unverified' && !dashboardError
-    && (planRequests.pending() || preparingSelected() || dashboardState.pending());
+    && (planRequests.pending() || preparingSelected() || refreshing);
   for (const id of ['session-table', 'sidebar-session-list']) element(id).classList.toggle('is-checking-sessions', checkingSessions);
   const liveChat = appData.terminals.some(terminal => terminal.running && isChat(terminal));
   setLoading(element('project-usage'), loading);
@@ -515,7 +538,7 @@ function renderSessionDashboard(): void {
     if (!liveChat) renderSkeleton(element('sidebar-session-list'));
     element('session-table').hidden = false;
   }
-  element('project-overview').setAttribute('aria-busy', String(dashboardState.pending() || (!dashboardLoaded && !dashboardError)));
+  element('project-overview').setAttribute('aria-busy', String(refreshing || (!dashboardLoaded && !dashboardError)));
   if (!dashboardLoaded || dashboardError) {
     const status = element('dashboard-session-status');
     status.textContent = dashboardError ? dashboardError + ' Select Refresh to try again.' : '';
@@ -524,7 +547,7 @@ function renderSessionDashboard(): void {
   }
   const message = conversationChange.pending() ? 'Updating session…'
     : loading ? 'Loading sessions and usage…'
-    : dashboardState.pending() ? 'Refreshing sessions and usage…'
+    : refreshing ? 'Refreshing sessions and usage…'
     : dashboard?.sessionAvailability === 'unverified' && !dashboardError ? savedSessionsStatus : null;
   setWorkspaceStatus('project-sessions', appData.selectedProject ? message : null, 'project-dashboard');
 }
@@ -658,7 +681,6 @@ async function applySelectedProject(project: Project): Promise<void> {
   selectedConversationId = null;
   appData.terminals = appDataStore.getState().projectTerminals.get(project.id) ?? [];
   dashboardState.reset(appData.selectedProject?.id ?? null);
-  setBusy(element('refresh-sessions'), false);
   sessionView = 'active'; renderSessionDashboard();
   renderSessionSidebar();
   element('session-list-status').textContent = dashboardState.loaded() ? 'No active sessions. Start a New Chat or restore an archived session.' : 'Loading sessions…';
@@ -713,24 +735,27 @@ async function finishOpeningProject(project: Project, epoch: number): Promise<vo
 
 async function hideTerminal(): Promise<void> {
   terminalPanel.hidden = true;
+  if (environmentBoot.pending(appData.selectedProject)) environmentFeedback();
   await updateTerminalLayout();
 }
 
-async function returnToTerminal(identifier?: number): Promise<void> {
+async function returnToTerminal(identifier?: number, preserveDialogs = false): Promise<void> {
   if (!appData.selectedProject) return;
   const projectId = appData.selectedProject.id;
   const request = ++terminalViewRequest;
-  closeProjectDialogs();
+  if (!preserveDialogs) closeProjectDialogs();
   await refreshTerminals();
   const status = identifier === undefined ? currentTerminal() : appData.terminals.find(status => status.identifier === identifier);
   if (!status || appData.selectedProject?.id !== projectId || request !== terminalViewRequest) return;
   if ((status.environmentId && status.environmentId !== appData.selectedProject.environmentId) || (!status.environmentId && status.purpose !== 'local' && appData.selectedProject.agentKind !== 'codex')) await selectAgent(status.agentKind ?? 'codex', false, status.environmentId);
+  if (status.purpose === 'environment' && status.running && appData.selectedProject?.stage === 'environment-starting') environmentBoot.begin(appData.selectedProject, status.identifier);
   await hideTerminal();
   if (appData.selectedProject?.id !== projectId || request !== terminalViewRequest) return;
   terminalIdentifier = status.identifier;
   lastTerminals.set(projectId, status.identifier);
   updateTerminalActions();
   renderSessionSidebar();
+  if (projectView.hidden && !preserveDialogs) showView('project');
   terminalPanel.hidden = false;
   const title = selectedConversations().find(conversation => conversationKey(conversation) === selectedConversationId)?.title;
   showTerminalStatus(status.running ? (title ?? terminalNames[status.purpose] ?? 'Operation terminal') : terminalCaption(status));
@@ -808,6 +833,7 @@ async function prepareSelectedProject(chosenReference: string | null = null): Pr
     const reference = element('project-reference');
     reference.textContent = result.project.profile + '@' + result.project.label;
     reference.title = reference.textContent;
+    element('managed-environment').textContent = agentName(result.project.agentKind) + ' · ' + reference.textContent;
     element('preparation-status').textContent = result.message ?? 'Brig configuration ready.';
     if (result.plan) {
       appData.plan = result.plan;
@@ -861,21 +887,20 @@ element('project-provider-settings').addEventListener('click', () => {
   showView('settings'); selectSettingsTab('providers'); element(appData.selectedProject?.agentKind === 'claude-code' ? 'claude-account-heading' : 'shared-chatgpt-heading').focus();
 });
 
-function showView(view: 'project' | 'settings'): void {
+function showView(view: 'project' | 'settings' | 'help'): void {
   closeProjectDialogs();
-  const settings = view === 'settings';
-  projectView.hidden = settings;
-  settingsView.hidden = !settings;
+  projectView.hidden = view !== 'project';
+  settingsView.hidden = view !== 'settings';
+  helpView.hidden = view !== 'help';
   renderWorkspaceStatus();
-  projectNavigation.removeAttribute('aria-current');
-  settingsNavigation.removeAttribute('aria-current');
-  element('sidebar-current-project').removeAttribute('aria-current');
-  (settings ? settingsNavigation : appData.selectedProject ? element('sidebar-current-project') : projectNavigation).setAttribute('aria-current', 'page');
-  (settings ? element('settings-heading') : element('project-heading')).focus();
+  for (const navigation of [projectNavigation, settingsNavigation, helpNavigation, element('sidebar-current-project')]) navigation.removeAttribute('aria-current');
+  const navigation = { project: appData.selectedProject ? element('sidebar-current-project') : projectNavigation, settings: settingsNavigation, help: helpNavigation };
+  navigation[view].setAttribute('aria-current', 'page');
+  element(view + '-heading').focus();
   scheduleProjectRescan();
   sharedChatgpt?.updateAvailability();
   void updateTerminalLayout();
-  if (!settings && !terminalPanel.hidden && terminalIdentifier !== null) void focusTerminal(terminalIdentifier).catch(error => { showFolderError(String(error)); });
+  if (view === 'project' && !terminalPanel.hidden && terminalIdentifier !== null) void focusTerminal(terminalIdentifier).catch(error => { showFolderError(String(error)); });
 }
 
 async function showProjects(message = 'Choose where Brig and your agents will work.'): Promise<void> {
@@ -894,7 +919,6 @@ async function showProjects(message = 'Choose where Brig and your agents will wo
   planRequests.invalidate(); planFeedback(null);
   selectedConversationId = null;
   dashboardState.reset(null);
-  setBusy(element('refresh-sessions'), false);
   renderConversations([], null, resumeConversation);
   resetBoundaryChoice();
   projectView.classList.remove('has-project');
@@ -1201,15 +1225,17 @@ await listen<string[]>('records-changed', async event => {
   await Promise.all(updates);
 });
 
-projectNavigation.addEventListener('click', () => { void showProjects(); });
+projectNavigation.addEventListener('click', async () => { await showProjects(); rescanVisibleProjectLibrary(); });
 element('sidebar-current-project').addEventListener('click', async () => { await hideTerminal(); showView('project'); });
-element('refresh-sessions').addEventListener('click', () => { void refreshConversations(); });
-settingsNavigation.addEventListener('click', () => showView('settings'));
-chooseFolderButton.addEventListener('click', () => { void chooseFolder(); });
-document.defaultView!.addEventListener('focus', () => {
-  if (projectRescan.started() && !projectView.hidden && appData.selectedProject === null
-    && (projectRescanError !== null || appData.projects.some(project => project.available === false))) void rescanProjects();
+refreshSessionsButton.addEventListener('click', () => {
+  if (dashboardState.pending()) return;
+  refreshSessionsButton.focus({ preventScroll: true });
+  void refreshConversations();
 });
+settingsNavigation.addEventListener('click', () => showView('settings'));
+helpNavigation.addEventListener('click', () => showView('help'));
+chooseFolderButton.addEventListener('click', () => { void chooseFolder(); });
+document.defaultView!.addEventListener('focus', rescanVisibleProjectLibrary);
 async function retryProjectSetup(action: 'prepare' | 'preview' | 'environment', chosenReference: string | null = null): Promise<void> {
   const context = projectContext();
   if (!context) return;
@@ -1240,20 +1266,37 @@ startTerminalButton.addEventListener('click', () => {
   if (appData.selectedProject) void openTerminal('terminal_start', { projectId: appData.selectedProject.id }, 'Local terminal');
 });
 
+async function finishTerminalLaunch(projectId?: string): Promise<void> {
+  try { if (projectId) await refreshTerminals(projectId); }
+  finally {
+    terminalLaunch.finish();
+    const completed = [...appDataStore.getState().projectTerminals.values()].flat().filter(status => status.purpose === 'environment' && !status.running && status.environmentId);
+    for (const status of completed) await closeEnvironmentTerminal(status.projectId, status.environmentId!, status.identifier);
+  }
+}
+
 async function openTerminal(...[command, arguments_, caption, foreground = true]: TerminalLaunchRequest): Promise<void> {
   if (appData.selectedProject === null || !terminalLaunch.begin()) return;
+  const project = appData.selectedProject;
+  const context = projectContext()!;
   const projectId = appData.selectedProject.id;
   const environmentId = appData.selectedProject.environmentId;
   const environmentKey = [projectId, environmentId].join('|');
+  const preparingEnvironment = command === 'prepare_environment';
+  const viewRequest = foreground ? ++terminalViewRequest : terminalViewRequest;
+  const current = () => sameProject(projectContext(), context);
+  const ownsView = () => current() && viewRequest === terminalViewRequest;
+  let openedIdentifier: number | null = null;
   void syncMenus();
   let previous: TerminalStatus | null;
   try { await refreshTerminals(); previous = currentTerminal(); }
   catch (error) {
-    terminalLaunch.finish(); void syncMenus();
+    await finishTerminalLaunch(); void syncMenus();
     if (foreground) showFolderError(String(error));
     if (!foreground) environmentFeedback('Could not start the project environment. ' + String(error));
     return;
   }
+  if (!current()) { await finishTerminalLaunch(); void syncMenus(); return; }
   const sessionId = command === 'start_agent_session' && arguments_.action === 'resume' ? arguments_.sessionId : null;
   const existingChat = sessionId === null ? undefined : appData.terminals.find(status => status.running && terminalMatches(status, appData.selectedProject!) && status.conversationId === sessionId);
   const purpose = command === 'terminal_start' ? 'local' : command === 'prepare_environment' ? 'environment' : command === 'start_agent_session' ? arguments_.action : arguments_.operation;
@@ -1261,26 +1304,28 @@ async function openTerminal(...[command, arguments_, caption, foreground = true]
   const blocking = command === 'start_project_operation' ? undefined : appData.terminals.find(status => status.running
     && (status.purpose === 'local' || terminalMatches(status, appData.selectedProject!))
     && ['local', 'environment', 'login', 'codex', 'resume', 'claude', 'claude-resume', 'shell'].includes(status.purpose)
-    && (foreground || status.purpose !== 'local')
+    && (foreground && !preparingEnvironment || status.purpose !== 'local')
     && !(launchingChat && isChat(status)));
   if (existingChat || blocking) {
-    terminalLaunch.finish();
+    await finishTerminalLaunch();
     void syncMenus();
     if (existingChat || blocking?.purpose === purpose) {
-      if (!foreground) {
-        if (purpose === 'environment') {
-          environmentTerminals.set(environmentKey, blocking!.identifier);
-          appData.selectedProject = { ...appData.selectedProject, stage: 'environment-starting' };
-          updateCodexActions(); environmentFeedback();
-        }
-        return;
+      if (purpose === 'environment') {
+        environmentTerminals.set(environmentKey, blocking!.identifier);
+        appData.selectedProject = { ...appData.selectedProject, stage: 'environment-starting' };
+        environmentBoot.begin(appData.selectedProject, blocking!.identifier);
+        updateCodexActions(); environmentFeedback();
       }
+      if (!foreground) return;
       folderError.hidden = true;
-      closeProjectDialogs();
-      await returnToTerminal((existingChat ?? blocking)!.identifier);
+      await returnToTerminal((existingChat ?? blocking)!.identifier, preparingEnvironment);
     } else if (blocking) {
-      const names: Record<string, string> = { codex: 'chat', resume: 'chat', login: 'account sign-in', shell: 'guest terminal', local: 'local terminal', environment: 'environment setup' };
-      const message = 'End the running ' + (names[blocking.purpose] ?? 'terminal') + ' before opening ' + caption + '.';
+      const names: Record<string, string> = { login: 'account sign-in', shell: 'guest terminal', local: 'local terminal', environment: 'environment setup' };
+      const blockingChat = isChat(blocking);
+      const chatId = blockingChat ? chatConversationId(blocking) : null;
+      const title = chatId ? selectedConversations().find(conversation => conversationKey(conversation) === chatId)?.title : null;
+      const name = blockingChat ? (title ? `chat “${title}”` : 'chat') : names[blocking.purpose] ?? 'terminal';
+      const message = `End the running ${name} before opening ${caption}.`;
       if (projectSettingsDialog.open) element(purpose === 'local' ? 'local-terminal-status' : purpose === 'environment' ? 'preparation-status' : 'guest-terminal-status').textContent = message;
       else showFolderError(message);
     }
@@ -1289,7 +1334,7 @@ async function openTerminal(...[command, arguments_, caption, foreground = true]
   terminalLaunch.start();
   element('local-terminal-status').textContent = '';
   if (foreground) {
-    closeProjectDialogs();
+    if (!preparingEnvironment) closeProjectDialogs();
     await hideTerminal();
     terminalIdentifier = null;
   }
@@ -1297,73 +1342,100 @@ async function openTerminal(...[command, arguments_, caption, foreground = true]
   if (foreground) terminalPanel.hidden = false;
   chooseFolderButton.disabled = true;
   folderError.hidden = true;
-  const preparingEnvironment = command === 'prepare_environment';
   if (foreground) showTerminalStatus('Opening ' + caption + '…');
   if (preparingEnvironment) {
     pendingEnvironmentKey = environmentKey;
     appData.selectedProject = { ...appData.selectedProject, stage: 'environment-starting' };
+    environmentBoot.begin(project);
     updateCodexActions(); environmentFeedback();
+    void syncMenus();
   }
   try {
     const layout = terminalLayout();
-    const identifier = await invoke<number>(command, { ...arguments_, layout: { ...layout, visible: foreground && layout.visible } });
+    const identifier = await invoke<number>(command, { ...arguments_, layout: { ...layout, visible: foreground && !preparingEnvironment && layout.visible } });
+    openedIdentifier = identifier;
     terminalLaunch.publish();
-    if (foreground) terminalIdentifier = identifier;
+    if (foreground && ownsView()) terminalIdentifier = identifier;
     if (preparingEnvironment) {
       environmentTerminals.set(environmentKey, identifier);
-      pendingEnvironmentKey = null;
-      await refreshSelectedPlan();
+      if (pendingEnvironmentKey === environmentKey) pendingEnvironmentKey = null;
+      environmentBoot.attach(project, identifier);
+      if (current()) await refreshSelectedPlan();
     }
-    if (foreground) lastTerminals.set(projectId, identifier);
-    await refreshTerminals();
-    if (foreground) { showTerminalStatus(caption); await updateTerminalLayout(); }
+    if (foreground && ownsView()) lastTerminals.set(projectId, identifier);
+    await refreshTerminals(projectId);
+    if (foreground && ownsView()) { showTerminalStatus(caption); await updateTerminalLayout(); }
     const snapshot = await invoke<TerminalStatus | null>('terminal_snapshot', { identifier });
     if (preparingEnvironment && snapshot && !snapshot.running) {
-      appData.selectedProject = await invoke<Project>('finish_environment', { identifier: projectId, environmentId, terminalIdentifier: identifier });
-      await refreshSelectedPlan();
-      environmentFeedback(appData.selectedProject.stage === 'environment-ready' ? null : (appData.selectedProject.environmentAttempt?.error ?? 'Could not start the project environment. Check its terminal output and try again.'));
+      const result = await invoke<Project>('finish_environment', { identifier: projectId, environmentId, terminalIdentifier: identifier });
+      environmentBoot.finish(projectId, environmentId, identifier);
+      if (current()) {
+        appData.selectedProject = result;
+        await refreshSelectedPlan();
+        if (current()) environmentFeedback(appData.selectedProject.stage === 'environment-ready' ? null : (appData.selectedProject.environmentAttempt?.error ?? 'Could not start the project environment. Check its terminal output and try again.'));
+        await updateTerminalLayout();
+      }
     }
     updateTerminalActions();
-    if (foreground && snapshot && !snapshot.running) showTerminalStatus(terminalCaption(snapshot));
-    if (foreground && !projectView.hidden) await focusTerminal(identifier);
+    if (foreground && ownsView() && snapshot && !snapshot.running) showTerminalStatus(terminalCaption(snapshot));
+    if (foreground && ownsView() && !projectView.hidden) await focusTerminal(identifier);
   } catch (error) {
-    if (preparingEnvironment) { pendingEnvironmentKey = null; await refreshSelectedPlan(); }
-    if (foreground) { terminalPanel.hidden = true; terminalIdentifier = previous?.identifier ?? null; }
-    if (!foreground && preparingEnvironment) environmentFeedback('Could not start the project environment. ' + String(error));
-    if (foreground) showFolderError('Could not open the terminal. ' + String(error));
+    if (preparingEnvironment) {
+      if (pendingEnvironmentKey === environmentKey) pendingEnvironmentKey = null;
+      environmentBoot.finish(projectId, environmentId, openedIdentifier ?? undefined);
+      if (current()) await refreshSelectedPlan();
+    }
+    if (foreground && ownsView() && (!preparingEnvironment || openedIdentifier === null)) { terminalPanel.hidden = true; terminalIdentifier = previous?.identifier ?? null; }
+    if (preparingEnvironment && current()) environmentFeedback('Could not start the project environment. ' + String(error));
+    if (foreground && ownsView()) showFolderError((preparingEnvironment ? 'Could not start the project environment. ' : 'Could not open the terminal. ') + String(error));
+    await updateTerminalLayout();
     chooseFolderButton.disabled = false;
   } finally {
-    terminalLaunch.finish();
+    await finishTerminalLaunch(projectId);
     startTerminalButton.disabled = false;
     chooseFolderButton.disabled = false;
-    await refreshTerminals();
     void syncMenus();
   }
 }
-element('close-terminal').addEventListener('click', async () => {
-  if (terminalIdentifier === null) return;
-  const identifier = terminalIdentifier;
+async function closeTerminal(identifier: number, projectId: string | undefined, environmentId: string | null | undefined, restoreFocus = false): Promise<void> {
   if (!terminalLaunch.close(identifier)) return;
   updateTerminalActions();
-  const projectId = appData.selectedProject?.id;
   try {
     await invoke('terminal_close', { identifier });
+    if (projectId && environmentId) environmentBoot.finish(projectId, environmentId, identifier);
     if (projectId && lastTerminals.get(projectId) === identifier) lastTerminals.delete(projectId);
     if (terminalIdentifier === identifier) {
       terminalIdentifier = null;
       terminalPanel.hidden = true;
-      element('project-heading').focus();
+      if (restoreFocus && !projectView.hidden && !document.querySelector('dialog[open]')) element('project-heading').focus();
     }
-    await refreshTerminals();
+    await refreshTerminals(projectId);
     void syncMenus();
-    chooseFolderButton.disabled = false;
-    void refreshConversations();
+    if (appData.selectedProject?.id === projectId) void refreshConversations();
   } catch (error) {
     if (terminalIdentifier === identifier) showTerminalStatus('Could not close the terminal. ' + String(error));
+    if (!restoreFocus && appData.selectedProject && appData.selectedProject.id === projectId && appData.selectedProject.environmentId === environmentId) showFolderError('Could not close the environment terminal. ' + String(error));
+    if (terminalIdentifier !== identifier) console.error('Could not close terminal ' + identifier + '.', error);
   } finally {
     terminalLaunch.closed(identifier); updateTerminalActions();
     if (terminalUpdatesAllowed(identifier)) void updateTerminalLayout();
   }
+}
+
+async function closeEnvironmentTerminal(projectId: string, environmentId: string, identifier: number): Promise<void> {
+  if (terminalLaunch.isClosing(identifier)) return;
+  try {
+    const status = await invoke<TerminalStatus | null>('terminal_snapshot', { identifier });
+    if (!status || status.running || status.purpose !== 'environment' || status.projectId !== projectId || status.environmentId !== environmentId) return;
+    await closeTerminal(identifier, projectId, environmentId);
+  } catch (error) {
+    if (appData.selectedProject?.id === projectId && appData.selectedProject.environmentId === environmentId) showFolderError('Could not close the environment terminal. ' + String(error));
+    console.error('Could not inspect environment terminal ' + identifier + '.', error);
+  }
+}
+
+element('close-terminal').addEventListener('click', async () => {
+  if (terminalIdentifier !== null) await closeTerminal(terminalIdentifier, appData.selectedProject?.id, appData.selectedProject?.environmentId, true);
 });
 new ResizeObserver(() => { void updateTerminalLayout(); }).observe(terminalSurface);
 initializeSidebar(() => { void updateTerminalLayout(); });
@@ -1376,10 +1448,16 @@ await listen<{ identifier: number; projectId: string; environmentId?: string | n
   if (appData.selectedProject?.id === event.payload.projectId || appDataStore.getState().projectTerminals.has(event.payload.projectId)) {
     await refreshTerminals(event.payload.projectId);
   }
+  if (event.payload.purpose === 'environment' && event.payload.environmentId && !terminalLaunch.blocksChanges()) await closeEnvironmentTerminal(event.payload.projectId, event.payload.environmentId, event.payload.identifier);
   void syncMenus();
   if (event.payload.identifier === terminalIdentifier) {
     const status = appData.terminals.find(status => status.identifier === terminalIdentifier);
     showTerminalStatus(status ? terminalCaption(status) : 'Terminal process ended');
+  }
+  const environmentId = event.payload.environmentId ?? (appData.selectedProject?.id === event.payload.projectId ? appData.selectedProject.environmentId : null);
+  if (event.payload.purpose === 'environment' && environmentId && pendingEnvironmentKey !== [event.payload.projectId, environmentId].join('|')) {
+    environmentBoot.finish(event.payload.projectId, environmentId, event.payload.identifier);
+    await updateTerminalLayout();
   }
   if (event.payload.purpose === 'login' && event.payload.agentKind !== 'claude-code') await sharedChatgpt?.refresh();
   if (['codex', 'resume', 'claude', 'claude-resume'].includes(event.payload.purpose) && appData.selectedProject?.id === event.payload.projectId) { void refreshProjects(); void refreshConversations(); }
@@ -1387,11 +1465,15 @@ await listen<{ identifier: number; projectId: string; environmentId?: string | n
 await listen<{ project: Project; terminalIdentifier: number; message: string | null }>('environment-preparation-finished', async event => {
   const result = event.payload;
   const key = [result.project.id, result.project.environmentId].join('|');
-  if (appData.selectedProject?.id !== result.project.id || appData.selectedProject.environmentId !== result.project.environmentId || pendingEnvironmentKey === key) return;
-  if ((environmentTerminals.get(key) ?? 0) > result.terminalIdentifier) return;
+  if (pendingEnvironmentKey === key || (environmentTerminals.get(key) ?? 0) > result.terminalIdentifier) return;
   environmentTerminals.set(key, result.terminalIdentifier);
+  environmentBoot.finish(result.project.id, result.project.environmentId, result.terminalIdentifier);
+  if (!terminalLaunch.blocksChanges()) await closeEnvironmentTerminal(result.project.id, result.project.environmentId, result.terminalIdentifier);
+  if (appData.selectedProject?.id !== result.project.id || appData.selectedProject.environmentId !== result.project.environmentId) return;
   appData.selectedProject = result.project;
   const context = projectContext()!;
+  await updateTerminalLayout();
+  if (!sameProject(projectContext(), context)) return;
   await refreshSelectedPlan();
   if (!sameProject(projectContext(), context)) return;
   updateCodexActions();
@@ -1400,9 +1482,15 @@ await listen<{ project: Project; terminalIdentifier: number; message: string | n
   if (!result.message && appData.selectedProject?.stage === 'environment-ready') void refreshConversations();
   if (result.terminalIdentifier === terminalIdentifier) showTerminalStatus(result.message ? 'Environment setup failed. Prepare the environment again.' : 'Brig environment ready');
 });
-await listen<{ projectId: string; environmentId: string; terminalIdentifier: number; message: string }>('environment-preparation-error', event => {
+await listen<{ projectId: string; environmentId: string; terminalIdentifier: number; message: string }>('environment-preparation-error', async event => {
   const key = [event.payload.projectId, event.payload.environmentId].join('|');
-  if (appData.selectedProject?.id !== event.payload.projectId || appData.selectedProject.environmentId !== event.payload.environmentId || (environmentTerminals.get(key) ?? 0) > event.payload.terminalIdentifier) return;
+  if (pendingEnvironmentKey === key || (environmentTerminals.get(key) ?? 0) > event.payload.terminalIdentifier) return;
+  environmentBoot.finish(event.payload.projectId, event.payload.environmentId, event.payload.terminalIdentifier);
+  if (!terminalLaunch.blocksChanges()) await closeEnvironmentTerminal(event.payload.projectId, event.payload.environmentId, event.payload.terminalIdentifier);
+  if (appData.selectedProject?.id !== event.payload.projectId || appData.selectedProject.environmentId !== event.payload.environmentId) return;
+  const context = projectContext()!;
+  await updateTerminalLayout();
+  if (!sameProject(projectContext(), context)) return;
   element('preparation-status').textContent = event.payload.message;
   environmentFeedback(event.payload.message);
   showFolderError(event.payload.message);
@@ -1412,7 +1500,7 @@ await listen<{ identifier: number; message: string }>('terminal-input-error', ev
 await listen<string>('menu-action', async event => {
   if (event.payload === 'choose-folder' && appData.selectedProject === null) { showView('project'); void chooseFolder(); }
   if (event.payload === 'settings') showView('settings');
-  if (event.payload === 'project') { await hideTerminal(); showView('project'); }
+  if (event.payload === 'project') { await hideTerminal(); showView('project'); rescanVisibleProjectLibrary(); }
   if (event.payload === 'return-terminal') { showView('project'); await returnToTerminal(); }
 });
 showView('project');

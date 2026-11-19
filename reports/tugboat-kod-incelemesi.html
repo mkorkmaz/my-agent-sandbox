@@ -95,7 +95,7 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <header id="baslangic">
 <p class="kicker">Tugboat 0.1.0 · macOS / Apple Silicon</p>
 <h1>Kod ve özellik incelemesi</h1>
-<p class="meta"><time datetime="2026-11-11">11 Kasım 2026</time> · <code>trunk</code> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/commit/99cb6419345ad875700242dbc2f796cfdfd72ca1"><code>99cb641</code></a> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/releases/tag/v0.1.0-build.1">v0.1.0-build.1</a></p>
+<p class="meta"><time datetime="2026-11-11">11 Kasım 2026</time> · <code>trunk</code> · <a href="https://github.com/mkorkmaz/tugboat/commit/99cb6419345ad875700242dbc2f796cfdfd72ca1"><code>99cb641</code></a> · <a href="https://github.com/mkorkmaz/tugboat/releases/tag/v0.1.0-build.1">v0.1.0-build.1</a></p>
 <nav class="nav" aria-label="Rapor bölümleri"><a href="#ilerleme">Düzeltme ilerlemesi</a><a href="#sonuc">İnceleme bulguları</a><a href="#ozellikler">Özellik kapsamı</a><a href="#dogrulama">İlk test sonuçları</a><a href="#isler">Uygulama listesi</a><a href="#kabul">Açık kabul senaryoları</a></nav>
 </header>
 <main>
@@ -147,7 +147,7 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <li><code>priority</code> tarifeli örnek isteğin API maliyet karşılığı, uygulamanın kataloğundaki 0,006 USD yerine 0,003 USD olarak kaydedildi. <a href="#is-05" aria-label="KR-05 Kayıtlı hizmet tarifesi gözden kaçıyor ve maliyet yanlış hesaplanıyor">KR-05</a></li>
 </ul></section>
 <section id="ozellikler" aria-labelledby="ozellik-baslik"><h2 id="ozellik-baslik">Özellik kapsamı</h2>
-<p>README ve ürün tanımındaki işlevler, arayüzdeki giriş noktalarından Tauri komutlarına, disk kayıtlarına ve Brig çağrılarına kadar izlendi. <a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#features">README</a> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/PRODUCT.md">Ürün tanımı</a></p>
+<p>README ve ürün tanımındaki işlevler, arayüzdeki giriş noktalarından Tauri komutlarına, disk kayıtlarına ve Brig çağrılarına kadar izlendi. <a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#features">README</a> · <a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/PRODUCT.md">Ürün tanımı</a></p>
 <div class="tablewrap"><table class="coverage" aria-label="Özelliklere göre doğrulama sonuçları"><thead><tr><th scope="col">Özellik</th><th scope="col">Doğrulama ve sonuç</th><th scope="col">İlgili işler</th></tr></thead>
 <tbody><tr><th scope="row">Proje kütüphanesi ve gezinme</th><td>Kurulu uygulamada Projects tablosu, dal etiketi, Settings’e geçiş ve geri dönüş görüldü. Klasör kimliği, son açılış sırası, menü yönlendirmesi ve kenar çubuğu boyutu mevcut testlerde geçti.</td><td class="linkset"><a href="#is-02" aria-label="KR-02 İki uygulama örneği aynı anda yazınca proje kaydı kaybolabiliyor">KR-02</a> <a href="#is-19" aria-label="KR-19 Silinmiş klasörün kaydı kütüphaneden kaldırılamıyor">KR-19</a> <a href="#is-24" aria-label="KR-24 Aynı klasörü yeniden seçmek özel proje adını siliyor">KR-24</a> <a href="#is-25" aria-label="KR-25 Arka plan yenilemesi kenar çubuğundaki klavye odağını kaybettiriyor">KR-25</a></td></tr>
 <tr><th scope="row">Mac denetimi ve ayarlar</th><td>Check this Mac, macOS 27.2 üzerinde ARM64, Brig v0.5.2 ve paket içindeki hull’u buldu. Ayar doğrulama, geçişler ve kesilmiş kurulumun devamı otomatik testlerde geçti.</td><td class="linkset"><a href="#is-22" aria-label="KR-22 Önceki başarılı kurulum, yeni kurulumun hiç çalışmadan bitmesine yol açıyor">KR-22</a> <a href="#is-26" aria-label="KR-26 Sürüm sorgusu iptal edilirse uyumlu Brig için uyumsuzluk uyarısı çıkıyor">KR-26</a> <a href="#is-27" aria-label="KR-27 Settings ekranındaki sürüm bir sonraki yayında eski kalacak">KR-27</a></td></tr>
@@ -169,7 +169,7 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <dl><dt>Çalışan konukta beş kontrol geçti</dt><dd>Linux çekirdeği, Codex sürümü, mevcut ChatGPT girişi, Git status ve Git diff için beş komut da 0 ile çıktı. Konuğa yeni prompt gönderilmedi.</dd></dl>
 </div>
 <p><strong>Ek deneyler.</strong> Geçici kaynak kopyasında üretim işlevlerini çağıran altı Rust testi ve gerçek TypeScript modüllerini yükleyen sekiz jsdom senaryosu çalıştırıldı. Bu deneyler mevcut kusurlu davranışı gözlemek için yazıldı. Her işte beklenen doğru sonuç ayrıca tanımlandı.</p>
-<p class="small" style="margin-top:.8rem"><strong>Release kanıtı.</strong> GitHub çalışması <code>99cb641</code> için başarılı. Yayımlanan DMG 14.067.680 bayt. İndirilen dosyanın SHA-256 değeri <code>a432acaabb47f9c1a5b09633e3cb7988e58a07608c3f11e8197b80107258b859</code>. <code>hdiutil verify</code> ve imza bütünlüğü denetimi geçti. Gatekeeper bulgusu <a href="#is-01" aria-label="KR-01 Dağıtılan uygulama Gatekeeper denetiminde reddediliyor">KR-01</a> içinde. <a href="https://github.com/mkorkmaz/my-agent-sandbox/actions/runs/42927256707">Actions çalışması</a> · <a href="https://github.com/mkorkmaz/my-agent-sandbox/releases/tag/v0.1.0-build.1">Release ve DMG</a></p>
+<p class="small" style="margin-top:.8rem"><strong>Release kanıtı.</strong> GitHub çalışması <code>99cb641</code> için başarılı. Yayımlanan DMG 14.067.680 bayt. İndirilen dosyanın SHA-256 değeri <code>a432acaabb47f9c1a5b09633e3cb7988e58a07608c3f11e8197b80107258b859</code>. <code>hdiutil verify</code> ve imza bütünlüğü denetimi geçti. Gatekeeper bulgusu <a href="#is-01" aria-label="KR-01 Dağıtılan uygulama Gatekeeper denetiminde reddediliyor">KR-01</a> içinde. <a href="https://github.com/mkorkmaz/tugboat/actions/runs/42927256707">Actions çalışması</a> · <a href="https://github.com/mkorkmaz/tugboat/releases/tag/v0.1.0-build.1">Release ve DMG</a></p>
 </section>
 <section id="isler" aria-labelledby="is-baslik"><h2 id="is-baslik">Ajan için uygulama listesi</h2>
 <p>Düzeltmeler bu dosyada sırayla izleniyor. Her maddenin Uygulama kaydı alanı yapılan değişikliği ve doğrulama kanıtını içeriyor. Dış doğrulama bekleyen maddelerin yerel kodu hazır olsa da tam kabul ölçütü henüz tamamlanmış sayılmıyor. İnceleme bulguları ve ilk test sonuçları, düzeltme öncesindeki durumu belgeliyor.</p>
@@ -220,7 +220,7 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <li><strong>Apple Developer Program üyeliğinizi hazırlayın.</strong> Üyeliğiniz yoksa kayıt olmanız gerekiyor. Ücret yıllık 99 USD; bölgesel fiyat değişebilir. <a href="https://developer.apple.com/programs/enroll/">Apple üyelik sayfası</a>.</li>
 <li><strong>Developer ID Application sertifikası oluşturun.</strong> Sertifikayı Mac’inizde Keychain Access’e yükleyin. Özel anahtarıyla birlikte, parola belirleyerek <code>.p12</code> olarak dışa aktarın. Bu sertifikayı oluşturmak için Account Holder yetkisi gerekiyor. <a href="https://developer.apple.com/help/account/certificates/create-developer-id-certificates/">Apple sertifika rehberi</a> · <a href="https://v2.tauri.app/distribute/sign/macos/#signing-in-cicd-platforms">Tauri dışa aktarma rehberi</a>.</li>
 <li><strong>App Store Connect’te bir Team API Key oluşturun.</strong> <strong>Users and Access → Integrations → App Store Connect API → Team Keys</strong> yolunu kullanın. Erişim rolünü <strong>Developer</strong> seçin. <code>.p8</code> dosyasını indirin; <strong>Key ID</strong> ve <strong>Issuer ID</strong> değerlerini kaydedin. <a href="https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/">Apple API anahtarı rehberi</a> · <a href="https://v2.tauri.app/distribute/sign/macos/#notarization">Tauri noter onayı rehberi</a>.</li>
-<li><strong>Aşağıdaki altı kaydı GitHub’a ekleyin.</strong> <a href="https://github.com/mkorkmaz/my-agent-sandbox/settings/secrets/actions">Deponun GitHub Secrets sayfasında</a> <strong>Settings → Secrets and variables → Actions → New repository secret</strong> yolunu kullanın.
+<li><strong>Aşağıdaki altı kaydı GitHub’a ekleyin.</strong> <a href="https://github.com/mkorkmaz/tugboat/settings/secrets/actions">Deponun GitHub Secrets sayfasında</a> <strong>Settings → Secrets and variables → Actions → New repository secret</strong> yolunu kullanın.
 <div class="tablewrap"><table class="coverage" aria-label="KR-01 için gerekli GitHub repository secrets"><thead><tr><th scope="col">Secret adı</th><th scope="col">Girilecek değer</th></tr></thead><tbody>
 <tr><th scope="row"><code>APPLE_CERTIFICATE</code></th><td><code>.p12</code> dosyasının Base64 karşılığı.</td></tr>
 <tr><th scope="row"><code>APPLE_CERTIFICATE_PASSWORD</code></th><td><code>.p12</code> dışa aktarılırken belirlediğiniz parola.</td></tr>
@@ -237,9 +237,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 </ol>
 </section>
 <div class="accept"><strong>Kabul ölçütü</strong>Yeni release adayında imza doğrulaması ve Gatekeeper denetimi geçer. Tarayıcıdan indirilen dosya, daha önce Tugboat açılmamış bir Apple Silicon Mac’te varsayılan güvenlik ayarlarıyla açılır.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/tauri.conf.json#L36-L43">src-tauri/tauri.conf.json · 36–43</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/.github/workflows/macos-release.yml#L64-L76">.github/workflows/macos-release.yml · 64–76</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L36-L39">README.md · 36–39</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/tauri.conf.json#L36-L43">src-tauri/tauri.conf.json · 36–43</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/.github/workflows/macos-release.yml#L64-L76">.github/workflows/macos-release.yml · 64–76</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L36-L39">README.md · 36–39</a></div>
 <p class="small">Dağıtım belgeleri. <a href="https://developer.apple.com/developer-id/">Apple Developer ID</a> · <a href="https://v2.tauri.app/distribute/sign/macos/">Tauri macOS imzalama kılavuzu</a></p>
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-1">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-1" autocomplete="off"></details>
@@ -252,11 +252,11 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Aynı yapılandırma dizinini kullanan süreçlerde kayıt dosyasının oku–değiştir–yaz işlemini birlikte kilitle. Kilidi aldıktan sonra veriyi yeniden yükle.</li><li>Aynı düzeni oturum durumunu ve kullanım defterini güncelleyen yollara uygula. Okuyucuların tamamlanmış dosyayı atomik olarak görmesini koru.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Aynı dizini kullanan iki süreç farklı projeler eklediğinde ikinci açılışta ikisi de listelenir. Bir süreç sohbeti arşivlerken diğeri yeni kullanım yazdığında hem arşiv durumu hem yeni istek korunur.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L13-L14">src-tauri/src/projects.rs · 13–14</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L305-L320">src-tauri/src/projects.rs · 305–320</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/storage.rs#L21-L44">src-tauri/src/storage.rs · 21–44</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L425-L439">src-tauri/src/conversations.rs · 425–439</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/tauri.conf.json#L3-L6">src-tauri/tauri.conf.json · 3–6</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L13-L14">src-tauri/src/projects.rs · 13–14</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L305-L320">src-tauri/src/projects.rs · 305–320</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/storage.rs#L21-L44">src-tauri/src/storage.rs · 21–44</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L425-L439">src-tauri/src/conversations.rs · 425–439</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/tauri.conf.json#L3-L6">src-tauri/tauri.conf.json · 3–6</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-2">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-2" autocomplete="off"></details>
@@ -269,9 +269,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Hazırlık durumları arasında kullanıcının açıkça ayırdığı politikayı koru. Projeyi görüntüleme ve normal yenileme sırasında bu durumda bağlama komutu çalıştırma.</li><li>Politika belgesini ve açık <code>Attach to this session</code> eylemini erişilebilir bırak. Bağlama başarılı olduğunda planı yeniden oluştur.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Ayırma, Projects’e dönüş, uygulamayı yeniden açma ve yenileme sonrasında bağ sayısı sıfır kalır. Kullanıcı Attach seçtiğinde tek bağ oluşur ve ortam hazırlama yeniden kullanılabilir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/project_policy.rs#L169-L210">src-tauri/src/project_policy.rs · 169–210</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L296-L304">src/main.ts · 296–304</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L229-L250">src-tauri/src/preparation.rs · 229–250</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/project_policy.rs#L169-L210">src-tauri/src/project_policy.rs · 169–210</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L296-L304">src/main.ts · 296–304</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L229-L250">src-tauri/src/preparation.rs · 229–250</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-3">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-3" autocomplete="off"></details>
@@ -284,10 +284,10 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Oturum başlığı, ad dizini ve kullanım satırı hatalarını ilgili kayda bağla. Son geçerli kullanım defterini ve diğer sohbetlerin güncellemelerini sun.</li><li>Eksik son satırı bir sonraki okumaya bırak. Kalıcı biçim hatası için hangi oturumun kısmen okunabildiğini bildir. Hatalı dosya onarılınca son güvenilir konumdan yeniden oku.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>İki sohbetten biri bozukken diğeri görünür, açılır ve yeni tokenları tam bir kez alır. Hatalı dosya tamamlandığında toplamlar kayıp veya mükerrer istek olmadan güncellenir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L68-L77">src-tauri/src/conversations.rs · 68–77</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L169-L179">src-tauri/src/conversations.rs · 169–179</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L285-L303">src-tauri/src/conversations.rs · 285–303</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L415-L431">src-tauri/src/usage.rs · 415–431</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L68-L77">src-tauri/src/conversations.rs · 68–77</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L169-L179">src-tauri/src/conversations.rs · 169–179</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L285-L303">src-tauri/src/conversations.rs · 285–303</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L415-L431">src-tauri/src/usage.rs · 415–431</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-4">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-4" autocomplete="off"></details>
@@ -300,10 +300,10 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>İstekle ilişkili tarife bilgisini ve <code>thread_settings_applied</code> olayını zaman sırasıyla işle. İstek için kesinleşmiş tarife bilgisine öncelik ver. Kayıt bulunmadığında varsayımı açıkça göster.</li><li>Yeni kayıtta tarifenin kaynağını sakla. Eski defterler için kaynak olaydan kesin olarak doğrulanabilen yanlış varsayımları saptayacak bir düzeltme yolu tanımla. Hesapta isteğin kayıt tarihindeki fiyatları kullan.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong><code>default</code>, <code>priority</code>, tur içinde değişen tarife ve eksik tarife örnekleri ayrı ayrı geçer. Örnek <code>priority</code> isteği 0,006 USD gösterir. Yeniden içe aktarma aynı isteği ikinci kez ücretlendirmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L116-L139">src-tauri/src/usage.rs · 116–139</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L293-L333">src-tauri/src/usage.rs · 293–333</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L364-L379">src-tauri/src/usage.rs · 364–379</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L88-L94">README.md · 88–94</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L116-L139">src-tauri/src/usage.rs · 116–139</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L293-L333">src-tauri/src/usage.rs · 293–333</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L364-L379">src-tauri/src/usage.rs · 364–379</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L88-L94">README.md · 88–94</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-5">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-5" autocomplete="off"></details>
@@ -316,9 +316,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Proje açılırken ve hazır durumuna dayanan işlemlerde Brig envanterindeki güncel referansı, çalışma durumunu ve proje eşleşmesini kontrol et.</li><li>Durdurulmuş veya eksik VM için hazırlama eylemini göster. Envanter okunamazsa son bilinen durumun doğrulanamadığını bildir.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Çalışan, durmuş, kaldırılmış ve envanteri okunamayan dört örnek farklı doğru sonuç verir. Durmuş projeyi görüntülemek VM’yi başlatmaz.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L114-L120">src-tauri/src/preparation.rs · 114–120</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L269-L277">src-tauri/src/preparation.rs · 269–277</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L390-L395">src/main.ts · 390–395</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L114-L120">src-tauri/src/preparation.rs · 114–120</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L269-L277">src-tauri/src/preparation.rs · 269–277</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L390-L395">src/main.ts · 390–395</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-6">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-6" autocomplete="off"></details>
@@ -331,9 +331,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Hazırlık denemesini proje ve terminal kimliğine bağla. Çıkış kodunu aynı terminalin kaydından doğrula. Durum geçişini Rust tarafında güvenilir biçimde tamamla.</li><li>Başlatma hatası, sıfırdan farklı çıkış ve iptalde projeyi yeniden denenebilir duruma getir. Eski bir bitiş olayının daha yeni denemeyi değiştirmesini engelle.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Hazırlık ile uzun süren bir tanılama çakıştığında doğru VM hazır olur. Terminal açılamadığında ya da Codex sürüm komutu başarısız olduğunda kullanıcı beklemeden yeniden deneyebilir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/environment.rs#L132-L162">src-tauri/src/environment.rs · 132–162</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L202-L217">src-tauri/src/terminal.rs · 202–217</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L631-L644">src/main.ts · 631–644</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/environment.rs#L132-L162">src-tauri/src/environment.rs · 132–162</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L202-L217">src-tauri/src/terminal.rs · 202–217</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L631-L644">src/main.ts · 631–644</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-7">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-7" autocomplete="off"></details>
@@ -346,9 +346,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Plan alınırken veya geçersizken sohbet başlatma eyleminin durumunu güncelle. Yenileme hatasında kullanılabilirlik ve parmak izini aynı anda sıfırla.</li><li>Proje ekranında hata nedenini ve yeniden deneme eylemini göster. Geçerli plan geldikten sonra düğmeyi etkinleştir.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Önceden hazır olan projede plan hatası görünürdür. Yeniden deneme başarılı olunca tek tıklama tek sohbet açar. Geçersiz parmak iziyle başlatma isteği gönderilmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L334-L355">src/main.ts · 334–355</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L383-L409">src/main.ts · 383–409</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L106-L114">src/main.ts · 106–114</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L334-L355">src/main.ts · 334–355</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L383-L409">src/main.ts · 383–409</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L106-L114">src/main.ts · 106–114</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-8">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-8" autocomplete="off"></details>
@@ -361,10 +361,10 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Seçili proje değişirken proje kapsamındaki giriş, politika, sınır ve işlem alanlarını, düzenleme durumunu ve bekleyen istekleri temizle.</li><li>Başarılı ve hatalı tüm geç yanıtları, çağrı başladığındaki proje ve görünüm kimliğiyle eşleştir. Aynı proje yeniden seçilirse eski çağrıyı yine ayırt et.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>A’dan B’ye, ardından yeniden A’ya geçildiğinde her pencere yalnız o açılışa ait bilgileri gösterir. Veri gelene kadar eski belge, izin sonucu ve düzenleme düğmeleri gösterilmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L257-L282">src/main.ts · 257–282</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L398-L404">src/main.ts · 398–404</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/boundaries.ts#L6-L10">src/boundaries.ts · 6–10</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/project-policy.ts#L15-L30">src/project-policy.ts · 15–30</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L257-L282">src/main.ts · 257–282</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L398-L404">src/main.ts · 398–404</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/boundaries.ts#L6-L10">src/boundaries.ts · 6–10</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/project-policy.ts#L15-L30">src/project-policy.ts · 15–30</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-9">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-9" autocomplete="off"></details>
@@ -377,8 +377,8 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Her açılışta artan bir istek kimliği üret ve proje ile sohbet kimliğini yakala. Pencere kapanınca bekleyen isteği geçersiz kıl.</li><li>Yükleme, başarı ve hata metinlerini yalnızca hâlâ etkin olan isteğin yazabilmesini sağla.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>A ve B yanıtları ters sırada geldiğinde B başlığı, B’nin tablosu ve B’nin maliyeti birlikte kalır. A’dan gecikmiş hata gelmesi B’nin durumunu değiştirmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L211-L224">src/main.ts · 211–224</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L508-L512">src/main.ts · 508–512</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L211-L224">src/main.ts · 211–224</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L508-L512">src/main.ts · 508–512</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-10">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-10" autocomplete="off"></details>
@@ -391,9 +391,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Önbellekten okunan ve önbelleğe yazılan tokenlar için bilginin varlığını ayrı taşı. Bu ayrımı istek tablosuna ve proje toplamlarına aktar.</li><li>Eski defterlerde ayrıştırılamayan değerleri belirsiz göster. Maliyete etki eden eksik bilgi varsa mevcut fiyatlandırılamaz durumunu koru.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>75 okuma ve yazma sayacı eksik olan istek <code>75</code> ile yüzdesini ve yazma sütununda <code>Unknown</code> gösterir. Gerçek sıfır, eksik değer ve iki sayacın da bilindiği örnekler ayrı test edilir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L47-L64">src-tauri/src/usage.rs · 47–64</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L10-L14">src/dashboard.ts · 10–14</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L109-L116">src/dashboard.ts · 109–116</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L47-L64">src-tauri/src/usage.rs · 47–64</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L10-L14">src/dashboard.ts · 10–14</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L109-L116">src/dashboard.ts · 109–116</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-11">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-11" autocomplete="off"></details>
@@ -406,8 +406,8 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Son yayımlanan panonun kaynak erişilebilirliğini proje bazında sakla. Dosya kaybolduğunda ve geri geldiğinde bunu bildirilecek bir değişiklik say.</li><li>Dosyanın eksik olduğu sürede geçmiş toplamını ve arşiv durumunu koru. Değişiklik yoksa her iki saniyede bir tekrar olay gönderme.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Açık projede kaynak dosyanın kaldırılması ve aynı içerikle geri konması, elle yenilemeden iki durum geçişi üretir. Maliyet toplamı sabit kalır.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L285-L310">src-tauri/src/conversations.rs · 285–310</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L369-L379">src-tauri/src/conversations.rs · 369–379</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L285-L310">src-tauri/src/conversations.rs · 285–310</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L369-L379">src-tauri/src/conversations.rs · 369–379</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-12">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-12" autocomplete="off"></details>
@@ -420,9 +420,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Proje kaldırma başarıyla kesinleştiğinde izleme kaydını kaldır. Önceden alınmış izleme listesindeki eski bir turla yarışı yönet.</li><li>Kapanışta bir projenin okuma hatasını o projeyle sınırla ve diğer projelerdeki son kayıtları da yaz. Kullanım geçmişinin saklanması ile aktif izlemeyi ayrı yönet.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>İki projeden biri kaldırıldıktan sonra o projeye yeni okuma veya olay gitmez. Diğer proje izlenir. Okunamayan bir kaynak, diğer projenin kapanışta deftere yazılmasını engellemez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L341-L370">src-tauri/src/conversations.rs · 341–370</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L389-L392">src-tauri/src/operations.rs · 389–392</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L88-L92">src-tauri/src/lifecycle.rs · 88–92</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/conversations.rs#L341-L370">src-tauri/src/conversations.rs · 341–370</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L389-L392">src-tauri/src/operations.rs · 389–392</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L88-L92">src-tauri/src/lifecycle.rs · 88–92</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-13">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-13" autocomplete="off"></details>
@@ -435,10 +435,10 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Ayarlar, proje planı ve README’de izin listesinin hangi bağlantıları denetlediğini açıkça yaz. Codex’in barındırılan web aramasını kullanıcıya ayrı bir yetenek olarak anlat.</li><li>Uygulama web arama ayarını yönetmiyorsa bunu göster. Gerçekte okunmamış bir çalışma modunu açık veya kapalı diye etiketleme.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Kullanıcı izin listesini gördüğü yerde konuk komutlarının ağ erişimini ve barındırılan araçların kapsamını ayırt edebilir. Uygulama arayüzü ile README aynı davranışı tarif eder.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/settings.ts#L43-L48">src/settings.ts · 43–48</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/preparation.ts#L34-L40">src/preparation.ts · 34–40</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/codex.rs#L163-L178">src-tauri/src/codex.rs · 163–178</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L123-L131">README.md · 123–131</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/settings.ts#L43-L48">src/settings.ts · 43–48</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/preparation.ts#L34-L40">src/preparation.ts · 34–40</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/codex.rs#L163-L178">src-tauri/src/codex.rs · 163–178</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/README.md#L123-L131">README.md · 123–131</a></div>
 <p class="small">Barındırılan araç için başvuru. <a href="https://learn.chatgpt.com/docs/config-file/config-basic#web-search-mode">OpenAI · Codex web arama modları</a></p>
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-14">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-14" autocomplete="off"></details>
@@ -451,9 +451,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Denetim senaryosunu etkin ağ modundan ve çözülmüş politikadan üret. Yasak hedef seçerken adayın gerçekten izin kapsamı dışında olduğunu denetle.</li><li>Çevrimdışı ve tüm çıkışı reddeden planlarda beklenen sonucu ayrı tanımla. Uygun karşılaştırma veya dış kontrol yoksa kesin sonuç bildirme.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Taklit bağlantı yanıtlarıyla izin listesinde <code>example.com</code> olan, listesi boş olan, çevrimdışı olan ve normal izole plan için doğru sonuç sınıfı üretilir. Belirsiz sonuç ek erişim seçeneğini etkinleştirmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L96-L119">src-tauri/src/boundaries.rs · 96–119</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L279-L332">src-tauri/src/boundaries.rs · 279–332</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L335-L355">src-tauri/src/boundaries.rs · 335–355</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L96-L119">src-tauri/src/boundaries.rs · 96–119</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L279-L332">src-tauri/src/boundaries.rs · 279–332</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/boundaries.rs#L335-L355">src-tauri/src/boundaries.rs · 335–355</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-15">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-15" autocomplete="off"></details>
@@ -466,10 +466,10 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Pencereyi kapatma ve ⌘Q için ortak bir kapanış sırası kullan. Etkin terminal süreçlerini ve kurulumu hesaba kat. İptalde çalışan işleri sürdür.</li><li>Onayda süreçlerin bitişini süre sınırıyla bekle, gereken sonlandırmayı tamamla ve son kullanım olaylarını ardından kaydet. Konuk VM’nin korunması ile uygulamanın alt süreçlerinin sonlandırılmasını ayrı yönet.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>İptal sohbeti kesmez. Kapanması geciken test süreciyle onaylı çıkıştan sonra uygulamanın açık terminal süreci kalmaz ve son kullanım olayı saklanır. Kurulum sırasında çıkış da tanımlı bir sonuç verir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L12-L20">src-tauri/src/lifecycle.rs · 12–20</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L71-L92">src-tauri/src/lifecycle.rs · 71–92</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L565-L599">src-tauri/src/terminal.rs · 565–599</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L92-L103">src-tauri/src/installation.rs · 92–103</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L12-L20">src-tauri/src/lifecycle.rs · 12–20</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/lifecycle.rs#L71-L92">src-tauri/src/lifecycle.rs · 71–92</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L565-L599">src-tauri/src/terminal.rs · 565–599</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L92-L103">src-tauri/src/installation.rs · 92–103</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-16">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-16" autocomplete="off"></details>
@@ -482,9 +482,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>İstenen işlemle açık işlem aynıysa mevcut terminali geri getir. Farklı bir işlem aynı anda başlatılamıyorsa kullanıcıya hangi işlemin engellediğini ilgili düğmenin yanında göster.</li><li>Yerel terminal, konuk kabuğu, giriş ve sohbetin başlatma davranışlarını amaçlarına göre doğrula. Engellenen eylemde odağı başka bir komut giriş alanına taşıma.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Açık sohbet varken Open local terminal seçildiğinde ya yerel terminal açılır ya da görünür gerekçeyle işlem durur. Kullanıcı kendisini sessizce sohbetin giriş alanında bulmaz.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L552-L575">src/main.ts · 552–575</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L349-L355">src-tauri/src/terminal.rs · 349–355</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L167">index.html · 163–167</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L552-L575">src/main.ts · 552–575</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L349-L355">src-tauri/src/terminal.rs · 349–355</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L167">index.html · 163–167</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-17">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-17" autocomplete="off"></details>
@@ -497,9 +497,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Her proje için test ve tanılama işlemlerinin son çıktısını kullanıcıya tekrar açtır. Açıkça kapatılan terminal ile işlemden geriye kalan görüntü durumunu ayrı ele al.</li><li>16 sınırını ve bitmiş kayıtların temizlenmesini aynı yaşam döngüsüne göre düzenle. Bir projedeki yeni sohbetin başka bir işlemin okunabilir sonucunu silmesini önle.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Sohbet sırasında bir test biter. Kullanıcı yeni bir sohbet açıp test sonucunu yeniden çalıştırmadan okuyabilir. Ayrı projelerde bitmiş 16 işlem yeni bir canlı terminali engellemez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L340-L348">src-tauri/src/terminal.rs · 340–348</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L388-L399">src-tauri/src/terminal.rs · 388–399</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L58-L79">src/main.ts · 58–79</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L340-L348">src-tauri/src/terminal.rs · 340–348</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/terminal.rs#L388-L399">src-tauri/src/terminal.rs · 388–399</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L58-L79">src/main.ts · 58–79</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-18">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-18" autocomplete="off"></details>
@@ -512,9 +512,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Kütüphanede erişilemeyen kayıt için yalnız Tugboat kaydını unutma eylemi sun. Hâlâ mevcut bir Brig ortamının veya proje dosyalarının silinmesini bu eyleme bağlama.</li><li>Taşınmış klasörü yeniden seçme yolunu koru. Kaydın unutulmasını kimlik üzerinden doğrula ve arka plan izlemesini kapat.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Klasör haricen silindikten sonra projeyi açmadan listeden kaldırmak mümkündür. Diğer projeler, Brig ortamları ve fiziksel dosyalar korunur. Geçici olarak bağlı olmayan bir disk kendiliğinden kaydı silmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L392-L412">src-tauri/src/projects.rs · 392–412</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/projects.ts#L70-L89">src/projects.ts · 70–89</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L170">index.html · 163–170</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L392-L412">src-tauri/src/projects.rs · 392–412</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/projects.ts#L70-L89">src/projects.ts · 70–89</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L170">index.html · 163–170</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-19">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-19" autocomplete="off"></details>
@@ -527,9 +527,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Kaldırma sürerken veya yarım kalmışken normal hazırlığa geçme. Tamamlanan adımları ve yeniden kontrol edilmesi gereken kaynakları sakla.</li><li>Projeyi tekrar açarken güncel Brig durumundan yeni bir önizleme üret. Devam etme ve uygunsa vazgeçme işlemlerini kullanıcıya sun. Tamamlanan adımları ikinci kez çalıştırma.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Konuktan çıkış, durdurma ve kaldırma sonrasında ayrı ayrı hata verilen örnekler yeniden açılır. Uygulama hiçbirinde politikayı otomatik bağlamaz. Yeni önizlemeyle devam edildiğinde doğru kayıt kaldırılır.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L327-L344">src-tauri/src/operations.rs · 327–344</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L114-L119">src-tauri/src/preparation.rs · 114–119</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L229-L240">src-tauri/src/preparation.rs · 229–240</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L327-L344">src-tauri/src/operations.rs · 327–344</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L114-L119">src-tauri/src/preparation.rs · 114–119</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L229-L240">src-tauri/src/preparation.rs · 229–240</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-20">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-20" autocomplete="off"></details>
@@ -542,9 +542,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Çakışan politika adını dışarıya ait kaynak olarak koru. Kullanıcının gözden geçirerek uygun bir politikayı seçmesini veya yeni ve benzersiz bir uygulama politikası oluşturmasını sağla.</li><li>Yeni seçimi kayıt altına al. Yarım kalan kurulumun tekrarında birden fazla politika üretme ve eski belgenin sahipliğini varsayma.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Haricen değiştirilmiş politika korunarak kaldırılan proje aynı klasörden tekrar eklenebilir. Yeni plan geçerlidir. Korunan politika dosyasının içeriği değişmez ve sonraki kaldırma ona dokunmaz.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L369-L391">src-tauri/src/operations.rs · 369–391</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L189-L205">src-tauri/src/projects.rs · 189–205</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L166-L179">src-tauri/src/preparation.rs · 166–179</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L369-L391">src-tauri/src/operations.rs · 369–391</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L189-L205">src-tauri/src/projects.rs · 189–205</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/preparation.rs#L166-L179">src-tauri/src/preparation.rs · 166–179</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-21">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-21" autocomplete="off"></details>
@@ -557,9 +557,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Yeni kurulum denemesinin başında mevcut Brig çalıştırılabilir dosyasını ve sürümünü denetle. Önceden tamamlanan adımları bu sonuçla uzlaştır.</li><li>Kesintiye uğrayan kurulumun doğru adımdan devam etmesini koru. Başarı bildirmeden önce bulunan CLI’ı tekrar kontrol et ve uyumsuz sürümü açıkça bildir.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Kurulum, Brig’in kaldırılması ve yeniden kurulum senaryosunda install adımı yeniden çağrılır. Ara adım hatasından devam testi de geçer. Başarı mesajının ardından Check this Mac uyumlu kurulum gösterir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L40-L51">src-tauri/src/installation.rs · 40–51</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L66-L83">src-tauri/src/installation.rs · 66–83</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L141-L157">src-tauri/src/host.rs · 141–157</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L40-L51">src-tauri/src/installation.rs · 40–51</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/installation.rs#L66-L83">src-tauri/src/installation.rs · 66–83</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L141-L157">src-tauri/src/host.rs · 141–157</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-22">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-22" autocomplete="off"></details>
@@ -572,9 +572,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Defterdeki her tur için durumunu ve sıra bilgisini göster. Ölçüm oluşmadan biten tur için boş durumu ve kaydın bulunmadığını açıkla.</li><li>Pencerenin genel durum metninde hiç tur bulunmaması ile tur bulunduğu halde istek sayacı gelmemesini ayır.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>İki turluk örnekte Prompt 1’in kesildiği ve henüz istek ölçülmediği okunur. Prompt 2’nin satırları ve toplamı görünür. Ölçülmemiş ilk tura kendiliğinden sıfır maliyet atanmaz.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L313-L325">src-tauri/src/usage.rs · 313–325</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L126-L136">src/dashboard.ts · 126–136</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L219-L223">src/main.ts · 219–223</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/usage.rs#L313-L325">src-tauri/src/usage.rs · 313–325</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L126-L136">src/dashboard.ts · 126–136</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L219-L223">src/main.ts · 219–223</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-23">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-23" autocomplete="off"></details>
@@ -587,8 +587,8 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Aynı klasörün yeniden seçilmesinde mevcut görünen adı koru. Yolu ve son açılış zamanını güncelle.</li><li>Klasör taşındığında kullanıcı tarafından verilen adın korunmasını sağla. Eski kayıtlarda görünen ad için geriye uyumlu davranışı test et.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Özel adı olan projeyi yeniden seçmek veya aynı diskte taşındıktan sonra bulmak o adı korur. Listede tek kayıt vardır ve son açılış sırası yenilenir.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L166-L187">src-tauri/src/projects.rs · 166–187</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L472-L479">src-tauri/src/projects.rs · 472–479</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L166-L187">src-tauri/src/projects.rs · 166–187</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/projects.rs#L472-L479">src-tauri/src/projects.rs · 472–479</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-24">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-24" autocomplete="off"></details>
@@ -601,9 +601,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Yenilemeden önce odak kenar çubuğundaysa sohbet ya da terminal kimliğini sakla. Aynı satır kalıyorsa yeni düğmeye kaydırmadan odak ver.</li><li>Odak başka bir görünümdeyse o görünümü koru. Seçili satır arşivlenmişse öngörülebilir komşu eyleme geç.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Klavye ile seçilmiş satır, kullanım ve meşguliyet güncellemelerinden sonra odakta kalır. Ardından Enter hâlâ aynı sohbeti açar. Açık ayar penceresinden odak çalınmaz.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/projects.ts#L107-L135">src/projects.ts · 107–135</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L527-L532">src/main.ts · 527–532</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L85-L90">src/dashboard.ts · 85–90</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/projects.ts#L107-L135">src/projects.ts · 107–135</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/main.ts#L527-L532">src/main.ts · 527–532</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/dashboard.ts#L85-L90">src/dashboard.ts · 85–90</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-25">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-25" autocomplete="off"></details>
@@ -616,10 +616,10 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Kullanıcı iptalini, zaman aşımını, geçersiz yanıtı ve doğrulanmış sürüm uyuşmazlığını ayrı sonuçlarla taşı. İptalde önceki geçerli bilgiyi açık bir durumla koru.</li><li>Bekleme, iptal ve yeniden deneme metinlerini uygulamanın İngilizce arayüzüyle uyumlu hale getir.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Yavaşlatılmış uyumlu bir sürüm sorgusu iptal edildiğinde Unsupported Brig version görünmez. Gerçek uyumsuz sürüm uyarı verir. İptalden sonra ikinci denetim tamamlanır.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L59-L70">src-tauri/src/host.rs · 59–70</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L141-L157">src-tauri/src/host.rs · 141–157</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/host.ts#L24-L32">src/host.ts · 24–32</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/PRODUCT.md#L33-L35">PRODUCT.md · 33–35</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L59-L70">src-tauri/src/host.rs · 59–70</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/host.rs#L141-L157">src-tauri/src/host.rs · 141–157</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src/host.ts#L24-L32">src/host.ts · 24–32</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/PRODUCT.md#L33-L35">PRODUCT.md · 33–35</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-26">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-26" autocomplete="off"></details>
@@ -632,9 +632,9 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Settings sürüm alanını uygulamanın paket metadata’sından veya aynı yapılandırmadan derleme sırasında doldur.</li><li>Release doğrulamasına config sürümü, uygulama paketi ve kullanıcıya gösterilen sürümün eşleştiği bir kontrol ekle.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Geçici yapılandırmada sürüm değiştiğinde Settings, About ve DMG içindeki bundle aynı yeni değeri gösterir. HTML’de ayrıca sürüm değişikliği gerekmez.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L74-L81">index.html · 74–81</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/menu.rs#L12-L18">src-tauri/src/menu.rs · 12–18</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/.github/workflows/macos-release.yml#L22-L26">.github/workflows/macos-release.yml · 22–26</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L74-L81">index.html · 74–81</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/menu.rs#L12-L18">src-tauri/src/menu.rs · 12–18</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/.github/workflows/macos-release.yml#L22-L26">.github/workflows/macos-release.yml · 22–26</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-27">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-27" autocomplete="off"></details>
@@ -647,8 +647,8 @@ footer{padding-bottom:3rem;font-size:.85rem}
 <h4 class="sublabel">Düzeltme adımları</h4>
 <ol><li>Değişiklik inceleme alanında çalışma ağacı ve indekse alınmış değişiklikler için ayrı eylemler ya da açıkça etiketlenmiş iki bölüm sun.</li><li>Her iki sorguyu da aynı doğrulanmış konuk proje dizininde, mevcut dış fark ve dönüştürme araçlarını kapalı tutarak çalıştır.</li></ol>
 <div class="accept"><strong>Kabul ölçütü</strong>Sadece indekste, sadece çalışma ağacında ve ikisinde birden değişiklik olan depolarda kullanıcı ilgili farkı görür. Temiz depoda boş sonucun nedeni anlaşılır.</div>
-<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L74-L81">src-tauri/src/operations.rs · 74–81</a>
-<a href="https://github.com/mkorkmaz/my-agent-sandbox/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L167">index.html · 163–167</a></div>
+<div class="sources" aria-label="İlgili kaynak satırları"><a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/src-tauri/src/operations.rs#L74-L81">src-tauri/src/operations.rs · 74–81</a>
+<a href="https://github.com/mkorkmaz/tugboat/blob/99cb6419345ad875700242dbc2f796cfdfd72ca1/index.html#L163-L167">index.html · 163–167</a></div>
 
 <details class="record"><summary>Uygulama kaydı</summary><label><input type="checkbox" class="done"> Kabul ölçütü doğrulandı</label>
 <label for="kanit-28">Test adı, sonuç veya commit</label><input type="text" class="evidence" id="kanit-28" autocomplete="off"></details>

@@ -47,7 +47,7 @@ export async function collectRuntimeLicenses(bin) {
   while (queue.length) components.push(...await Promise.all(queue.splice(0, 6).map(collectModule)));
 
   const source = path.join(root, '.build/brig-compat/brig-' + brig.commit);
-  const modifications = 'Tugboat modifies Brig ' + brig.version + ' to find the bundled mke2fs beside its executable and preserve the ' + brig.version + ' API version string while reporting modified:true. The CLI, daemon and broker use the same patched source. The patch and source pin are in sources/brig/ beside this notice file.\n';
+  const modifications = 'Tugboat modifies Brig ' + brig.version + ' to find the bundled mke2fs beside its executable and preserve the ' + brig.version + ' API version string while reporting modified:true. It also cleans up isolated gateways after a failed boot and reports unconfirmed stops. It keeps the ownership record for an existing default guest home when its virtual machine is absent. The CLI, daemon and broker use the same patched source. The patch and source pin are in sources/brig/ beside this notice file.\n';
   components.push({
     name: 'github.com/brig-sh/brig', version: brig.version, source: brig.source.url, revision: brig.commit,
     notices: [...readNotices(source), { name: 'MODIFICATIONS.txt', text: modifications }],

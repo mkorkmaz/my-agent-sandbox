@@ -10,10 +10,10 @@ use crate::{
     projects::{self, EnvironmentId, Project, Registry},
     terminal::{self, Layout},
 };
-pub use account::{Accounts, State, Status};
+pub use account::Accounts;
 use serde::Deserialize;
 use std::process::Command;
-use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "kebab-case")]
@@ -65,28 +65,6 @@ fn selected(
     environment_id: Option<&EnvironmentId>,
 ) -> Result<Project, String> {
     Registry::load(&projects::file(app)?)?.resolve_environment(identifier, environment_id)
-}
-
-fn require_claude(project: &Project) -> Result<(), String> {
-    if project.agent_kind != AgentKind::ClaudeCode {
-        return Err("Use the shared ChatGPT controls for Codex accounts.".into());
-    }
-    Ok(())
-}
-
-fn announce(app: &AppHandle, status: &Status) {
-    if app.emit("agent-account-changed", status).is_err() {
-        eprintln!("Could not deliver a Claude account update.");
-    }
-}
-
-pub fn invalidate(app: &AppHandle, project: &Project) -> Result<(), String> {
-    if project.agent_kind != AgentKind::ClaudeCode {
-        return Ok(());
-    }
-    let status = app.state::<Accounts>().invalidate(project)?;
-    announce(app, &status);
-    Ok(())
 }
 
 enum Launch {
@@ -212,68 +190,6 @@ pub async fn start_agent_session(
         },
     )
     .await
-}
-
-#[tauri::command]
-pub async fn agent_account_status(
-    app: AppHandle,
-    identifier: String,
-    environment_id: EnvironmentId,
-) -> Result<Status, String> {
-    let project = selected(&app, &identifier, Some(&environment_id))?;
-    require_claude(&project)?;
-    let operation = app.state::<Accounts>().operation(&project)?;
-    let _guard = operation.lock_owned().await;
-    tauri::async_runtime::spawn_blocking(move || {
-        let accounts = app.state::<Accounts>();
-        if let Some(pending) = accounts.pending(&project)? {
-            return Ok(pending);
-        }
-        let checked = environment::checked_environment(
-            &app,
-            &project.id,
-            Some(&project.environment_id),
-            None,
-        )?;
-        if checked.project.stage != crate::projects::ProjectStage::EnvironmentReady {
-            return accounts.publish(
-                &project,
-                Status::new(
-                    &project,
-                    State::EnvironmentStopped,
-                    "Prepare this Claude environment before checking its account.",
-                    None,
-                ),
-            );
-        }
-        let shared = crate::providers::shared_claude::ensure(&app, &checked)?;
-        let status = Status::new(
-            &project,
-            if shared.state == "signed-in" && claude::signed_in(&checked)? {
-                State::SignedIn
-            } else {
-                State::SignedOut
-            },
-            &shared.message,
-            None,
-        );
-        accounts.publish(&project, status)
-    })
-    .await
-    .map_err(|_| "Could not read this Claude account.")?
-}
-
-#[tauri::command]
-pub async fn agent_logout(
-    app: AppHandle,
-    identifier: String,
-    environment_id: EnvironmentId,
-) -> Result<Status, String> {
-    let _ = (app, identifier, environment_id);
-    Err(
-        "Use Sign out of Tugboat in Settings, Providers to disconnect the shared Claude account."
-            .into(),
-    )
 }
 
 #[cfg(test)]

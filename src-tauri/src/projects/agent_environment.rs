@@ -14,6 +14,8 @@ pub struct AgentEnvironment {
     pub policy: Option<Policy>,
     pub stage: ProjectStage,
     pub owns_session: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub adopted_managed_profile: bool,
     pub owns_binding: bool,
     pub policy_detached: bool,
     pub environment_verified: Option<bool>,
@@ -32,6 +34,7 @@ impl AgentEnvironment {
             policy: project.policy.clone(),
             stage: project.stage.clone(),
             owns_session: project.owns_session,
+            adopted_managed_profile: project.adopted_managed_profile,
             owns_binding: project.owns_binding,
             policy_detached: project.policy_detached,
             environment_verified: project.environment_verified,

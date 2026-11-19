@@ -284,3 +284,48 @@ fn invalid_transitions_and_generation_overflow_preserve_the_previous_account() {
     assert!(matches!(session.account, Account::Disconnected));
     assert!(session.account.credentials().is_none());
 }
+
+#[test]
+fn missing_bound_project_allows_claude_sign_in_only_when_its_guest_is_stopped_or_absent() {
+    use crate::{
+        agents::AgentKind, desktop::settings::Settings, platform::brig::Brig, projects::Registry,
+    };
+
+    let fixture = Fixture::new();
+    let folder = fixture.0.join("project");
+    fs::create_dir(&folder).unwrap();
+    let mut registry = Registry::default();
+    let registered = registry.register(&folder, "codex").unwrap();
+    let added = registry
+        .ensure_environment(&registered.id, AgentKind::ClaudeCode, &Settings::default())
+        .unwrap();
+    let project = registry
+        .environment(&registered.id, &added.environment_id)
+        .unwrap();
+    fs::rename(&folder, fixture.0.join("moved")).unwrap();
+
+    let executable = fixture.0.join("brig");
+    fs::write(
+        &executable,
+        "#!/bin/sh\n[ \"$1:$2\" = '--json:ls' ] || exit 1\nprintf '%s' \"$INVENTORY\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+    let check = |sandboxes: Value| {
+        let inventory = json!({"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":sandboxes}});
+        let brig = Brig {
+            executable: executable.clone(),
+            environment: [("INVENTORY".into(), inventory.to_string())].into(),
+        };
+        account::check_running_binding(brig, project.clone(), Settings::default(), &[])
+    };
+    let entry = |state| json!([{"ref":project.reference(),"state":state}]);
+    assert!(check(entry("stopped")).unwrap().is_none());
+    assert!(check(json!([])).unwrap().is_none());
+    assert!(check(entry("running"))
+        .err()
+        .unwrap()
+        .contains("project moved"));
+    assert!(check(entry("unknown")).is_err());
+    assert!(check(Value::Null).is_err());
+}

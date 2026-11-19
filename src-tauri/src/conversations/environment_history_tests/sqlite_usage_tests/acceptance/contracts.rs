@@ -131,8 +131,8 @@ fn full_api_event_resume_and_quiet_contracts_match_on_both_agents_native_familie
             assert_eq!(actual.coverage, usage::Coverage::Partial);
             assert!(actual_details.user_prompt_count.is_none());
         }
-        assert_eq!(actual.pricing_date, "2026-11-10");
-        assert_eq!(actual.anthropic_pricing_date, "2026-11-13");
+        assert_eq!(actual.pricing_date, "2026-11-17");
+        assert_eq!(actual.anthropic_pricing_date, "2026-11-17");
         for row in &actual.conversations {
             assert_eq!(row.usage_revision.len(), 64);
             assert!(row.usage_revision.bytes().any(|byte| byte != b'0'));
@@ -346,7 +346,7 @@ fn registry_environment_removal_and_forget_leave_all_saved_sql_facts() {
     watch.target = Some(environment_history::Target::for_project(&project));
     watch.records_directory = Some(records.clone());
     watch.store = Some(store.clone());
-    watch.project = project_path.clone();
+    watch.project = project_path.clone().into();
     let source = write_codex(&watch);
     let contents = fs::read_to_string(&source)
         .unwrap()

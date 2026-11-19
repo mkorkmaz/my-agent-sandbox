@@ -1,7 +1,8 @@
 use crate::conversations::lineage::{Kind, Lineage, Problem};
+use crate::projects::GuestProjectScope;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Clone)]
 pub struct Node {
@@ -168,7 +169,7 @@ impl Graph {
         result
     }
 
-    pub fn project_members(&self, project: &Path) -> BTreeSet<String> {
+    pub fn project_members(&self, project: &GuestProjectScope) -> BTreeSet<String> {
         self.nodes
             .keys()
             .filter(|id| self.belongs(id, project))
@@ -176,15 +177,15 @@ impl Graph {
             .collect()
     }
 
-    fn belongs(&self, id: &str, project: &Path) -> bool {
+    fn belongs(&self, id: &str, project: &GuestProjectScope) -> bool {
         if self.blocked(id) {
             return false;
         }
         let relation = &self.relations[id];
         if let Some(root) = relation.root_session_id.as_ref() {
-            return self.nodes[root].cwd.starts_with(project);
+            return project.contains(&self.nodes[root].cwd);
         }
-        if self.nodes[id].cwd.starts_with(project) {
+        if project.contains(&self.nodes[id].cwd) {
             return true;
         }
         if !trusted_link(&self.nodes[id]) || relation.status == Status::Invalid {
@@ -204,7 +205,7 @@ impl Graph {
             if self.relations[parent].status == Status::Invalid {
                 return false;
             }
-            if node.cwd.starts_with(project) {
+            if project.contains(&node.cwd) {
                 return true;
             }
             if !trusted_link(node) {
@@ -371,7 +372,7 @@ mod tests {
             (id(5), node(None, "/work/project")),
         ]));
         assert_eq!(
-            graph.project_members(Path::new("/work/project")),
+            graph.project_members(&"/work/project".into()),
             BTreeSet::from([id(1), id(2), id(5)])
         );
     }

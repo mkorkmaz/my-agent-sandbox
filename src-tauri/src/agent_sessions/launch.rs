@@ -7,7 +7,6 @@ use crate::{
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LaunchMode {
     Shell,
-    Login,
     Chat,
 }
 
@@ -56,11 +55,10 @@ impl Admission {
     }
 
     pub fn capabilities(&mut self) -> Result<(), String> {
-        let previous = match self.mode {
-            LaunchMode::Login => AdmissionState::Online,
-            _ => AdmissionState::Authorized,
-        };
-        self.advance(previous, AdmissionState::CapabilitiesVerified)
+        self.advance(
+            AdmissionState::Authorized,
+            AdmissionState::CapabilitiesVerified,
+        )
     }
 
     pub fn prepare(mut self, arguments: Vec<String>) -> Result<Vec<String>, String> {

@@ -3,6 +3,7 @@ pub(super) enum ShutdownState {
     Open,
     Confirming,
     Draining,
+    ReportingFailure,
     WindowCloseAllowed,
     ExitAllowed,
 }
@@ -11,7 +12,7 @@ impl ShutdownState {
     pub fn abort(&mut self) {
         if matches!(
             self,
-            Self::Confirming | Self::Draining | Self::WindowCloseAllowed
+            Self::Confirming | Self::Draining | Self::ReportingFailure | Self::WindowCloseAllowed
         ) {
             *self = Self::Open;
         }
@@ -30,6 +31,12 @@ impl ShutdownState {
         }
         *self = Self::Draining;
         true
+    }
+
+    pub fn report_failure(&mut self) {
+        if *self == Self::Draining {
+            *self = Self::ReportingFailure;
+        }
     }
 
     pub fn approve(&mut self) -> Result<(), String> {
@@ -63,6 +70,22 @@ impl ShutdownState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_failed_shutdown_can_retry_after_the_alert_is_dismissed() {
+        let mut state = ShutdownState::Open;
+        assert!(state.request());
+        assert!(state.begin());
+        state.report_failure();
+        assert!(!state.is_closing());
+        assert!(!state.allows_exit());
+        assert!(!state.request());
+        state.abort();
+        assert!(state.request());
+        assert!(state.begin());
+        state.approve().unwrap();
+        assert!(state.allows_exit());
+    }
+
     #[test]
     fn a_failed_dispatch_allows_a_fresh_shutdown_but_cannot_revoke_committed_exit() {
         let mut state = ShutdownState::Open;

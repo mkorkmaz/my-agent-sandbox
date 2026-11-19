@@ -23,7 +23,7 @@ export function collectHullLicenses() {
       notices.push({ name: 'ATTRIBUTION.txt', text: name + ' ' + version + '\nExact module source: https://proxy.golang.org/' + name + '/@v/' + moduleVersion + '.zip\nThe upstream module archive contains no license notice. No license is inferred.\n' });
     }
     if (name === 'github.com/brig-sh/hull') {
-      notices.push({ name: 'MODIFICATIONS.txt', text: 'Tugboat modifies hull ' + pin.version + ' (' + pin.commit + ') to support spaces in shared guest paths, quote those paths in legacy mount commands and locate bundled ext4 disk tools beside hull.\nPatches: https://github.com/brig-sh/hull/tree/' + pin.commit + ' plus resources/runtime/hull-spaces.patch and resources/runtime/hull-disk-tools.patch in the Tugboat source.\nTugboat preserves the upstream signatures on the bundled hvi/Vz runners. Brig modifications are described in the bundled runtime source notices.\n' });
+      notices.push({ name: 'MODIFICATIONS.txt', text: 'Tugboat modifies hull ' + pin.version + ' (' + pin.commit + ') to support spaces in shared guest paths, quote those paths in legacy mount commands and locate bundled ext4 disk tools beside hull. It preserves argument boundaries when checking a guest process and can stop a verified process whose saved PID was lost.\nPatches: https://github.com/brig-sh/hull/tree/' + pin.commit + ' plus resources/runtime/hull-spaces.patch and resources/runtime/hull-disk-tools.patch in the Tugboat source.\nTugboat preserves the upstream signatures on the bundled hvi/Vz runners. Brig modifications are described in the bundled runtime source notices.\n' });
     }
     components.push({ name, version, source: local ? pin.source.url : 'https://' + name, notices });
   }

@@ -8,6 +8,12 @@ import type { OpenTerminal } from '../terminal/terminal-launch';
 
 interface Preview { reference: string; workspace: string; description: string; fingerprint: string; external: boolean; logout?: boolean | null }
 
+function requiresNewRemovalReview(error: unknown): error is { currentReference: string; currentDescription: string } {
+  return typeof error === 'object' && error !== null
+    && 'currentReference' in error && typeof error.currentReference === 'string'
+    && 'currentDescription' in error && typeof error.currentDescription === 'string';
+}
+
 export function initializeOperations(current: () => ProjectContext | null, open: OpenTerminal, stopped: (project: Project) => Promise<void>, removed: (message: string) => Promise<void>): () => void {
   const requests = new RequestState();
   for (const [id, operation, caption] of [['git-status', 'git-status', 'Git status'], ['git-diff', 'git-diff', 'Working tree diff'], ['git-staged-diff', 'git-staged-diff', 'Staged diff'], ['project-tests', 'tests', 'Project tests'], ['project-doctor', 'doctor', 'Brig doctor'], ['project-info', 'info', 'Brig session info'], ['project-policy', 'policy-check', 'Policy bindings'], ['project-logs', 'logs', 'Last 100 log lines']] as const) {
@@ -33,6 +39,8 @@ export function initializeOperations(current: () => ProjectContext | null, open:
   const dialog = document.getElementById('removal-dialog') as HTMLDialogElement;
   const confirmation = document.getElementById('removal-confirmation') as HTMLInputElement;
   const confirm = document.getElementById('confirm-removal') as HTMLButtonElement;
+  const cancel = document.getElementById('cancel-removal')!;
+  const errorMessage = document.getElementById('removal-error')!;
   const review = new RemovalReview<{ preview: Preview; context: ProjectContext; all: boolean }>();
   const previewButtons = ['preview-removal', 'preview-project-removal']
     .map(id => document.getElementById(id) as HTMLButtonElement | null)
@@ -55,14 +63,14 @@ export function initializeOperations(current: () => ProjectContext | null, open:
       document.getElementById('removal-reference')!.textContent = preview.reference;
       document.getElementById('removal-workspace')!.textContent = preview.workspace;
       document.getElementById('removal-external')!.hidden = !preview.external;
-      confirmation.value = ''; confirm.disabled = true;
-      document.getElementById('removal-error')!.textContent = '';
+      confirmation.value = ''; confirmation.disabled = false; confirm.disabled = true;
+      errorMessage.textContent = '';
       showDialog(dialog, previewButton.id); confirmation.focus();
     } catch (error) { if (sameProjectView(current(), context) && requests.accepts(pending)) status.textContent = String(error); }
     finally { if (sameProjectView(current(), context)) requests.finish(pending); if (sameProjectView(current(), context)) for (const button of previewButtons) { button.disabled = false; setBusy(button, false); } }
   });
   confirmation.addEventListener('input', () => { confirm.disabled = !review.confirms(confirmation.value); });
-  document.getElementById('cancel-removal')!.addEventListener('click', () => { dialog.close(); });
+  cancel.addEventListener('click', () => { dialog.close(); });
   dialog.addEventListener('close', () => {
     if (dialog.open) return;
     review.reset();
@@ -86,10 +94,21 @@ export function initializeOperations(current: () => ProjectContext | null, open:
       if (sameProjectView(current(), context) && requests.accepts(pending)) dialog.close();
       if (sameProject(current(), context)) await removed(message);
     } catch (error) {
-      if (sameProjectView(current(), context) && requests.accepts(pending) && dialog.open) {
-        review.retry(removal);
-        document.getElementById('removal-error')!.textContent = String(error);
+      if (!sameProjectView(current(), context) || !requests.accepts(pending) || !dialog.open) return;
+      if (requiresNewRemovalReview(error)) {
+        review.reset();
+        confirmation.value = '';
+        confirmation.disabled = true;
+        document.getElementById('removal-reference')!.textContent = error.currentReference;
+        document.getElementById('removal-description')!.textContent = error.currentDescription;
+        document.getElementById('removal-workspace')!.textContent = '';
+        document.getElementById('removal-external')!.hidden = true;
+        errorMessage.textContent = 'The removal scope changed. Close this dialog and open a fresh preview to review the current scope.';
+        cancel.focus();
+        return;
       }
+      review.retry(removal);
+      errorMessage.textContent = String(error);
     }
     finally {
       if (sameProjectView(current(), context) && requests.accepts(pending)) {

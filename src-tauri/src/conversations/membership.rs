@@ -1,5 +1,6 @@
 use super::{HistoryScan, ProjectExclusion, SessionRecord};
-use std::path::{Path, PathBuf};
+use crate::projects::GuestProjectScope;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 pub(super) enum MembershipState {
@@ -15,11 +16,11 @@ enum MembershipEvidence {
 }
 
 impl MembershipEvidence {
-    fn from_root(root: Option<(String, PathBuf)>, project: &Path) -> Self {
+    fn from_root(root: Option<(String, PathBuf)>, project: &GuestProjectScope) -> Self {
         let Some((root_session_id, root_cwd)) = root else {
             return Self::Unresolved;
         };
-        if root_cwd.starts_with(project) {
+        if project.contains(&root_cwd) {
             return Self::Confirmed;
         }
         Self::Foreign(ProjectExclusion {
@@ -34,7 +35,7 @@ impl HistoryScan {
         &mut self,
         id: &str,
         root: Option<(String, PathBuf)>,
-        project: &Path,
+        project: &GuestProjectScope,
     ) {
         match MembershipEvidence::from_root(root, project) {
             MembershipEvidence::Confirmed => {

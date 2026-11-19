@@ -115,7 +115,7 @@ impl Fixture {
         plan["data"]["credentials"] = serde_json::json!([]);
         plan["data"]["limits"] = serde_json::json!({"cpus":4,"mem":4096});
         storage::write(&self.root.join("plan.json"), &plan).unwrap();
-        storage::write(&self.root.join("inventory.json"), &serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[{"agent":"custom-claude","ref":"custom-claude@existing","state":"stopped"}]}})).unwrap();
+        storage::write(&self.root.join("inventory.json"), &serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[{"agent":"custom-claude","ref":"custom-claude@existing","sandbox":"brig-custom-claude-existing","state":"stopped"}]}})).unwrap();
         storage::write(&self.root.join("info.json"), &serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Info","data":{"profile":"custom-claude","session":"existing","project":{"host":project.path},"workspace":self.root.join("external-home")}})).unwrap();
         storage::write(&self.root.join("policy.json"), &serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"Policy","metadata":{"name":"external-policy"},"spec":{"egress":{"default":"deny","allow":[]}}})).unwrap();
         let executable = self.root.join("fake-brig");
@@ -124,9 +124,9 @@ root=${0%/*}
 printf '%s|%s\n' "${BRIG_PROFILE_DIR:-}" "$*" >> "$root/calls"
 case "$1:$2" in
 agent:show) if test "$3" != tugboat-claude && test -n "${BRIG_PROFILE_DIR:-}"; then exit 85; fi; printf '{"name":"%s","kind":"agent","binary":"claude"}\n' "$3";;
---json:ls) cat "$root/inventory.json";;
---json:info) test -z "${BRIG_PROFILE_DIR:-}" || exit 86; cat "$root/info.json";;
---json:plan) test -z "${BRIG_PROFILE_DIR:-}" || exit 87; cat "$root/plan.json";;
+--json:ls) if test -n "${BRIG_PROFILE_DIR:-}" && test -f "$root/managed-inventory.json"; then cat "$root/managed-inventory.json"; else cat "$root/inventory.json"; fi;;
+--json:info) if test "$3" = tugboat-claude@previous && test -n "${BRIG_PROFILE_DIR:-}"; then cat "$root/managed-info.json"; exit; fi; test -z "${BRIG_PROFILE_DIR:-}" || exit 86; test "$3" = custom-claude@existing || exit 89; cat "$root/info.json";;
+--json:plan) if test -n "${BRIG_PROFILE_DIR:-}" && test -f "$root/managed-plan.json"; then cat "$root/managed-plan.json"; exit; fi; test -z "${BRIG_PROFILE_DIR:-}" || exit 87; cat "$root/plan.json";;
 policy:show) cat "$root/policy.json";;
 policy:check) printf 'external-policy\n';;
 *) exit 88;;
@@ -364,6 +364,193 @@ fn existing_claude_reference_uses_its_own_profile_and_home_without_the_managed_o
         .unwrap();
     assert!(!unscoped.environment.contains_key("BRIG_PROFILE_DIR"));
     assert!(!fixture.root.join("not-created").exists());
+}
+
+#[test]
+fn chooser_discovers_both_profile_directories_and_reopens_an_adopted_managed_profile() {
+    let fixture = Fixture::new();
+    let project = fixture.project(AgentKind::ClaudeCode);
+    let brig = fixture
+        .fake_external()
+        .for_project(&project, &fixture.root.join("records/profiles"))
+        .unwrap();
+    let managed = "tugboat-claude@previous";
+    let external = "custom-claude@existing";
+    let mut inventory: Value = storage::read(&fixture.root.join("inventory.json"))
+        .unwrap()
+        .unwrap();
+    inventory["data"]["sandboxes"] = serde_json::json!([{"agent":"tugboat-claude","ref":managed,"sandbox":"brig-tugboat-claude-previous","state":"stopped"}]);
+    storage::write(&fixture.root.join("managed-inventory.json"), &inventory).unwrap();
+    for kind in ["info", "plan"] {
+        let mut data: Value = storage::read(&fixture.root.join(format!("{kind}.json")))
+            .unwrap()
+            .unwrap();
+        data["data"]["profile"] = "tugboat-claude".into();
+        data["data"]["session"] = "previous".into();
+        storage::write(&fixture.root.join(format!("managed-{kind}.json")), &data).unwrap();
+    }
+    let prepare = |brig: &Brig, chosen| {
+        prepare_selected(
+            brig,
+            &fixture.file(),
+            &Settings::default(),
+            &project.id,
+            &project.environment_id,
+            chosen,
+            &fixture.records(),
+        )
+        .unwrap()
+    };
+    let choice = prepare(&brig, None);
+    assert_eq!(choice.candidates, [external, managed]);
+    assert!(choice.plan.is_none());
+    let adopted = prepare(&brig, Some(managed));
+    assert_eq!(adopted.plan.unwrap()["data"]["session"], "previous");
+    assert!(!adopted.project.owns_session);
+    assert!(!crate::environment::managed_profile::owns(&adopted.project));
+    let reopened = fixture.scoped(&fixture.project(AgentKind::ClaudeCode));
+    assert_eq!(
+        prepare(
+            &Brig {
+                executable: brig.executable,
+                ..reopened
+            },
+            None
+        )
+        .project
+        .reference(),
+        managed
+    );
+}
+
+#[test]
+fn indexed_session_discovery_skips_unrelated_paths_and_adopts_a_confirmed_match() {
+    let fixture = Fixture::new();
+    let project = fixture.project(AgentKind::ClaudeCode);
+    let mut brig = fixture
+        .fake_external()
+        .for_project(&project, &fixture.root.join("records/profiles"))
+        .unwrap();
+    brig.environment.remove("BRIG_STATE_DIR");
+    let selected_alias = Path::new("/tmp").join(project.path.strip_prefix("/private/tmp").unwrap());
+    storage::write(
+        &fixture.root.join("inventory.json"),
+        &serde_json::json!({"apiVersion":"brig.sh/v1alpha1","kind":"SandboxList","data":{"sandboxes":[
+            {"agent":"custom-claude","ref":"custom-claude@unavailable","sandbox":"brig-custom-claude-unavailable","state":"stopped"},
+            {"agent":"custom-claude","ref":"custom-claude@existing","sandbox":"brig-custom-claude-existing","state":"stopped"}
+        ]}}),
+    )
+    .unwrap();
+    storage::write(
+        &fixture.root.join("h/.brig/sessions.json"),
+        &serde_json::json!({
+            "custom-claude@unavailable":{"sandbox":"brig-custom-claude-unavailable","project":"/Volumes/Unavailable/project with spaces"},
+            "custom-claude@existing":{"sandbox":"brig-custom-claude-existing","project":selected_alias},
+            "custom-claude@absent":{"sandbox":"brig-custom-claude-absent","project":project.path}
+        }),
+    )
+    .unwrap();
+
+    let prepared = prepare_selected(
+        &brig,
+        &fixture.file(),
+        &Settings::default(),
+        &project.id,
+        &project.environment_id,
+        None,
+        &fixture.records(),
+    )
+    .unwrap();
+    assert_eq!(prepared.project.reference(), "custom-claude@existing");
+    let calls = fs::read_to_string(fixture.root.join("calls")).unwrap();
+    let info_calls: Vec<_> = calls
+        .lines()
+        .filter(|line| line.contains("--json info"))
+        .collect();
+    assert_eq!(info_calls, ["|--json info custom-claude@existing"]);
+}
+
+#[test]
+fn indexed_session_discovery_checks_bundled_brig_with_a_stub_runtime() {
+    let fixture = Fixture::new();
+    let project = fixture.project(AgentKind::Codex);
+    let runtime = fixture.root.join("runtime");
+    fs::write(
+        &runtime,
+        "#!/bin/sh\ncase \"$1\" in\nps) printf 'NAME\\tSTATUS\\nbrig-codex-existing\\tstopped\\nbrig-codex-unavailable\\tstopped\\n';;\ninspect) exit 1;;\n*) exit 91;;\nesac\n",
+    )
+    .unwrap();
+    storage::write(
+        &fixture.root.join("s/sessions.json"),
+        &serde_json::json!({
+            "codex@unavailable":{"sandbox":"brig-codex-unavailable", "home":fixture.root.join("external-home"), "project":"/Volumes/Unavailable/project with spaces"},
+            "codex@existing":{"sandbox":"brig-codex-existing", "home":fixture.root.join("external-home"), "project":project.path}
+        }),
+    )
+    .unwrap();
+    let mut brig = fixture.brig.clone();
+    brig.environment.insert(
+        "TEST_BUNDLED_BRIG".into(),
+        brig.executable.to_string_lossy().into_owned(),
+    );
+    brig.executable = fixture.root.join("trace-brig");
+    fs::write(
+        &brig.executable,
+        "#!/bin/sh\nif test \"$1:$2:$3\" = --json:info:codex@unavailable; then exit 89; fi\nexec \"$TEST_BUNDLED_BRIG\" \"$@\"\n",
+    )
+    .unwrap();
+    fs::set_permissions(&brig.executable, fs::Permissions::from_mode(0o700)).unwrap();
+
+    assert_eq!(candidates(&brig, &project).unwrap(), ["codex@existing"]);
+}
+
+#[test]
+fn indexed_session_discovery_requires_matching_identity_and_live_project_confirmation() {
+    let fixture = Fixture::new();
+    let brig = fixture.fake_external();
+    let project = fixture.project(AgentKind::ClaudeCode);
+    let index = fixture.root.join("s/sessions.json");
+    storage::write(
+        &fixture.root.join("h/.brig/sessions.json"),
+        &serde_json::json!({
+            "custom-claude@existing":{"sandbox":"brig-custom-claude-existing","project":"/Volumes/Unavailable/project"}
+        }),
+    )
+    .unwrap();
+    storage::write(
+        &index,
+        &serde_json::json!({
+            "custom-claude@existing":{"sandbox":"brig-custom-claude-replaced","project":"/Volumes/Unavailable/project"}
+        }),
+    )
+    .unwrap();
+    assert_eq!(
+        candidates(&brig, &project).unwrap(),
+        ["custom-claude@existing"]
+    );
+
+    storage::write(
+        &index,
+        &serde_json::json!({
+            "custom-claude@existing":{"sandbox":"brig-custom-claude-existing","project":project.path}
+        }),
+    )
+    .unwrap();
+    let info_file = fixture.root.join("info.json");
+    let mut info: Value = storage::read(&info_file).unwrap().unwrap();
+    info["data"]["project"]["host"] = fixture
+        .root
+        .join("external-home")
+        .to_string_lossy()
+        .into_owned()
+        .into();
+    storage::write(&info_file, &info).unwrap();
+    assert!(candidates(&brig, &project).unwrap().is_empty());
+    let calls = fs::read_to_string(fixture.root.join("calls")).unwrap();
+    assert_eq!(
+        calls.matches("--json info custom-claude@existing").count(),
+        2
+    );
 }
 
 #[test]

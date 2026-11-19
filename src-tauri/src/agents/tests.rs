@@ -7,7 +7,7 @@ use std::path::PathBuf;
 const SESSION: &str = "1a5bc5b5-af21-432d-bf07-e2218dd9f9bf";
 
 #[test]
-fn agent_kinds_and_supported_operations_have_stable_wire_names() {
+fn agent_kinds_have_stable_wire_names() {
     assert_eq!(serde_json::to_value(AgentKind::Codex).unwrap(), "codex");
     assert_eq!(
         serde_json::to_value(AgentKind::ClaudeCode).unwrap(),
@@ -20,14 +20,6 @@ fn agent_kinds_and_supported_operations_have_stable_wire_names() {
     for unsupported in ["ClaudeCode", "openai", "anthropic", "shell", ""] {
         assert!(serde_json::from_value::<AgentKind>(json!(unsupported)).is_err());
     }
-    let definitions = serde_json::to_value(agent_definitions()).unwrap();
-    assert_eq!(
-        definitions,
-        json!([
-            {"kind":"codex","operations":["login","login-status","logout","new-chat","resume"]},
-            {"kind":"claude-code","operations":["login","login-status","logout","new-chat","resume"]}
-        ])
-    );
 }
 
 #[test]
@@ -81,24 +73,6 @@ fn literal_claude_credentials_are_rejected_without_exposing_the_value() {
 }
 
 #[test]
-fn operation_identifiers_accept_only_their_required_session_parameters() {
-    let session = SessionId::new(SESSION).unwrap();
-    for operation in [
-        AgentOperation::Login,
-        AgentOperation::LoginStatus,
-        AgentOperation::Logout,
-    ] {
-        assert!(operation.command(None).is_ok());
-        assert!(operation.command(Some(&session)).is_err());
-    }
-    assert!(AgentOperation::Resume.command(None).is_err());
-    assert!(AgentOperation::Resume.command(Some(&session)).is_ok());
-    assert!(AgentOperation::NewChat.command(None).is_ok());
-    assert!(AgentOperation::NewChat.command(Some(&session)).is_ok());
-    assert!(serde_json::from_value::<AgentOperation>(json!("run-shell")).is_err());
-}
-
-#[test]
 fn session_ids_reject_flags_paths_wrong_types_and_invalid_uuid_shapes() {
     let session = SessionId::new(SESSION).unwrap();
     assert_eq!(serde_json::to_value(&session).unwrap(), SESSION);
@@ -123,23 +97,11 @@ fn session_ids_reject_flags_paths_wrong_types_and_invalid_uuid_shapes() {
 }
 
 #[test]
-fn codex_account_and_version_commands_keep_the_file_store_and_device_login() {
+fn codex_account_status_logout_and_version_commands_keep_the_file_store() {
     let cases = [
         (
             AgentCommand::Version,
             vec!["sh", "custom@a", "codex", "--version"],
-        ),
-        (
-            AgentCommand::Login,
-            vec![
-                "sh",
-                "custom@a",
-                "codex",
-                "-c",
-                "cli_auth_credentials_store=\"file\"",
-                "login",
-                "--device-auth",
-            ],
         ),
         (
             AgentCommand::LoginStatus,
@@ -221,7 +183,6 @@ fn claude_commands_match_the_live_cli_contract_and_require_a_new_session_id() {
     let session = SessionId::new(SESSION).unwrap();
     for (request, expected) in [
         (AgentCommand::Version, vec!["--version"]),
-        (AgentCommand::Login, vec!["auth", "login"]),
         (AgentCommand::LoginStatus, vec!["auth", "status", "--json"]),
         (AgentCommand::Logout, vec!["auth", "logout"]),
         (

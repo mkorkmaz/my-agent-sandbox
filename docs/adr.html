@@ -28,6 +28,7 @@
     <nav class="contents" aria-label="Decision groups">
       <ul>
         <li><a href="#desktop">Desktop and runtime</a></li>
+        <li><a href="#boot">Environment startup presentation</a></li>
         <li><a href="#projects">Projects and environments</a></li>
         <li><a href="#accounts">Provider accounts</a></li>
         <li><a href="#history">Conversations and usage</a></li>
@@ -73,6 +74,21 @@
           <dd>A saved absolute path can select a compatible Brig executable. An invalid override gives an error. A release still needs the other bundled tools. The first guest start can need internet access for images and boot assets. The bundled registry configuration keeps public image pulls separate from the host Docker credential store.</dd>
         </dl>
         <p class="source">Source files · <a href="../README.md">Runtime requirements</a> · <a href="../config/brig-runtime.json">Release input pins</a> · <a href="../scripts/runtime/prepare-bundled-runtime.mjs">Runtime assembly</a> · <a href="../src-tauri/src/platform/runtime/mod.rs">Manifest verification</a> · <a href="../src-tauri/src/platform/host.rs">CLI selection and checks</a> · <a href="../resources/runtime/registry/config.json">Registry configuration</a></p>
+      </article>
+    </section>
+
+    <section id="boot" aria-labelledby="boot-heading">
+      <h2 id="boot-heading">Environment startup presentation</h2>
+      <article id="adr-021">
+        <h3>ADR-021 · Reserve a bounded native terminal area for boot status</h3>
+        <p>Environment startup opens its setup terminal in the workspace. A centered web card shows the selected agent and a bundled Three.js animation. The native layout accepts an optional card rectangle relative to the terminal surface.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>The AppKit terminal is above the webview. A web stacking order cannot cover it. A bounded drawing exclusion reveals the status card while keeping setup output visible around it.</dd>
+          <dt>Consequence</dt>
+          <dd>Rust validates the rectangle. AppKit clips drawing and pointer input to the terminal bounds. Omitting the rectangle restores the full surface. Startup presentation follows project, environment, and terminal identity. Navigation releases the animation without stopping the process. Reduced motion uses a still frame. The setup terminal closes after its process exits. Failures keep their project error and retry action.</dd>
+        </dl>
+        <p class="source"><a href="../src/terminal/environment-boot.ts">Boot presentation</a> · <a href="../src/terminal/boot-animation.ts">Three.js scene</a> · <a href="../src-tauri/src/terminal/mod.rs">Native layout contract</a> · <a href="../src-tauri/native/TerminalDrawing.m">Drawing exclusion</a> · <a href="../tests/native/composition.m">Native drawing and input checks</a></p>
       </article>
     </section>
 
@@ -158,6 +174,7 @@
       <article id="adr-010">
         <h3>ADR-010 · Run browser authorization from the Mac</h3>
         <p>The account command starts a native sign-in attempt for the selected provider. ChatGPT uses device authorization. Claude uses Proof Key for Code Exchange (PKCE) and a temporary loopback callback. Rust opens the provider page, verifies the response, exchanges credentials, and saves the account.</p>
+        <p>Project session commands retain the legacy login rejection and direct the caller to Settings. They do not create guest sign-in attempts. Recovery still cancels saved unfinished guest attempts and finishes publication for saved imported credentials.</p>
         <dl>
           <dt>Recorded reason</dt>
           <dd>Settings must let a user connect before adding a project or starting a guest. The authorization attempt has its own lifetime, including cancellation.</dd>
@@ -284,6 +301,12 @@
           <dd>Tests and package verification must succeed before the publication job can run. Missing signing credentials, rejected notarization, invalid signatures, or failed Gatekeeper checks stop publication. A push without the marker skips both release jobs. Pull request checks retain their existing behavior.</dd>
         </dl>
         <p class="source">Source files · <a href="../.github/workflows/macos-release.yml">Release condition and publication dependency</a> · <a href="../scripts/build-macos-release.sh">Signing and notarization</a> · <a href="../scripts/release/verify-macos-release.mjs">Apple distribution checks</a> · <a href="developer-guide.html#signed-release">Ordered secret setup</a></p>
+      </article>
+      <article id="adr-020">
+        <h3>ADR-020 · Give development its own app identity and records</h3>
+        <p>Tauri development runs use the name <strong>Tugboat Dev</strong>, the identifier <code>sh.brig.desktop.dev</code>, and their own default records folder. Only packaged builds can migrate the installed app’s legacy records. Brig commands in development use a separate home for telemetry settings, policies, and guest data.</p>
+        <p>Both apps can run at the same time. Each owns its records lock and can select a custom records folder independently.</p>
+        <p class="source"><a href="../src-tauri/build.rs">Development identity</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Records startup</a> · <a href="../src-tauri/src/platform/command.rs">Brig command environment</a></p>
       </article>
     </section>
 

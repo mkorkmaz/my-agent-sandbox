@@ -46,6 +46,7 @@ const environment = {
 const options = {cwd:source, env:environment};
 if (test) {
   run(go, ['test', '-mod=readonly', './internal/runtime', './internal/buildinfo', '-count=1'], options);
+  run(go, ['test', '-mod=readonly', './internal/wrap', '-run', '^Test(DesktopOfflineRetry|DesktopStop|Stop|PruningDrops|AnOrphanHome|RemoveDeletesAnEphemeralHome)', '-count=1'], options);
   process.exit(0);
 }
 if (cached) process.exit(0);

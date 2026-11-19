@@ -325,6 +325,7 @@ pub fn detach(
     Ok(true)
 }
 
+#[cfg(test)]
 pub fn login_directory(checked: &CheckedProject, nonce: &str) -> Result<(PathBuf, String), String> {
     if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("The ChatGPT sign-in transaction is invalid.".into());

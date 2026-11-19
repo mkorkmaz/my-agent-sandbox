@@ -983,6 +983,25 @@ test('unavailable records keep location recovery enabled while ordinary settings
   assert.equal(harness.element('restart-for-records').hidden, false);
   assert.equal(harness.calls.find(call => call.command === 'change_storage_location').args.folder, '/Volumes/Reconnected/Tugboat');
   assert.match(harness.element('records-folder-status').textContent, /\/Volumes\/Reconnected\/Tugboat/);
+  assert.doesNotMatch(harness.element('records-folder-status').textContent, /verified/);
+  harness.dom.window.close();
+});
+
+test('settings shows the verified records reconnection after restart', async () => {
+  const directory = '/Volumes/Reconnected/Tugboat';
+  const message = 'Records folder reconnected. Tugboat verified your original records.';
+  const harness = await interfaceHarness({
+    storage_location: () => ({ ...recordsLocation, directory, message }),
+  });
+  await harness.ready;
+  harness.element('settings-navigation').click(); await flush();
+  const status = harness.element('records-folder-status');
+  assert.equal(harness.element('records-folder').textContent, directory);
+  assert.equal(status.hidden, false);
+  assert.equal(status.getAttribute('role'), 'status');
+  assert.equal(status.textContent, message);
+  assert.equal(harness.element('restart-for-records').hidden, true);
+  assert.equal(harness.element('cancel-records-move').hidden, true);
   harness.dom.window.close();
 });
 
@@ -1339,7 +1358,7 @@ test('a failed agent switch resumes automatic startup for the selected project',
   harness.dom.window.close();
 });
 
-test('opening a stopped project starts its saved environment in the background and reuses it on reopening', async () => {
+test('opening a stopped project shows its saved environment startup and reuses it on reopening', async () => {
   const preferences = { cpus: 2, memoryMb: 2048, verification: 'require', network: 'isolated' };
   let current = { ...project, stage: 'ready', options: preferences };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
@@ -1360,7 +1379,8 @@ test('opening a stopped project starts its saved environment in the background a
   assert.equal(start.args.identifier, project.id);
   assert.equal(start.args.fingerprint, 'saved-plan');
   assert.equal(start.args.layout.visible, false);
-  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.element('environment-boot-overlay').hidden, false);
   assert.equal(harness.element('project-settings-dialog').open, false);
   assert.equal(harness.element('project-setup').hidden, true);
   assert.equal(harness.element('start-codex').disabled, true);
@@ -1373,6 +1393,7 @@ test('opening a stopped project starts its saved environment in the background a
   assert.equal(harness.element('start-codex').disabled, false);
   assert.equal(harness.element('project-overview').hidden, false);
   assert.equal(harness.element('project-plan-feedback').hidden, true);
+  assert.equal(harness.element('environment-boot-overlay').hidden, true);
   assert.deepEqual(current.options, preferences);
   harness.element('project-navigation').click(); await flush(); open(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
@@ -1390,7 +1411,8 @@ test('an existing environment start is reused without a second process or termin
   harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
   harness.element('recent-project-list').querySelector('.recent-project').click(); await flush();
   assert.equal(harness.calls.filter(call => ['prepare_project', 'prepare_environment', 'terminal_focus'].includes(call.command)).length, 0);
-  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.element('environment-boot-overlay').hidden, false);
   assert.equal(harness.element('project-setup').hidden, true);
   assert.match(harness.element('project-plan-status').textContent, /Starting/);
   current = { ...current, stage: 'environment-ready' };
@@ -1417,7 +1439,8 @@ test('an environment that exits before its start response is verified without wa
   assert.equal(harness.calls.filter(call => call.command === 'finish_environment').length, 1);
   assert.equal(harness.element('start-codex').disabled, false);
   assert.equal(harness.element('project-setup').hidden, true);
-  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.element('environment-boot-overlay').hidden, true);
   assert.equal(harness.element('project-plan-feedback').hidden, true);
   harness.dom.window.close();
 });
@@ -1439,6 +1462,7 @@ test('a failed automatic environment start offers a retry without repeating proj
   assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
   assert.match(harness.element('project-plan-status').textContent, /temporarily unavailable/);
   assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('environment-boot-overlay').hidden, true);
   assert.equal(harness.element('start-codex').disabled, true);
   harness.element('retry-project-plan').click(); harness.element('retry-project-plan').click(); await flush();
   assert.equal(attempts, 2);
@@ -1446,10 +1470,12 @@ test('a failed automatic environment start offers a retry without repeating proj
   assert.equal(harness.calls.filter(call => ['save_project_preferences', 'save_settings', 'terminal_close'].includes(call.command)).length, 0);
   assert.match(harness.element('project-plan-status').textContent, /Starting/);
   assert.equal(harness.element('retry-project-plan').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.element('environment-boot-overlay').hidden, false);
   harness.dom.window.close();
 });
 
-test('a failed background environment check reports the failure and leaves New Chat disabled', async () => {
+test('a failed environment check retains its output, stops the overlay and leaves New Chat disabled', async () => {
   let current = { ...project, stage: 'ready' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
@@ -1470,6 +1496,8 @@ test('a failed background environment check reports the failure and leaves New C
   assert.equal(harness.element('start-codex').disabled, true);
   assert.equal(harness.element('project-settings-dialog').open, false);
   assert.equal(harness.element('project-setup').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.element('environment-boot-overlay').hidden, true);
   harness.dom.window.close();
 });
 
@@ -1492,7 +1520,8 @@ test('automatic environment startup preserves a project settings dialog opened d
   assert.equal(harness.element('project-settings-dialog').open, true);
   assert.equal(harness.dom.window.document.activeElement, harness.element('project-name'));
   assert.equal(harness.element('project-cpus').value, '2');
-  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_layout').at(-1).args.layout.visible, false);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, 0);
   harness.dom.window.close();
 });
@@ -1542,6 +1571,7 @@ test('a stopped environment after completion never enables New Chat from a stale
   assert.match(harness.element('project-plan-status').textContent, /environment is not running/);
   assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
+  assert.equal(harness.element('environment-boot-overlay').hidden, true);
   harness.dom.window.close();
 });
 
@@ -2250,7 +2280,7 @@ test('unavailable folders and failed automatic checks retry until the drive reco
   clock.run(); await flush();
   assert.equal(harness.element('recent-project-list').querySelector('.recent-project').disabled, false);
   assert.equal(harness.element('project-rescan-status').hidden, true);
-  assert.equal(clock.pending.size, 0);
+  assert.equal(clock.pending.size, 1);
   assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 4);
   harness.dom.window.close();
 });
@@ -2279,38 +2309,69 @@ test('an automatic check that finishes after navigation keeps the selected proje
   harness.dom.window.close();
 });
 
-test('automatic folder checks retain keyboard focus and stop when all folders become available', async () => {
+test('automatic folder checks detect the first unavailable folder and retain keyboard focus', async () => {
   let clock;
+  const first = { ...project, available: true };
   const other = { ...project, id: 'other', name: 'Other project', available: true };
-  let projects = [{ ...project, available: false }, other];
+  let projects = [first, other];
   const harness = await interfaceHarness({ recent_projects: () => projects }, dom => { clock = captureProjectRescans(dom); });
   await harness.ready;
+  const firstButton = () => harness.element('recent-project-list').querySelector('[data-project-id="project-a"]');
   const otherButton = () => harness.element('recent-project-list').querySelector('[data-project-id="other"]');
+  assert.equal(firstButton().disabled, false);
   otherButton().focus();
   const original = otherButton();
   clock.run(); await flush();
   assert.equal(otherButton(), original);
   assert.equal(harness.dom.window.document.activeElement, original);
-  projects = [{ ...project, available: true }, other];
+  projects = [{ ...first, available: false }, other];
   clock.run(); await flush();
+  assert.equal(firstButton().disabled, true);
+  assert.match(firstButton().closest('tr').textContent, /Folder unavailable/);
+  assert.equal(otherButton().disabled, false);
   assert.equal(harness.dom.window.document.activeElement, otherButton());
-  assert.equal(clock.pending.size, 0);
+  projects = [first, other];
+  clock.run(); await flush();
+  assert.equal(firstButton().disabled, false);
+  assert.doesNotMatch(firstButton().closest('tr').textContent, /Folder unavailable/);
+  assert.equal(harness.dom.window.document.activeElement, otherButton());
+  assert.equal(clock.pending.size, 1);
+  assert.equal(harness.calls.some(call => call.command === 'open_project'), false);
   harness.dom.window.close();
 });
 
-test('automatic checks pause in Settings and resume when the project library is shown', async () => {
+test('library entry and window focus check previously available folders immediately', async () => {
   let clock;
-  const harness = await interfaceHarness({ recent_projects: () => [{ ...project, available: false }] }, dom => { clock = captureProjectRescans(dom); });
+  const available = { ...project, available: true };
+  const missing = { ...project, available: false };
+  let projects = [available];
+  const harness = await interfaceHarness({ recent_projects: () => projects }, dom => { clock = captureProjectRescans(dom); });
   await harness.ready;
+  const button = () => harness.element('recent-project-list').querySelector('.recent-project');
+  const scans = () => harness.calls.filter(call => call.command === 'rescan_projects').length;
+  const focus = () => harness.dom.window.dispatchEvent(new harness.dom.window.Event('focus'));
+  assert.equal(button().disabled, false);
   assert.equal(clock.pending.size, 1);
+  projects = [missing]; focus(); await flush();
+  assert.equal(scans(), 2);
+  assert.equal(button().disabled, true);
+  projects = [available]; focus(); await flush();
+  assert.equal(scans(), 3);
+  assert.equal(button().disabled, false);
   harness.element('settings-navigation').click(); await flush();
   assert.equal(clock.pending.size, 0);
-  harness.dom.window.dispatchEvent(new harness.dom.window.Event('focus')); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 1);
+  projects = [missing]; focus(); await flush();
+  assert.equal(scans(), 3);
   harness.element('project-navigation').click(); await flush();
+  assert.equal(scans(), 4);
+  assert.equal(button().disabled, true);
   assert.equal(clock.pending.size, 1);
-  clock.run(); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'rescan_projects').length, 2);
+  harness.element('settings-navigation').click(); await flush();
+  projects = [available];
+  await harness.listeners.get('menu-action')({ payload: 'project' }); await flush();
+  assert.equal(scans(), 5);
+  assert.equal(button().disabled, false);
+  assert.equal(clock.pending.size, 1);
   harness.dom.window.close();
 });
 
@@ -2390,6 +2451,42 @@ test('sidebar focus survives usage and terminal refreshes without taking focus f
   await harness.listeners.get('project-usage-updated')({ payload: [project.id, sessionDashboard([])] });
   assert.equal(harness.dom.window.document.activeElement, harness.element('refresh-sessions'));
   harness.dom.window.close();
+});
+
+test('sidebar Refresh keeps focus and the selected chat during a usage update', async t => {
+  const first = { id: 'first', title: 'Selected chat', updatedAt: 2 };
+  const second = { id: 'second', title: 'Other chat', updatedAt: 1 };
+  const harness = await interfaceHarness({ project_dashboard: () => sessionDashboard([first, second]) });
+  t.after(() => harness.dom.window.close());
+  await harness.ready;
+  harness.element('choose-folder').click(); await flush();
+  const row = id => harness.element('sidebar-session-list').querySelector(`[data-session-id="${id}"]`);
+  row('first').click(); await flush();
+  harness.element('hide-terminal').click(); await flush();
+  row('first').focus();
+
+  const update = { ...second, usage: { ...sessionDashboard([]).usage, input: 20, total: 20 } };
+  await harness.listeners.get('project-usage-updated')({ payload: [project.id, sessionDashboard([first, update])] });
+  assert.equal(harness.dom.window.document.activeElement, row('first'));
+  assert.equal(row('first').getAttribute('aria-current'), 'true');
+
+  const result = deferred();
+  harness.handlers.project_dashboard = () => result.promise;
+  const refresh = harness.element('refresh-sessions');
+  const readsBefore = harness.calls.filter(call => call.command === 'project_dashboard').length;
+  refresh.click(); await flush();
+  assert.equal(harness.dom.window.document.activeElement, refresh);
+  assert.equal(refresh.disabled, false);
+  assert.equal(refresh.getAttribute('aria-disabled'), 'true');
+  refresh.click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'project_dashboard').length, readsBefore + 1);
+
+  result.resolve(sessionDashboard([first, update])); await flush();
+  assert.equal(harness.dom.window.document.activeElement, refresh);
+  assert.equal(refresh.getAttribute('aria-disabled'), 'false');
+  assert.equal(row('first').getAttribute('aria-current'), 'true');
+  const updated = [...harness.element('session-table-body').rows].find(row => row.querySelector('.session-title')?.textContent === second.title);
+  assert.equal(updated.cells[4].textContent, '20');
 });
 
 test('cancelled Mac checks keep the labelled previous result and a second check can succeed', async () => {
@@ -3172,6 +3269,24 @@ function chooseAgent(harness, kind) {
   harness.element('agent-choice').dispatchEvent(new harness.dom.window.Event('change'));
 }
 
+test('choosing a Claude session updates the reference in open project settings', async t => {
+  const selected = { ...claudeProject, label: 'previous' };
+  const reference = selected.profile + '@' + selected.label;
+  const harness = await twoAgentHarness();
+  t.after(() => harness.dom.window.close());
+  await harness.ready;
+  harness.element('choose-folder').click(); await flush();
+  harness.handlers.prepare_project = ({ chosenReference }) => chosenReference === reference
+    ? { project: selected, plan: environmentPlan(selected), fingerprint: 'selected-plan', message: null, candidates: [] }
+    : { project: claudeProject, plan: null, fingerprint: null, message: 'Choose the session.', candidates: ['external@first', reference] };
+  chooseAgent(harness, 'claude-code'); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  harness.element('session-choice').value = reference;
+  harness.element('adopt-session').click(); await flush();
+  assert.equal(harness.element('project-reference').textContent, reference);
+  assert.equal(harness.element('managed-environment').textContent, 'Claude Code · ' + reference);
+});
+
 function recordedClaudeDetails(sessionId) {
   const captured = fs.readFileSync(root + 'tests/fixtures/claude-code/v2.1.318/priced-details.json', 'utf8');
   const original = JSON.parse(captured).sessionId;
@@ -3413,11 +3528,14 @@ test('late Claude account and preparation results keep the selected Codex enviro
   let deferPreparation = true;
   const harness = await twoAgentHarness({
     prepare_project: args => args.environmentId === claudeProject.environmentId && deferPreparation ? preparation.promise : ({ project, plan, fingerprint: 'codex-plan', message: null, candidates: [] }),
-    agent_account_status: () => account.promise,
   });
   await harness.ready; harness.element('choose-folder').click(); await flush();
   harness.element('start-codex').click(); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
+  const accountStatusCount = harness.calls.filter(call => call.command === 'shared_claude_status').length;
+  harness.handlers.shared_claude_status = () => account.promise;
+  const accountRefresh = harness.listeners.get('records-changed')({ payload: ['claude'] }); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'shared_claude_status').length, accountStatusCount + 1);
   assert.equal(harness.element('agent-choice').disabled, false);
   const liveCodex = harness.element('sidebar-session-list').querySelector('button');
   assert.equal(liveCodex.disabled, false);
@@ -3425,8 +3543,9 @@ test('late Claude account and preparation results keep the selected Codex enviro
   assert.equal(harness.element('start-codex').disabled, false);
   deferPreparation = false;
   preparation.resolve({ project: claudeProject, plan: environmentPlan(claudeProject), fingerprint: 'claude-plan', message: null, candidates: [] });
-  account.resolve({ projectId: project.id, environmentId: claudeProject.environmentId, state: 'signed-out', message: 'Late Claude sign-out.', terminalIdentifier: null });
-  await flush();
+  account.resolve({ ...sharedClaudeAccount, generation: 2, state: 'signed-out', email: null, message: 'Late Claude sign-out.' });
+  await accountRefresh; await flush();
+  assert.equal(harness.element('claude-account-status').textContent, 'Late Claude sign-out.');
   assert.equal(harness.element('agent-choice').value, 'codex');
   assert.equal(harness.element('project-reference').textContent, project.profile + '@' + project.label);
   assert.equal(harness.element('start-codex').disabled, false);
@@ -3482,6 +3601,51 @@ test('selected and all-environment removal keep distinct preview and confirmatio
     assert.equal(removals[0].confirmation, reference);
     harness.dom.window.close();
   }
+});
+
+test('a changed removal scope is shown for review and requires a new confirmation', async t => {
+  const original = { reference: 'codex@sample-a', workspace: '/fixture/original-home', description: 'Remove the guest and its old home.', fingerprint: 'original', external: false };
+  const replacement = { ...original, reference: 'codex@sample-b', workspace: '/fixture/current-home', description: 'Current target codex@sample-b. Remove the guest only.', fingerprint: 'current' };
+  let preview = original;
+  const harness = await interfaceHarness({
+    preview_removal: () => preview,
+    remove_project: () => {
+      preview = replacement;
+      throw { currentReference: replacement.reference, currentDescription: replacement.description };
+    },
+  });
+  t.after(() => harness.dom.window.close());
+  await harness.ready;
+  harness.element('choose-folder').click(); await flush();
+  harness.element('project-settings-button').click(); await flush();
+  const previewButton = harness.element('preview-removal');
+  const confirm = harness.element('confirm-removal');
+  const field = harness.element('removal-confirmation');
+  const enter = value => { field.value = value; field.dispatchEvent(new harness.dom.window.Event('input')); };
+  previewButton.click(); await flush();
+  enter(original.reference);
+  confirm.click(); await flush();
+
+  assert.equal(harness.element('removal-dialog').open, true);
+  assert.match(harness.element('removal-error').textContent, /scope changed.*open a fresh preview/i);
+  assert.equal(harness.element('removal-reference').textContent, replacement.reference);
+  assert.equal(harness.element('removal-description').textContent, replacement.description);
+  assert.doesNotMatch(harness.element('removal-dialog').textContent, /original-home|old home/);
+  assert.equal(field.value, '');
+  assert.equal(field.disabled, true);
+  enter(replacement.reference);
+  assert.equal(confirm.disabled, true);
+  confirm.click(); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'remove_project').length, 1);
+
+  harness.element('cancel-removal').click();
+  previewButton.click(); await flush();
+  assert.equal(field.value, '');
+  assert.equal(field.disabled, false);
+  assert.equal(confirm.disabled, true);
+  assert.equal(harness.element('removal-error').textContent, '');
+  assert.equal(harness.element('removal-reference').textContent, replacement.reference);
+  harness.element('cancel-removal').click();
 });
 
 

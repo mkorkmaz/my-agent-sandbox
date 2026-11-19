@@ -1,10 +1,10 @@
 use crate::{
-    agents::{self, AgentCommand, AgentKind, AgentOperation, SessionId},
+    agents::{self, AgentCommand, AgentKind, SessionId},
     environment::{self, CheckedProject},
     terminal::{self, Layout},
 };
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager, WebviewWindow};
+use tauri::{Manager, WebviewWindow};
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -85,7 +85,6 @@ fn arguments(
     use crate::agent_sessions::launch::{Admission, LaunchMode};
     let mode = match action {
         Action::Shell => LaunchMode::Shell,
-        Action::Login => LaunchMode::Login,
         _ => LaunchMode::Chat,
     };
     let mut admission = Admission::begin(
@@ -104,36 +103,21 @@ fn arguments(
         return Err("This action does not accept a saved session ID.".into());
     }
     let session = session_id.map(SessionId::new).transpose()?;
-    let operation = match action {
+    let request = match action {
         Action::Shell => return admission.prepare(vec!["sh".into(), checked.project.reference()]),
-        Action::Login => AgentOperation::Login,
-        Action::Codex => AgentOperation::NewChat,
-        Action::Resume => AgentOperation::Resume,
-    };
-    let request = operation.command(session.as_ref())?;
-    if matches!(action, Action::Login) {
-        let help = checked.brig.checked(
-            &[
-                "sh".into(),
-                checked.project.reference(),
-                "codex".into(),
-                "login".into(),
-                "--help".into(),
-            ],
-            None,
-        )?;
-        if !help.stdout.contains("--device-auth") {
+        Action::Login => {
             return Err(
-                "Guest Codex does not support device sign-in. Check the image version.".into(),
-            );
+                "Sign in with ChatGPT from Settings, Providers. Project sign-in is no longer used."
+                    .into(),
+            )
         }
-        admission.capabilities()?;
-        return admission.prepare(
-            AgentKind::Codex
-                .command(request)?
-                .in_guest(checked.project.reference()),
-        );
-    }
+        Action::Codex => AgentCommand::NewChat(None),
+        Action::Resume => AgentCommand::Resume(
+            session
+                .as_ref()
+                .ok_or("Choose a saved agent session to resume.")?,
+        ),
+    };
 
     admission.authorize(login(checked)?.method == "chatgpt", "This project's Codex configuration did not accept the shared ChatGPT account. Check its Codex settings or reconnect the account in Settings.")?;
     let help = checked.brig.checked(
@@ -192,7 +176,7 @@ pub async fn start_codex_session(
         .lock_owned()
         .await;
     let command_app = app.clone();
-    let (command, mut runtime, login_nonce) = tauri::async_runtime::spawn_blocking(move || {
+    let (command, runtime) = tauri::async_runtime::spawn_blocking(move || {
         let app = command_app;
         let mut runtime = runtime;
         let checked = environment::checked_project(&app, &identifier, Some(&fingerprint))?;
@@ -213,48 +197,12 @@ pub async fn start_codex_session(
                 ));
             }
         }
-        let mut arguments = arguments(&checked, action, use_brig_boundary, session_id.as_deref())?;
-        let nonce = if matches!(action, Action::Login) {
-            let (nonce, guest_path) =
-                crate::providers::shared_chatgpt::begin_login(&app, &mut runtime, &checked)?;
-            let mut staged = vec![
-                "sh".into(),
-                checked.project.reference(),
-                "sh".into(),
-                "-c".into(),
-                "export CODEX_HOME=\"$1\"; shift; exec codex \"$@\"".into(),
-                "tugboat-chatgpt-login".into(),
-                guest_path,
-            ];
-            staged.extend(arguments.into_iter().skip(3));
-            arguments = staged;
-            Some(nonce)
-        } else {
-            None
-        };
-        Ok::<_, String>((environment::command(&checked, arguments), runtime, nonce))
+        let arguments = arguments(&checked, action, use_brig_boundary, session_id.as_deref())?;
+        Ok::<_, String>((environment::command(&checked, arguments), runtime))
     })
     .await
     .map_err(|error| error.to_string())??;
     let terminal_id = terminal::reserve_identifier();
-    if let Some(nonce) = &login_nonce {
-        runtime.attach_login_process(nonce.clone(), terminal_id)?;
-    }
-    let on_exit: Option<terminal::ExitHandler> = login_nonce.as_ref().map(|nonce| {
-        let app = app.clone();
-        let project = project_id.clone();
-        let nonce = nonce.clone();
-        Box::new(move |code| {
-            if let Err(message) = crate::providers::shared_chatgpt::finish_login(
-                &app,
-                &project,
-                &nonce,
-                code == Some(0),
-            ) {
-                let _ = app.emit("shared-chatgpt-error", message);
-            }
-        }) as terminal::ExitHandler
-    });
     let result = terminal::start_reserved(
         window,
         project_id.clone(),
@@ -264,25 +212,12 @@ pub async fn start_codex_session(
         conversation_id,
         terminal::Reservation {
             identifier: terminal_id,
-            on_exit,
+            on_exit: None,
             target: Some(terminal::AgentTarget::codex(&project_id)),
         },
     )
     .await;
     drop(runtime);
-    if result.is_err() {
-        if let Some(nonce) = login_nonce {
-            tauri::async_runtime::spawn_blocking(move || {
-                if let Err(message) =
-                    crate::providers::shared_chatgpt::finish_login(&app, &project_id, &nonce, false)
-                {
-                    let _ = app.emit("shared-chatgpt-error", message);
-                }
-            })
-            .await
-            .map_err(|_| "Could not roll back the ChatGPT sign-in.")?;
-        }
-    }
     result
 }
 
@@ -446,6 +381,9 @@ esac
             Some("1a5bc5b5-af21-432d-bf07-e2218dd9f9bf")
         )
         .is_err());
+        assert!(arguments(&checked, Action::Login, None, None)
+            .unwrap_err()
+            .contains("Settings, Providers"));
         checked.settings.network = Network::Offline;
         assert!(arguments(&checked, Action::Login, None, None).is_err());
         assert!(arguments(&checked, Action::Codex, None, None).is_err());

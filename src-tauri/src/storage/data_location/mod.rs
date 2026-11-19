@@ -73,9 +73,14 @@ pub struct LocationStatus {
     message: Option<String>,
 }
 
+enum LocationNotice {
+    Failure(String),
+    ReconnectionVerified,
+}
+
 struct SavedLocation {
     location: Option<Location>,
-    message: Option<String>,
+    notice: Option<LocationNotice>,
     reconnected: Option<RecordsDirectory>,
 }
 
@@ -298,8 +303,9 @@ fn private_directory(
     Ok(())
 }
 
-fn prepare_bootstrap_directories(default: &Path, legacy: &Path) -> Result<(), String> {
+fn prepare_bootstrap_directories(default: &Path, legacy: Option<&Path>) -> Result<(), String> {
     private_bootstrap_directory(default)?;
+    let Some(legacy) = legacy else { return Ok(()) };
     match fs::symlink_metadata(legacy) {
         Ok(_) => private_bootstrap_directory(legacy),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -320,6 +326,72 @@ fn is_empty_destination(directory: &Path, default_directory: &Path) -> Result<()
             "Choose an empty folder for Tugboat records. Existing files will not be replaced."
                 .into(),
         );
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn require_move_volume_permissions(directory: &Path) -> Result<(), String> {
+    use std::os::fd::AsRawFd;
+
+    #[repr(C)]
+    struct VolumeCapabilities {
+        length: u32,
+        attributes: libc::vol_capabilities_attr_t,
+    }
+
+    let folder = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+        .open(directory)
+        .map_err(|error| format!("Could not open the selected records folder. {error}"))?;
+    let mut requested = libc::attrlist {
+        bitmapcount: libc::ATTR_BIT_MAP_COUNT,
+        reserved: 0,
+        commonattr: 0,
+        volattr: libc::ATTR_VOL_INFO | libc::ATTR_VOL_CAPABILITIES,
+        dirattr: 0,
+        fileattr: 0,
+        forkattr: 0,
+    };
+    let mut result = VolumeCapabilities {
+        length: 0,
+        attributes: libc::vol_capabilities_attr_t {
+            capabilities: [0; 4],
+            valid: [0; 4],
+        },
+    };
+    let size = std::mem::size_of::<VolumeCapabilities>();
+    // SAFETY: The open folder supplies a valid descriptor, and both buffers match the requested layout.
+    let status = unsafe {
+        libc::fgetattrlist(
+            folder.as_raw_fd(),
+            std::ptr::from_mut(&mut requested).cast(),
+            std::ptr::from_mut(&mut result).cast(),
+            size,
+            0,
+        )
+    };
+    if status != 0 {
+        let error = std::io::Error::last_os_error();
+        // A volume can lack this query and still support the usual mode checks.
+        if error.kind() == std::io::ErrorKind::Unsupported {
+            return Ok(());
+        }
+        return Err(format!(
+            "Could not check the selected volume's private file permissions. {error}"
+        ));
+    }
+    if result.length as usize != size {
+        return Err("Could not read the selected volume's file permission capabilities.".into());
+    }
+    let format = libc::VOL_CAPABILITIES_FORMAT;
+    if result.attributes.capabilities[format]
+        & result.attributes.valid[format]
+        & libc::VOL_CAP_FMT_NO_PERMISSIONS
+        != 0
+    {
+        return Err("This volume does not support private file permissions. Choose a records folder on another volume.".into());
     }
     Ok(())
 }
@@ -438,13 +510,14 @@ fn finish_move(
     location: &mut Location,
     pointer: &Path,
     default_directory: &Path,
-) -> Result<(), String> {
+) -> Result<Option<ChangeKind>, String> {
     // A located dataset can be available while the original drive is offline.
     let active = match location.phase() {
         MovePhase::Pending(pending) if pending.kind == ChangeKind::Locate => &pending.directory,
         _ => &location.directory,
     };
     private_records_directory(active, &location.directory_id)?;
+    let mut completed_change = None;
     if let MovePhase::Pending(pending) = location.phase() {
         let pending = pending.clone();
         if pending.kind == ChangeKind::Move && location.previous_directory.is_some() {
@@ -472,7 +545,7 @@ fn finish_move(
             })?;
             location.pending = None;
             storage::write(pointer, location)?;
-            return Ok(());
+            return Ok(None);
         }
         if pending.kind == ChangeKind::Locate {
             require_directory(&target, &location.directory_id)?;
@@ -489,6 +562,8 @@ fn finish_move(
                 return Err("The selected folder already points to the current records. Cancel the folder change in Settings.".into());
             }
             validate_separate_directory(&source_directory, &target)?;
+            #[cfg(target_os = "macos")]
+            require_move_volume_permissions(&target)?;
             let source_records = RecordsDirectory {
                 directory: source_directory.clone(),
                 id: location.directory_id.clone(),
@@ -568,6 +643,7 @@ fn finish_move(
             *location = committed;
         }
         committed_result?;
+        completed_change = Some(pending.kind);
         #[cfg(test)]
         move_checkpoint("pointer-committed", pointer);
     }
@@ -592,7 +668,8 @@ fn finish_move(
             && !RECORDS.iter().any(|name| previous.join(name).exists());
         if already_cleaned {
             location.previous_directory = None;
-            return storage::write(pointer, location);
+            storage::write(pointer, location)?;
+            return Ok(completed_change);
         }
         upgrade_known_marker(&previous, &location.directory_id, MarkerState::Incomplete)?;
         if marker(&previous)?.id != location.directory_id {
@@ -631,22 +708,23 @@ fn finish_move(
             fs::remove_dir(previous).map_err(|error| error.to_string())?;
         }
     }
-    Ok(())
+    Ok(completed_change)
 }
 
 impl DataLocation {
-    fn open(default_directory: PathBuf, legacy_directory: PathBuf) -> Self {
-        let lease = prepare_bootstrap_directories(&default_directory, &legacy_directory)
+    fn open(default_directory: PathBuf, legacy_directory: impl Into<Option<PathBuf>>) -> Self {
+        let legacy_directory = legacy_directory.into();
+        let lease = prepare_bootstrap_directories(&default_directory, legacy_directory.as_deref())
             .and_then(|_| storage::lock(&default_directory.join(POINTER)));
         let default_directory = fs::canonicalize(&default_directory).unwrap_or(default_directory);
         let pointer = default_directory.join(POINTER);
         let mut saved = SavedLocation {
             location: None,
-            message: None,
+            notice: None,
             reconnected: None,
         };
         if let Err(error) = &lease {
-            saved.message = Some(error.clone());
+            saved.notice = Some(LocationNotice::Failure(error.clone()));
         }
         if lease.is_ok() {
             let initialize = || -> Result<Location, String> {
@@ -671,13 +749,14 @@ impl DataLocation {
                     }
                     return Ok(location);
                 }
-                let legacy = RECORDS
-                    .iter()
-                    .any(|name| legacy_directory.join(name).exists());
-                let directory = if legacy {
-                    fs::canonicalize(&legacy_directory).map_err(|error| error.to_string())?
-                } else {
-                    default_directory.clone()
+                let legacy = legacy_directory
+                    .as_ref()
+                    .filter(|directory| RECORDS.iter().any(|name| directory.join(name).exists()));
+                let directory = match legacy {
+                    Some(directory) => {
+                        fs::canonicalize(directory).map_err(|error| error.to_string())?
+                    }
+                    None => default_directory.clone(),
                 };
                 create_directory(&directory)?;
                 let id = if directory.join(MARKER).exists() {
@@ -707,7 +786,7 @@ impl DataLocation {
                     schema_version: 1,
                     directory,
                     directory_id: id,
-                    pending: legacy.then(|| PendingLocation {
+                    pending: legacy.map(|_| PendingLocation {
                         directory: default_directory.clone(),
                         kind: ChangeKind::Move,
                     }),
@@ -724,12 +803,16 @@ impl DataLocation {
                         MarkerState::Complete,
                     )
                     .and_then(|_| finish_move(&mut location, &pointer, &default_directory));
-                    if let Err(error) = restored {
-                        saved.message = Some(format!("Could not finish moving records. {error}"));
-                    }
+                    saved.notice = match restored {
+                        Ok(Some(ChangeKind::Locate)) => Some(LocationNotice::ReconnectionVerified),
+                        Ok(_) => None,
+                        Err(error) => Some(LocationNotice::Failure(format!(
+                            "Could not finish moving records. {error}"
+                        ))),
+                    };
                     saved.location = Some(location);
                 }
-                Err(error) => saved.message = Some(error),
+                Err(error) => saved.notice = Some(LocationNotice::Failure(error)),
             }
         }
         Self {
@@ -750,7 +833,12 @@ impl DataLocation {
             },
             |records| records.verify().is_ok(),
         );
-        let message = saved.message.clone().or_else(|| (!available).then(|| "The records folder is unavailable. Connect its drive and restart Tugboat, or locate the folder below.".into()));
+        let message = match &saved.notice {
+            Some(LocationNotice::Failure(error)) => Some(error.clone()),
+            _ if !available => Some("The records folder is unavailable. Connect its drive and restart Tugboat, or locate the folder below.".into()),
+            Some(LocationNotice::ReconnectionVerified) => Some("Records folder reconnected. Tugboat verified your original records.".into()),
+            None => None,
+        };
         Ok(LocationStatus {
             directory: saved
                 .reconnected
@@ -883,7 +971,7 @@ impl DataLocation {
             });
             storage::write(&self.pointer, &next)?;
             saved.location = Some(next);
-            saved.message = None;
+            saved.notice = None;
             return Ok(());
         }
         let location = saved
@@ -898,6 +986,8 @@ impl DataLocation {
         validate_separate_directory(&location.directory, &target)?;
         if target != location.directory {
             is_empty_destination(&target, &self.default_directory)?;
+            #[cfg(target_os = "macos")]
+            require_move_volume_permissions(&target)?;
         }
         let mut next = location.clone();
         next.pending = (target != location.directory).then_some(PendingLocation {
@@ -906,19 +996,16 @@ impl DataLocation {
         });
         storage::write(&self.pointer, &next)?;
         saved.location = Some(next);
-        saved.message = None;
+        saved.notice = None;
         Ok(())
     }
 }
 
-pub fn initialize(app: &AppHandle) -> Result<DataLocation, String> {
-    let base = app.path().config_dir().map_err(|error| error.to_string())?;
-    Ok(DataLocation::open(
-        base.join("Tugboat"),
-        app.path()
-            .app_config_dir()
-            .map_err(|error| error.to_string())?,
-    ))
+pub fn initialize(config_directory: &Path, legacy_directory: PathBuf) -> DataLocation {
+    if tauri::is_dev() {
+        return DataLocation::open(config_directory.join("Tugboat Dev"), None);
+    }
+    DataLocation::open(config_directory.join("Tugboat"), legacy_directory)
 }
 
 pub fn records_directory(app: &AppHandle) -> Result<RecordsDirectory, String> {
@@ -1131,7 +1218,7 @@ pub fn cancel_storage_move(app: AppHandle) -> Result<LocationStatus, String> {
     location.pending = None;
     storage::write(&state.pointer, &location)?;
     saved.location = Some(location);
-    saved.message = None;
+    saved.notice = None;
     drop(saved);
     state.status()
 }
@@ -1645,6 +1732,62 @@ mod tests {
         let reopened = DataLocation::open(default, legacy);
         assert!(reopened.status().unwrap().available);
         drop(reopened);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(dev)]
+    #[test]
+    fn development_startup_preserves_installed_custom_and_legacy_records() {
+        let (root, installed, legacy) = fixture("development-startup");
+        let support = installed.parent().unwrap();
+        let custom = root.join("installed-custom");
+        create_directory(&custom).unwrap();
+        let first = DataLocation::open(installed.clone(), legacy.clone());
+        seed(&installed);
+        first.schedule(&custom, false).unwrap();
+        drop(first);
+        let running = DataLocation::open(installed.clone(), legacy.clone());
+        assert_eq!(running.status().unwrap().directory.as_ref(), Some(&custom));
+        let pointer = fs::read(installed.join(POINTER)).unwrap();
+        let original = snapshot(&custom);
+        seed(&legacy);
+        fs::set_permissions(&legacy, fs::Permissions::from_mode(0o755)).unwrap();
+        let legacy_records = snapshot(&legacy);
+
+        let development = initialize(support, legacy.clone());
+        let directory = support.join("Tugboat Dev");
+        let status = development.status().unwrap();
+        assert!(status.available, "{:?}", status.message);
+        assert_eq!(status.directory, Some(directory.clone()));
+        assert!(snapshot(&directory).is_empty());
+        let settings = crate::desktop::settings::Settings {
+            cpus: 2,
+            ..Default::default()
+        };
+        storage::write(&directory.join("settings.json"), &settings).unwrap();
+        assert!(development
+            .schedule(&custom, false)
+            .unwrap_err()
+            .contains("empty folder"));
+        let development_custom = root.join("development-custom");
+        create_directory(&development_custom).unwrap();
+        development.schedule(&development_custom, false).unwrap();
+        drop(development);
+        let reopened = initialize(support, legacy.clone());
+        assert_eq!(
+            reopened.status().unwrap().directory.as_ref(),
+            Some(&development_custom)
+        );
+        assert_eq!(
+            crate::desktop::settings::load(&development_custom.join("settings.json")).unwrap(),
+            settings
+        );
+        assert_eq!(fs::read(installed.join(POINTER)).unwrap(), pointer);
+        assert_eq!(snapshot(&custom), original);
+        assert_eq!(snapshot(&legacy), legacy_records);
+        assert_eq!(fs::metadata(&legacy).unwrap().mode() & 0o777, 0o755);
+        assert!(!legacy.join(MARKER).exists());
+        drop((reopened, running));
         fs::remove_dir_all(root).unwrap();
     }
 

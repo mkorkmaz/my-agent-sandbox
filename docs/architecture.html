@@ -142,7 +142,7 @@
       <p>The web interface reserves the terminal area and sends layout and focus requests. Rust attaches an AppKit view to the macOS window. The native view uses <code>libghostty-vt</code> to interpret terminal data. Keyboard input, text composition, selection and drawing use the native surface.</p>
       <p>Rust gives each child process a controlling PTY. Incoming keystrokes enter a bounded queue so native input callbacks can return promptly. A full queue raises a terminal input error. The reader forwards child output to the native surface. A resize updates the PTY size so the child can redraw.</p>
       <p>A local terminal starts a shell on the Mac in the project folder. Guest shells, agent chats, and guest Git or test operations go through Brig. Diagnostic actions such as Brig info and logs invoke the host CLI for the selected reference. A terminal view alone does not establish where a command ran.</p>
-      <p>The terminal registry admits up to 16 live processes and retains up to 32 finished views during one app session. Closing an output view releases scrollback. New Chat creates another conversation. Selecting a live chat restores its own surface and process.</p>
+      <p>The terminal registry admits up to 16 live processes and retains up to 32 finished views during one app session. Setup terminals close automatically after their process exits. Closing an output view releases scrollback. New Chat creates another conversation. Selecting a live chat restores its own surface and process.</p>
       <p class="source"><a href="../src/terminal/terminal-layout.ts">Terminal layout</a> · <a href="../src-tauri/src/terminal/mod.rs">Session registry and callbacks</a> · <a href="../src-tauri/src/terminal/pty.rs">PTY and shutdown</a> · <a href="../src-tauri/native/TerminalView.m">AppKit surface</a> · <a href="../src-tauri/src/projects/operations/mod.rs">Operation targets</a></p>
     </section>
 
@@ -172,7 +172,7 @@
 
     <section id="storage">
       <h2>Durable records and recovery</h2>
-      <p>The default records folder is <code>~/Library/Application Support/Tugboat</code>. A small location pointer and lock in the default directory identify the active records folder. The directory marker identifies the dataset. The database records the same identity.</p>
+      <p>The installed app uses <code>~/Library/Application Support/Tugboat</code> by default. Development uses <code>~/Library/Application Support/Tugboat Dev</code>. Each default folder holds its own location pointer and lock. The directory marker identifies the dataset. The database records the same identity.</p>
       <div class="table-wrap" role="region" aria-labelledby="records-caption" tabindex="0">
         <table>
           <caption id="records-caption">Data locations and recovery rules</caption>

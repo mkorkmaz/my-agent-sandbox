@@ -30,7 +30,6 @@ pub fn validate_profile(profile: &Value) -> Result<(), String> {
 pub fn command(command: AgentCommand<'_>) -> Result<GuestCommand, String> {
     let arguments = match command {
         AgentCommand::Version => vec!["--version".into()],
-        AgentCommand::Login => vec!["auth".into(), "login".into()],
         AgentCommand::LoginStatus => vec!["auth".into(), "status".into(), "--json".into()],
         AgentCommand::Logout => vec!["auth".into(), "logout".into()],
         AgentCommand::NewChat(Some(session)) => vec![

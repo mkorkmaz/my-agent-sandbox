@@ -440,29 +440,17 @@ fn cancelled_and_stale_logins_preserve_the_old_account_and_project_files() {
     let original = fs::read(directory.join("auth.json")).unwrap();
     fs::write(directory.join("history.jsonl"), "preserve").unwrap();
     let pending = staged_login(&fixture, &store, &mut session, &checked);
-    super::account::complete_login(
-        &store,
-        &mut session,
-        &checked.project.id,
-        &"c".repeat(32),
-        true,
-        Some(&checked),
-    )
-    .unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &"c".repeat(32))
+        .unwrap();
+    super::account::complete_login(&store, &mut session, &"c".repeat(32), &pending.nonce).unwrap();
     assert!(session.pending_login.is_some());
     assert!(pending.directory.exists());
-    // The terminal can report success after the user cancelled it.
+    // Reopen cancellation saved before staging cleanup.
     session.pending_login.as_mut().unwrap().cancelled = true;
     store.save(&session).unwrap();
-    super::account::complete_login(
-        &store,
-        &mut session,
-        &checked.project.id,
-        &pending.nonce,
-        true,
-        None,
-    )
-    .unwrap();
+    let mut session = store.load().unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &pending.nonce)
+        .unwrap();
     assert_eq!(
         session.credentials.as_ref().unwrap().account().unwrap(),
         "account-a"
@@ -485,7 +473,7 @@ fn completed_login_recovers_after_import_and_after_staging_cleanup() {
     let mut pending = staged_login(&fixture, &store, &mut session, &checked);
     // Persisted import, with the guest export still pending.
     session.credentials = super::guest::read(&pending.directory).unwrap();
-    pending.imported = true;
+    pending.import().unwrap();
     session.pending_login = Some(pending.clone());
     super::guest::bind(
         &mut session,
@@ -496,15 +484,8 @@ fn completed_login_recovers_after_import_and_after_staging_cleanup() {
     store.save(&session).unwrap();
     super::guest::remove_login_directory(&pending).unwrap();
     let mut recovered = store.load().unwrap();
-    super::account::complete_login(
-        &store,
-        &mut recovered,
-        &checked.project.id,
-        &pending.nonce,
-        true,
-        None,
-    )
-    .unwrap();
+    super::account::complete_login(&store, &mut recovered, &checked.project.id, &pending.nonce)
+        .unwrap();
     assert!(recovered.pending_login.is_none());
     assert_eq!(
         recovered.credentials.unwrap().account().unwrap(),
@@ -516,6 +497,48 @@ fn completed_login_recovers_after_import_and_after_staging_cleanup() {
     .unwrap();
     assert_eq!(auth["tokens"]["account_id"], "account-b");
     assert_eq!(auth["tokens"]["refresh_token"], "");
+}
+
+#[test]
+fn imported_login_publication_failure_preserves_recovery_for_retry() {
+    let fixture = Fixture::new();
+    let (store, _) = fixture.records();
+    let checked = fixture.project("login");
+    let directory = super::guest::directory(&checked).unwrap();
+    let mut session = Session::default();
+    let mut pending = staged_login(&fixture, &store, &mut session, &checked);
+    session.credentials = super::guest::read(&pending.directory).unwrap();
+    pending.import().unwrap();
+    session.pending_login = Some(pending.clone());
+    super::guest::bind(&mut session, &checked, directory.clone()).unwrap();
+    store.save(&session).unwrap();
+    let generation = session.generation;
+    fs::write(directory.join("auth.json"), "foreign credentials").unwrap();
+    assert!(super::account::complete_login(
+        &store,
+        &mut session,
+        &checked.project.id,
+        &pending.nonce,
+    )
+    .is_err());
+    let mut session = store.load().unwrap();
+    assert_eq!(session.generation, generation);
+    assert_eq!(
+        session.pending_login.as_ref().unwrap().phase(),
+        super::login_phase::LoginPhase::Imported
+    );
+    assert!(pending.directory.exists());
+    assert_eq!(
+        fs::read_to_string(directory.join("auth.json")).unwrap(),
+        "foreign credentials"
+    );
+    fs::remove_file(directory.join("auth.json")).unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &pending.nonce)
+        .unwrap();
+    assert!(store.load().unwrap().pending_login.is_none());
+    assert_eq!(session.generation, generation + 1);
+    assert_eq!(session.credentials.unwrap().account().unwrap(), "account-b");
+    assert!(!pending.directory.exists());
 }
 
 #[test]
@@ -713,7 +736,7 @@ fn records_inside_projects_or_guest_homes_are_rejected_before_storing_secrets() 
 }
 
 #[test]
-fn a_successful_staged_login_commits_once_and_updates_existing_guests() {
+fn an_imported_login_recovers_once_and_updates_existing_guests() {
     let fixture = Fixture::new();
     let (store, _) = fixture.records();
     let checked = fixture.project("login");
@@ -726,16 +749,15 @@ fn a_successful_staged_login_commits_once_and_updates_existing_guests() {
     store.save(&session).unwrap();
     super::guest::publish(&store, &mut session).unwrap();
     fs::write(directory.join("config.toml"), "project-specific").unwrap();
-    let pending = staged_login(&fixture, &store, &mut session, &checked);
-    super::account::complete_login(
-        &store,
-        &mut session,
-        &checked.project.id,
-        &pending.nonce,
-        true,
-        Some(&checked),
-    )
-    .unwrap();
+    let mut pending = staged_login(&fixture, &store, &mut session, &checked);
+    session.credentials = super::guest::read(&pending.directory).unwrap();
+    pending.import().unwrap();
+    session.pending_login = Some(pending.clone());
+    super::guest::bind(&mut session, &checked, directory.clone()).unwrap();
+    store.save(&session).unwrap();
+    let mut session = store.load().unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &pending.nonce)
+        .unwrap();
     assert!(!pending.directory.exists());
     assert!(session.pending_login.is_none());
     let generation = session.generation;
@@ -749,15 +771,8 @@ fn a_successful_staged_login_commits_once_and_updates_existing_guests() {
         fs::read_to_string(directory.join("config.toml")).unwrap(),
         "project-specific"
     );
-    super::account::complete_login(
-        &store,
-        &mut session,
-        &checked.project.id,
-        &pending.nonce,
-        false,
-        None,
-    )
-    .unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &pending.nonce)
+        .unwrap();
     assert_eq!(session.generation, generation);
     assert_eq!(session.credentials.unwrap().account().unwrap(), "account-b");
 }
@@ -801,8 +816,6 @@ fn custom_profiles_and_replaced_staging_directories_are_preserved() {
         &mut session,
         &checked.project.id,
         &pending.nonce,
-        false,
-        None
     )
     .is_err());
     assert_eq!(
@@ -810,6 +823,17 @@ fn custom_profiles_and_replaced_staging_directories_are_preserved() {
         "preserve"
     );
     assert!(store.load().unwrap().pending_login.unwrap().cancelled);
+    fs::remove_file(&pending.directory).unwrap();
+    fs::rename(&saved, &pending.directory).unwrap();
+    let mut session = store.load().unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &pending.nonce)
+        .unwrap();
+    assert!(store.load().unwrap().pending_login.is_none());
+    assert!(!pending.directory.exists());
+    assert_eq!(
+        fs::read_to_string(foreign.join("sentinel")).unwrap(),
+        "preserve"
+    );
     fs::write(
         &checked.brig.executable,
         "#!/bin/sh\nprintf '%s' '{\"env\":[{\"name\":\"CODEX_HOME\",\"value\":\"/custom\"}]}'\n",
@@ -1117,36 +1141,16 @@ fn shared_sign_out_removes_managed_metadata_rewrites_and_preserves_foreign_crede
 }
 
 #[test]
-fn uncommitted_login_files_require_a_confirmed_process_result_and_ignore_late_callbacks() {
+fn uncommitted_login_files_are_cancelled_after_reopening() {
     let fixture = Fixture::new();
     let (store, _) = fixture.records();
     let checked = fixture.project("login");
     let mut session = Session::default();
     session.credentials = Some(Credentials::parse(credential_value("account-a"), true).unwrap());
     let pending = staged_login(&fixture, &store, &mut session, &checked);
-    let mut runtime = super::account::Runtime::default();
-    assert!(
-        !runtime.recovery_success(&pending),
-        "A file alone does not prove a completed login after a crash"
-    );
-    runtime
-        .attach_login_process(pending.nonce.clone(), 42)
+    let mut session = store.load().unwrap();
+    super::account::complete_login(&store, &mut session, &checked.project.id, &pending.nonce)
         .unwrap();
-    runtime.record_login_exit(&pending.nonce, true);
-    assert!(runtime.recovery_success(&pending));
-    runtime.record_login_exit(&"c".repeat(32), false);
-    assert!(runtime.recovery_success(&pending));
-    runtime.record_login_exit(&pending.nonce, false);
-    assert!(!runtime.recovery_success(&pending));
-    super::account::complete_login(
-        &store,
-        &mut session,
-        &checked.project.id,
-        &pending.nonce,
-        runtime.recovery_success(&pending),
-        None,
-    )
-    .unwrap();
     assert_eq!(
         store
             .load()
@@ -1158,6 +1162,7 @@ fn uncommitted_login_files_require_a_confirmed_process_result_and_ignore_late_ca
         "account-a"
     );
     assert!(!pending.directory.exists());
+    assert!(store.load().unwrap().pending_login.is_none());
 }
 
 #[test]
@@ -1248,20 +1253,7 @@ fn a_pending_renewal_rebinds_only_to_the_verified_matching_records_dataset() {
     assert!(!foreign.join("chatgpt/session.json").exists());
     let located_guard =
         crate::storage::data_location::RecordsDirectory::fixture_existing(&located, guard.id());
-    let nonce = "c".repeat(32);
-    runtime.attach_login_process(nonce.clone(), 1).unwrap();
-    runtime.record_login_exit(&nonce, true);
-    let pending = super::store::PendingLogin {
-        project_id: "d".repeat(32),
-        nonce: nonce.clone(),
-        directory: fixture.0.join("guest/.tugboat-chatgpt-login").join(&nonce),
-        identity: (1, 2),
-        imported: false,
-        cancelled: false,
-    };
-    assert!(runtime.recovery_success(&pending));
     runtime.reconnect_records(&located_guard).unwrap();
-    assert!(runtime.recovery_success(&pending));
     let restored = Store::open(&located).unwrap();
     runtime.restore(&restored).unwrap();
     let saved = restored.load().unwrap();

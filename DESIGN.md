@@ -381,7 +381,7 @@ The system covers the implemented project library, project dashboard, settings, 
 - Real macOS shell affordances and keyboard commands.
 - Inter UI type, a dark native window header, a solid dark sidebar, pale project and Settings canvases, white controls, and blue actions with light text.
 - A dot grid only in the Projects library, plain selected-project and Settings canvases, and rounded white information groups.
-- A sidebar that starts with Projects, uses Lucide navigation icons, and places Settings and the application version in its footer.
+- A sidebar that starts with Projects, uses Lucide navigation icons, and places Help above Settings and the application version in its footer.
 - A project table in last-opened order, path tooltips, and a selected-project sidebar with active sessions.
 - A fixed name-and-branch header with the folder path below it and a Brig reference below the scoped settings action on the right.
 - Saved project data remains visible during background environment checks. Unresolved configuration offers a centered Review project settings action.

@@ -6,7 +6,7 @@ mod metadata;
 #[cfg(test)]
 mod tests;
 
-pub const PRICING_DATE: &str = "2026-11-13";
+pub const PRICING_DATE: &str = "2026-11-17";
 pub const PRICING_SOURCE: &str = "https://platform.claude.com/docs/en/about-claude/pricing";
 pub use metadata::{merge, parse, Metadata};
 

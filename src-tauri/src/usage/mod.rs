@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashSet};
 
-pub const PRICING_DATE: &str = "2026-11-10";
+pub const PRICING_DATE: &str = "2026-11-17";
+const LONG_CONTEXT_THRESHOLD: u64 = 272_000;
 pub const PRICING_SOURCE: &str = "https://developers.openai.com/api/docs/pricing";
 pub const PARSER_VERSION: u32 = 4;
 
@@ -149,20 +150,18 @@ pub struct RateSnapshot {
     pub anthropic: Option<anthropic::Tariff>,
 }
 
-fn rates(model: &str, tier: Option<&str>, input: u64) -> Option<RateSnapshot> {
+fn rates(model: &str, tier: Option<&str>, input: u64, at: &str) -> Option<RateSnapshot> {
     let base = match model {
-        "gpt-6.1-sol" => (2.0, 0.1, 10.0),
+        "gpt-6.2-astra" => (8.0, 0.4, 40.0),
+        "gpt-6.2-sol" | "gpt-6.1-sol" => (2.0, 0.1, 10.0),
+        "gpt-6-sol" => (2.0, 0.2, 10.0),
         "gpt-6.1-terra" => (1.0, 0.05, 5.0),
         "gpt-6-astra" => (10.0, 1.0, 50.0),
         "gpt-6-luna" => (0.1, 0.01, 0.5),
         _ => return None,
     };
-    let multiplier = tier_multiplier(model, tier.unwrap_or("standard"))?;
-    // The verified Sol model page specifies the 272K threshold. Do not invent thresholds for other models.
-    if input > 272_000 && model != "gpt-6.1-sol" {
-        return None;
-    }
-    let long = input > 272_000;
+    let multiplier = tier_multiplier(model, tier.unwrap_or("standard"), at)?;
+    let long = input > LONG_CONTEXT_THRESHOLD;
     let input_multiplier = multiplier * if long { 2.0 } else { 1.0 };
     Some(RateSnapshot {
         date: PRICING_DATE.into(),
@@ -179,11 +178,22 @@ fn rates(model: &str, tier: Option<&str>, input: u64) -> Option<RateSnapshot> {
     })
 }
 
-fn tier_multiplier(model: &str, tier: &str) -> Option<f64> {
+fn tier_multiplier(model: &str, tier: &str, at: &str) -> Option<f64> {
     Some(match tier {
         "standard" | "default" | "auto" => 1.0,
         "priority" | "fast" => 2.0,
-        "flex" | "batch" => 0.5,
+        "batch" => 0.5,
+        "flex" if !matches!(model, "gpt-6.2-astra" | "gpt-6.2-sol") => 0.5,
+        "ultrafast" if matches!(model, "gpt-6.2-astra" | "gpt-6.2-sol") => {
+            // March 1 at midnight Pacific time is 08:00 UTC.
+            let cutoff = chrono::DateTime::parse_from_rfc3339("2027-03-01T08:00:00Z").ok()?;
+            let request_time = chrono::DateTime::parse_from_rfc3339(at).ok()?;
+            if request_time < cutoff {
+                3.0
+            } else {
+                6.0
+            }
+        }
         "ultrafast" if matches!(model, "gpt-6-astra" | "gpt-6.1-sol") => 6.0,
         _ => return None,
     })
@@ -315,7 +325,7 @@ fn request(
 ) -> RequestUsage {
     let rates = model
         .as_deref()
-        .and_then(|model| rates(model, tier, tokens.input));
+        .and_then(|model| rates(model, tier, tokens.input, &at));
     let evidence = PriceEvidence::evaluate(&tokens, &rates, partial);
     let reason = evidence.reason();
     let cost_usd = if reason.is_none() {
@@ -546,8 +556,8 @@ fn correct_legacy_tier(request: &mut RequestUsage, tier: &str, source: &str) {
         return;
     }
     let model = request.model.as_deref().unwrap_or_default();
-    let ratio = tier_multiplier(model, tier)
-        .zip(tier_multiplier(model, &previous.tier))
+    let ratio = tier_multiplier(model, tier, &request.at)
+        .zip(tier_multiplier(model, &previous.tier, &request.at))
         .map(|(next, old)| next / old);
     request.rate_correction = Some(RateCorrection {
         previous_rates: previous.clone(),
@@ -691,18 +701,66 @@ mod tests {
         .cost_usd
         .is_none());
         assert_eq!(
-            rates("gpt-6.1-sol", Some("priority"), 272001)
+            rates("gpt-6.1-sol", Some("priority"), 272001, "now")
                 .unwrap()
                 .input,
             8.0
         );
         assert_eq!(
-            rates("gpt-6.1-sol", Some("priority"), 272001)
+            rates("gpt-6.1-sol", Some("priority"), 272001, "now")
                 .unwrap()
                 .output,
             30.0
         );
     }
+    #[test]
+    fn gpt_62_requests_use_published_cache_context_and_speed_rates() {
+        for (model, expected) in [("gpt-6.2-astra", 12.488), ("gpt-6.2-sol", 3.122)] {
+            let record = request(
+                "k".into(),
+                "2026-11-17T12:00:00Z".into(),
+                Some(model.into()),
+                Some("fast"),
+                Tokens {
+                    input: 272_000,
+                    cached: 70_000,
+                    cache_write: 100_000,
+                    write_12h: Some(40_000),
+                    output: 100_000,
+                    cache_known: true,
+                    ..Default::default()
+                },
+                false,
+            );
+            assert!((record.cost_usd.unwrap() - expected).abs() < 1e-12);
+            assert!(!record.rates.unwrap().long_context);
+        }
+
+        let long = rates("gpt-6.2-astra", Some("batch"), 272_001, "now").unwrap();
+        assert!(long.long_context);
+        assert_eq!(
+            (
+                long.input,
+                long.cached,
+                long.write_30m,
+                long.write_12h,
+                long.output
+            ),
+            (8.0, 0.4, 10.0, 20.0, 30.0)
+        );
+
+        for (at, expected) in [
+            ("2027-03-01T07:59:59Z", Some(30.0)),
+            ("2027-03-01T08:00:00Z", Some(60.0)),
+            ("unknown", None),
+        ] {
+            assert_eq!(
+                rates("gpt-6.2-sol", Some("ultrafast"), 272_000, at).map(|rate| rate.output),
+                expected
+            );
+        }
+    }
+
     #[test]
     fn duplicate_notifications_counter_resets_and_model_changes_are_explicit() {
         let mut cursor = Cursor::default();

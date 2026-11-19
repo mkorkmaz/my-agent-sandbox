@@ -9,8 +9,12 @@ pub enum Boundary {
 pub fn command(command: AgentCommand<'_>, boundary: Boundary) -> Result<GuestCommand, String> {
     let arguments = match command {
         AgentCommand::Version => vec!["--version".into()],
-        AgentCommand::Login => account_arguments("--device-auth"),
-        AgentCommand::LoginStatus => account_arguments("status"),
+        AgentCommand::LoginStatus => vec![
+            "-c".into(),
+            "cli_auth_credentials_store=\"file\"".into(),
+            "login".into(),
+            "status".into(),
+        ],
         AgentCommand::Logout => vec![
             "-c".into(),
             "cli_auth_credentials_store=\"file\"".into(),
@@ -25,15 +29,6 @@ pub fn command(command: AgentCommand<'_>, boundary: Boundary) -> Result<GuestCom
         }
     };
     Ok(GuestCommand::new("codex", arguments))
-}
-
-fn account_arguments(action: &str) -> Vec<String> {
-    vec![
-        "-c".into(),
-        "cli_auth_credentials_store=\"file\"".into(),
-        "login".into(),
-        action.into(),
-    ]
 }
 
 fn chat_arguments(session: Vec<String>, boundary: Boundary) -> Vec<String> {

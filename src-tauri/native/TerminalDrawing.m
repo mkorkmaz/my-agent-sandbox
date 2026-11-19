@@ -69,6 +69,13 @@ static bool appendFormatted(void *context, const uint8_t *bytes, size_t length) 
 }
 - (void)drawRect:(NSRect)dirtyRect {
     if (ghostty_render_state_update(renderState, terminal) != GHOSTTY_SUCCESS) return;
+    [NSGraphicsContext saveGraphicsState];
+    if (!NSIsEmptyRect(overlayRectangle)) {
+        NSBezierPath *visible = [NSBezierPath bezierPathWithRect:self.bounds];
+        [visible appendBezierPathWithRect:overlayRectangle];
+        visible.windingRule = NSEvenOddWindingRule;
+        [visible addClip];
+    }
     GhosttyRenderStateColors colors = GHOSTTY_INIT_SIZED(GhosttyRenderStateColors);
     ghostty_render_state_get(renderState, GHOSTTY_RENDER_STATE_DATA_COLORS, &colors);
     GhosttyRenderStateCursor cursor = GHOSTTY_INIT_SIZED(GhosttyRenderStateCursor);
@@ -117,6 +124,7 @@ static bool appendFormatted(void *context, const uint8_t *bytes, size_t length) 
         [terminalColor(colors.background) setFill]; NSRectFill(NSMakeRect(rectangle.origin.x, rectangle.origin.y, MAX(cellWidth, markedText.size.width), cellHeight));
         [markedText.string drawAtPoint:rectangle.origin withAttributes:@{NSFontAttributeName:font, NSForegroundColorAttributeName:terminalColor(colors.foreground), NSUnderlineStyleAttributeName:@(NSUnderlineStyleSingle)}];
     }
+    [NSGraphicsContext restoreGraphicsState];
 }
 - (NSString *)formattedText:(BOOL)selectionOnly {
     GhosttySelection selection = {0};

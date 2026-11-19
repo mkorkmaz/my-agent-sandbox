@@ -10,7 +10,116 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
+
+	"github.com/brig-sh/hull/pkg/store"
 )
+
+func desktopPackagedMonitor(t *testing.T) string {
+	t.Helper()
+	monitor := filepath.Join(t.TempDir(), "Tugboat Dev.app", "Contents", "MacOS", "hvi")
+	if err := os.MkdirAll(filepath.Dir(monitor), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/bin/sleep", monitor); err != nil {
+		t.Fatal(err)
+	}
+	return monitor
+}
+
+func TestDesktopPackagedMonitorKeepsItsInstanceRunning(t *testing.T) {
+	monitor := desktopPackagedMonitor(t)
+	pid, _ := startProcess(t, monitor, "30")
+	instance := storeWithInstance(t, "desktop-fixture", &store.InstanceState{
+		ID:        "desktop-fixture",
+		PID:       pid,
+		Status:    "running",
+		StartTime: time.Now(),
+		CmdLine:   []string{monitor, "30"},
+	})
+	if row := strings.Fields(psRow(t, instance, "desktop-fixture")); len(row) < 2 || row[1] != "running" {
+		t.Fatalf("live monitor did not have running status: %v", row)
+	}
+	state, err := instance.GetInstance("desktop-fixture")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Status != "running" || state.PID != pid {
+		t.Fatalf("live monitor record changed: status=%q pid=%d", state.Status, state.PID)
+	}
+}
+
+func TestDesktopMonitorChecksRecordedArgumentBoundaries(t *testing.T) {
+	command, arguments, _ := stubVMM(t)
+	pid := command.Process.Pid
+	state := store.InstanceState{
+		PID:       pid,
+		StartTime: time.Now().Add(-time.Hour),
+		CmdLine:   arguments,
+	}
+	if !processIsAVMM(pid, &state) {
+		t.Fatal("monitor with matching arguments was rejected")
+	}
+	first, remainder, _ := strings.Cut(arguments[2], " ")
+	state.CmdLine = []string{arguments[0], arguments[1], first, remainder}
+	if processIsAVMM(pid, &state) {
+		t.Fatal("monitor with a stale timestamp and different arguments was accepted")
+	}
+}
+
+func TestDesktopStopRecoversOnlyTheSelectedMonitor(t *testing.T) {
+	monitor := desktopPackagedMonitor(t)
+	_, orphanExited := startProcess(t, monitor, "30")
+	siblingPID, siblingExited := startProcess(t, monitor, "31")
+	instance := storeWithInstance(t, "damaged", &store.InstanceState{
+		ID:        "damaged",
+		Status:    "stopped",
+		StartTime: time.Now(),
+		ExitedAt:  time.Now(),
+		CmdLine:   []string{monitor, "30"},
+	})
+	if _, err := instance.CreateInstance("sibling"); err != nil {
+		t.Fatal(err)
+	}
+	if err := instance.SaveInstance(&store.InstanceState{
+		ID:      "sibling",
+		PID:     siblingPID,
+		Status:  "running",
+		CmdLine: []string{monitor, "31"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	psRow(t, instance, "damaged")
+	if !stillRunning(orphanExited) {
+		t.Fatal("listing instances stopped an unrecorded monitor")
+	}
+	if err := stopInstanceIn(instance, "damaged", 1); err != nil {
+		t.Fatal(err)
+	}
+	if stillRunning(orphanExited) || !stillRunning(siblingExited) {
+		t.Fatal("stop did not end only the selected monitor")
+	}
+	if err := stopInstanceIn(instance, "damaged", 1); err != nil {
+		t.Fatalf("could not repeat a completed stop: %v", err)
+	}
+}
+
+func TestDesktopStopReportsAmbiguousMonitor(t *testing.T) {
+	monitor := desktopPackagedMonitor(t)
+	_, firstExited := startProcess(t, monitor, "30")
+	_, secondExited := startProcess(t, monitor, "30")
+	instance := storeWithInstance(t, "damaged", &store.InstanceState{
+		ID:      "damaged",
+		Status:  "stopped",
+		CmdLine: []string{monitor, "30"},
+	})
+	if err := stopInstanceIn(instance, "damaged", 1); err == nil || !strings.Contains(err.Error(), "multiple monitor processes") {
+		t.Fatalf("expected an ambiguous monitor error, got %v", err)
+	}
+	if !stillRunning(firstExited) || !stillRunning(secondExited) {
+		t.Fatal("an ambiguous monitor was stopped")
+	}
+}
 
 func TestDesktopSharePathsWithSpaces(t *testing.T) {
 	host := filepath.Join(t.TempDir(), "parent folder", "sample project")

@@ -1,7 +1,9 @@
 use crate::agents::AgentKind;
+use crate::platform::brig::Brig;
 use crate::{desktop::settings, platform::command, platform::host, storage};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::fs::{self, OpenOptions};
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
@@ -14,6 +16,7 @@ mod agent_environment;
 mod attempt;
 mod environment_id;
 mod folder;
+mod guest_project_scope;
 mod migration;
 #[cfg(test)]
 pub(crate) mod migration_tests;
@@ -27,6 +30,7 @@ use agent_environment::{Membership, RemovalEffect};
 pub use attempt::{AttemptCompletion, EnvironmentAttempt};
 pub use environment_id::EnvironmentId;
 pub use folder::FolderState;
+pub(crate) use guest_project_scope::GuestProjectScope;
 use record::ProjectRecord;
 pub use removal::RemovalStep;
 pub use stage::ProjectStage;
@@ -49,6 +53,8 @@ pub struct Project {
     pub id: String,
     pub name: String,
     pub path: PathBuf,
+    #[serde(skip)]
+    previous_guest_project_names: BTreeSet<String>,
     device: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     volume_uuid: Option<[u8; 16]>,
@@ -63,6 +69,8 @@ pub struct Project {
     pub stage: ProjectStage,
     #[serde(default)]
     pub owns_session: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub adopted_managed_profile: bool,
     #[serde(default)]
     pub owns_binding: bool,
     #[serde(default)]
@@ -444,7 +452,7 @@ impl Registry {
                 && (project.path == path || !project.path.exists())
         });
         if let Some(project) = previous {
-            project.path = path;
+            project.relink_verified_folder(path);
             project.device = metadata.dev();
             project.volume_uuid = volume;
             project.updated_at = now();
@@ -471,6 +479,7 @@ impl Registry {
             id,
             name,
             path,
+            previous_guest_project_names: BTreeSet::new(),
             device: metadata.dev(),
             volume_uuid: volume,
             inode: metadata.ino(),
@@ -479,6 +488,7 @@ impl Registry {
             policy: None,
             stage: crate::projects::ProjectStage::Selected,
             owns_session: true,
+            adopted_managed_profile: false,
             owns_binding: false,
             policy_detached: false,
             environment_verified: Some(false),
@@ -610,6 +620,7 @@ impl Registry {
         project.policy = None;
         project.stage = crate::projects::ProjectStage::Selected;
         project.owns_session = true;
+        project.adopted_managed_profile = false;
         project.owns_binding = false;
         project.policy_detached = false;
         project.environment_verified = Some(false);
@@ -767,11 +778,6 @@ pub fn register_project(
     crate::storage::data_location::validate_project_records(&app, &registry)?;
     storage::write(&file, &registry)?;
     Ok(project)
-}
-
-#[tauri::command]
-pub fn project_environments(app: AppHandle, identifier: String) -> Result<Environments, String> {
-    Registry::load(&file(&app)?)?.environments(&identifier)
 }
 
 #[tauri::command]
@@ -1009,6 +1015,45 @@ pub fn read_project_preferences(
     };
     Ok(ProjectPreferences { project, options })
 }
+
+fn affected_environments(
+    registry: &Registry,
+    selected: &Project,
+    shared_resources: bool,
+) -> Result<Vec<Project>, String> {
+    registry
+        .environments(&selected.id)?
+        .iter()
+        .filter(|target| shared_resources || target.environment_id == selected.environment_id)
+        .map(|target| registry.environment(&selected.id, &target.environment_id))
+        .collect()
+}
+
+fn require_stopped_environments(
+    brig: &Brig,
+    profiles: &Path,
+    affected: &[Project],
+) -> Result<(), String> {
+    for target in affected {
+        // Brig only reports a session reference when the query can see its profile.
+        let scoped_brig = brig.for_project(target, profiles)?;
+        let sessions = scoped_brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
+        let sandboxes = sessions["data"]["sandboxes"]
+            .as_array()
+            .ok_or("Could not read Brig environment state.")?;
+        let reference = target.reference();
+        if sandboxes
+            .iter()
+            .any(|session| session["ref"] == reference && session["state"] != "stopped")
+        {
+            return Err(format!(
+                "Stop Brig environment {reference} before changing these settings."
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn save_project_preferences(
     app: AppHandle,
@@ -1039,6 +1084,15 @@ pub async fn save_project_preferences(
         let shared_resources = options.cpus != previous.cpus
             || options.memory_mb != previous.memory_mb
             || options.verification != previous.verification;
+        let affected = affected_environments(&registry, &project, shared_resources)?;
+        if affected.iter().any(|target| {
+            crate::environment::EnvironmentOperation::pending(&target.environment_id)
+        }) {
+            return Err(
+                "Wait for the affected environment operations to finish before changing these settings."
+                    .into(),
+            );
+        }
         if crate::terminal::terminal_sessions(identifier.clone())
             .iter()
             .any(|process| {
@@ -1053,26 +1107,9 @@ pub async fn save_project_preferences(
                     .into(),
             );
         }
-        let brig = crate::environment::brig_for_project(&app, &project, &proposed)?;
-        let targets = registry.environments(&identifier)?;
-        let sessions = brig.json(&["--json".into(), "ls".into()], "SandboxList", None)?;
-        if sessions["data"]["sandboxes"]
-            .as_array()
-            .ok_or("Could not read Brig environment state.")?
-            .iter()
-            .any(|session| {
-                session["state"] != "stopped"
-                    && targets.iter().any(|environment| {
-                        session["ref"] == environment.reference()
-                            && (shared_resources
-                                || environment.environment_id == project.environment_id)
-                    })
-            })
-        {
-            return Err(
-                "Stop the affected Brig environments before changing these settings.".into(),
-            );
-        }
+        let brig = Brig::new(&proposed)?;
+        let profiles = crate::storage::data_location::directory(&app)?.join("profiles");
+        require_stopped_environments(&brig, &profiles, &affected)?;
         project.set_preferences(name, options, &previous);
         registry.update(project.clone())?;
         storage::write(&file, &registry)?;
@@ -1086,6 +1123,78 @@ pub async fn save_project_preferences(
 mod tests {
     use super::*;
     use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn shared_settings_check_the_running_managed_claude_sibling_from_codex() {
+        let root = std::env::temp_dir().join(format!(
+            "tugboat-shared-preferences-{}-{}",
+            std::process::id(),
+            NEXT_PROBE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir(&root).unwrap();
+        let mut registry = Registry::default();
+        let codex = registry.register(&root, "codex").unwrap();
+        let claude = registry
+            .ensure_environment(
+                &codex.id,
+                AgentKind::ClaudeCode,
+                &settings::Settings::default(),
+            )
+            .unwrap();
+        let executable = root.join("brig-fixture");
+        fs::write(
+            &executable,
+            r#"#!/bin/sh
+[ "$1:$2" = '--json:ls' ] || exit 2
+if [ -n "$BRIG_PROFILE_DIR" ]; then
+    printf '%s' "$MANAGED_INVENTORY"
+else
+    printf '%s' "$DEFAULT_INVENTORY"
+fi
+"#,
+        )
+        .unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        let inventory = |claude_row: serde_json::Value| {
+            serde_json::json!({
+                "apiVersion": "brig.sh/v1alpha1", "kind": "SandboxList",
+                "data": {"sandboxes": [
+                    {"ref": codex.reference(), "state": "stopped"},
+                    claude_row,
+                    {"ref": "codex@unrelated", "state": "running"}
+                ]}
+            })
+            .to_string()
+        };
+        let mut brig = Brig {
+            executable,
+            environment: crate::platform::command::environment(),
+        };
+        brig.environment.insert(
+            "DEFAULT_INVENTORY".into(),
+            inventory(serde_json::json!({"sandbox":"brig-tugboat-claude", "state":"running"})),
+        );
+        brig.environment.insert(
+            "MANAGED_INVENTORY".into(),
+            inventory(serde_json::json!({"ref":claude.reference(), "state":"running"})),
+        );
+        let profiles = root.join("profiles");
+        let shared = affected_environments(&registry, &codex, true).unwrap();
+        let result = require_stopped_environments(&brig, &profiles, &shared);
+        let selected_only = affected_environments(&registry, &codex, false).unwrap();
+        assert!(require_stopped_environments(&brig, &profiles, &selected_only).is_ok());
+        brig.environment.insert(
+            "DEFAULT_INVENTORY".into(),
+            inventory(serde_json::json!({"sandbox":"brig-tugboat-claude", "state":"stopped"})),
+        );
+        brig.environment.insert(
+            "MANAGED_INVENTORY".into(),
+            inventory(serde_json::json!({"ref":claude.reference(), "state":"stopped"})),
+        );
+        assert!(require_stopped_environments(&brig, &profiles, &shared).is_ok());
+        fs::remove_dir_all(root).unwrap();
+        assert!(result.unwrap_err().contains(&claude.reference()));
+    }
 
     #[test]
     #[cfg(target_os = "macos")]

@@ -50,7 +50,7 @@ fn register(
 
 struct Discovery<'a> {
     namespace: &'a str,
-    project: &'a Path,
+    project: &'a GuestProjectScope,
     count: usize,
     scan: HistoryScan,
     sessions: BTreeMap<String, claude::metadata::Transcript>,
@@ -174,13 +174,16 @@ impl Discovery<'_> {
 }
 
 #[cfg(test)]
-pub(in crate::conversations) fn scan(home: &Path, project: &Path) -> Result<HistoryScan, String> {
+pub(in crate::conversations) fn scan(
+    home: &Path,
+    project: &GuestProjectScope,
+) -> Result<HistoryScan, String> {
     scan_known(home, project, &BTreeMap::new())
 }
 
 fn scan_known(
     home: &Path,
-    project: &Path,
+    project: &GuestProjectScope,
     known: &BTreeMap<String, SessionRecord>,
 ) -> Result<HistoryScan, String> {
     #[cfg(test)]

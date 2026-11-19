@@ -1,7 +1,7 @@
 {
   "name": "tugboat",
   "description": "Agent Sandbox",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -22,10 +22,12 @@
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4",
+    "three": "0.187.0",
     "zustand": "5.0.15"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.4",
+    "@types/three": "0.187.0",
     "jsdom": "31.0.1",
     "typescript": "7.0.2",
     "vite": "8.3.8"

@@ -1,5 +1,6 @@
 #include "TerminalViewPrivate.h"
 #import <Carbon/Carbon.h>
+#include <math.h>
 
 static const GhosttyKey writingKeys[] = {
     [kVK_ANSI_A] = GHOSTTY_KEY_A,
@@ -81,6 +82,7 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
     GhosttyPoint point = [self pointForPosition:[self convertPoint:event.locationInWindow fromView:nil]];
     ghostty_terminal_grid_ref_track(terminal, point, &selectionAnchor);
     selectionState = selectionAnchor ? BrigSelectionAnchored : BrigSelectionIdle;
+    rectangularDrag = (event.modifierFlags & NSEventModifierFlagOption) != 0;
     ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
     if (event.clickCount == 2) {
         GhosttyTerminalSelectWordOptions options = GHOSTTY_INIT_SIZED(GhosttyTerminalSelectWordOptions);
@@ -96,7 +98,7 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
     GhosttySelection selection = {0};
     if (ghostty_tracked_grid_ref_snapshot(selectionAnchor, &selection.start) != GHOSTTY_SUCCESS) return;
     if (ghostty_terminal_grid_ref(terminal, [self pointForPosition:dragPoint], &selection.end) != GHOSTTY_SUCCESS) return;
-    selection.rectangle = NSEvent.modifierFlags & NSEventModifierFlagOption;
+    selection.rectangle = rectangularDrag;
     ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, &selection);
     [self setNeedsDisplay:YES];
 }
@@ -123,14 +125,52 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
     ghostty_tracked_grid_ref_free(selectionAnchor); selectionAnchor = NULL;
     selectionState = BrigSelectionIdle;
 }
+- (void)sendWheelEvent:(NSEvent *)event delta:(int)delta {
+    if (!input) return;
+    CGFloat scale = MAX(2, self.window.backingScaleFactor);
+    GhosttyMouseEncoderSize size = GHOSTTY_INIT_SIZED(GhosttyMouseEncoderSize);
+    size.screen_width = ceil(self.bounds.size.width * scale);
+    size.screen_height = ceil(self.bounds.size.height * scale);
+    size.cell_width = MAX(1, round(cellWidth * scale));
+    size.cell_height = MAX(1, round(cellHeight * scale));
+    size.padding_left = size.padding_right = round(BrigTerminalPaddingX * scale);
+    size.padding_top = size.padding_bottom = round(BrigTerminalPaddingY * scale);
+    ghostty_mouse_encoder_set_from_terminal(mouseEncoder, terminal);
+    ghostty_mouse_encoder_set(mouseEncoder, GHOSTTY_MOUSE_ENCODER_OPT_SIZE, &size);
+    NSPoint position = [self convertPoint:event.locationInWindow fromView:nil];
+    ghostty_mouse_event_set_position(mouseEvent, (GhosttyMousePosition){position.x * scale, position.y * scale});
+    ghostty_mouse_event_set_action(mouseEvent, GHOSTTY_MOUSE_ACTION_PRESS);
+    ghostty_mouse_event_set_button(mouseEvent, delta < 0 ? GHOSTTY_MOUSE_BUTTON_FOUR : GHOSTTY_MOUSE_BUTTON_FIVE);
+    GhosttyMods modifiers = 0;
+    if (event.modifierFlags & NSEventModifierFlagShift) modifiers |= GHOSTTY_MODS_SHIFT;
+    if (event.modifierFlags & NSEventModifierFlagControl) modifiers |= GHOSTTY_MODS_CTRL;
+    if (event.modifierFlags & NSEventModifierFlagOption) modifiers |= GHOSTTY_MODS_ALT;
+    ghostty_mouse_event_set_mods(mouseEvent, modifiers);
+    uint8_t bytes[128]; size_t length = 0;
+    if (ghostty_mouse_encoder_encode(mouseEncoder, mouseEvent, bytes, sizeof(bytes), &length) != GHOSTTY_SUCCESS) {
+        NSLog(@"Could not encode terminal scroll input.");
+        return;
+    }
+    if (!length) return;
+    ghostty_terminal_set(terminal, GHOSTTY_TERMINAL_OPT_SELECTION, NULL);
+    for (int index = 0; index < MIN(12, abs(delta)); index++) input(identifier, bytes, length);
+    [self setNeedsDisplay:YES];
+}
 - (void)scrollWheel:(NSEvent *)event {
-    scrollRemainder += event.hasPreciseScrollingDeltas ? -event.scrollingDeltaY / cellHeight : -event.scrollingDeltaY;
+    CGFloat movement = event.scrollingDeltaY;
+    if (!event.hasPreciseScrollingDeltas && movement != 0) movement = copysign(MAX(1, fabs(movement)), movement);
+    scrollRemainder += event.hasPreciseScrollingDeltas ? -movement / cellHeight : -movement;
     int delta = (int)scrollRemainder;
     scrollRemainder -= delta;
     if (!delta) return;
+    bool mouseTracking = false;
+    ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_MOUSE_TRACKING, &mouseTracking);
+    if (mouseTracking) { [self sendWheelEvent:event delta:delta]; return; }
     GhosttyTerminalScreen screen = GHOSTTY_TERMINAL_SCREEN_PRIMARY;
     ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_ACTIVE_SCREEN, &screen);
-    if (screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE) {
+    GhosttyTerminalModeConfig alternateScroll = {.mode = GHOSTTY_MODE_MOUSE_ALTERNATE_SCROLL};
+    ghostty_terminal_get(terminal, GHOSTTY_TERMINAL_DATA_MODE, &alternateScroll);
+    if (screen == GHOSTTY_TERMINAL_SCREEN_ALTERNATE && alternateScroll.value) {
         for (int index = 0; index < MIN(12, abs(delta)); index++) [self encodeKey:delta < 0 ? GHOSTTY_KEY_ARROW_UP : GHOSTTY_KEY_ARROW_DOWN modifiers:0 repeating:NO];
         return;
     }
@@ -153,6 +193,11 @@ static bool readPaste(void *context, GhosttyString mime, GhosttyWriter writer) {
 }
 - (void)keyDown:(NSEvent *)event {
     if (event.modifierFlags & NSEventModifierFlagCommand) { [super keyDown:event]; return; }
+    if (event.keyCode == kVK_Escape && self.hasMarkedText) {
+        [self unmarkText];
+        [self.inputContext discardMarkedText];
+        return;
+    }
     if (self.hasMarkedText) { [self interpretKeyEvents:@[event]]; return; }
     GhosttyKey key = GHOSTTY_KEY_UNIDENTIFIED;
     switch (event.keyCode) {

@@ -100,6 +100,14 @@ pub fn environment() -> BTreeMap<String, String> {
 
 pub fn brig_environment() -> BTreeMap<String, String> {
     let mut values = environment();
+    #[cfg(dev)]
+    if let Some(home) = std::env::home_dir() {
+        // Brig and hull keep telemetry settings, sessions and guest data under HOME.
+        values.insert(
+            "HOME".into(),
+            home.join(".tugboat-dev").to_string_lossy().into_owned(),
+        );
+    }
     let system_path = "/usr/bin:/bin:/usr/sbin:/sbin";
     let path = crate::platform::runtime::directory()
         .map(|directory| format!("{}:{system_path}", directory.display()))

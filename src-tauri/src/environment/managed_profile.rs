@@ -36,6 +36,12 @@ pub fn owns(project: &Project) -> bool {
         && project.profile == CLAUDE_PROFILE
 }
 
+pub fn uses_profile(project: &Project) -> bool {
+    project.agent_kind == AgentKind::ClaudeCode
+        && project.profile == CLAUDE_PROFILE
+        && (project.owns_session || project.adopted_managed_profile)
+}
+
 pub fn install(directory: &Path) -> Result<(), String> {
     match DirBuilder::new().mode(0o700).create(directory) {
         Ok(()) => {}

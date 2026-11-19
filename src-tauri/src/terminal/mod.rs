@@ -31,6 +31,10 @@ unsafe extern "C" {
         width: f64,
         height: f64,
         visible: bool,
+        overlay_x: f64,
+        overlay_y: f64,
+        overlay_width: f64,
+        overlay_height: f64,
     );
     fn brig_terminal_feed(view: *mut c_void, bytes: *const u8, length: usize);
     fn brig_terminal_focus(view: *mut c_void);
@@ -455,6 +459,28 @@ pub struct Layout {
     width: f64,
     height: f64,
     visible: bool,
+    #[serde(default)]
+    overlay: Option<OverlayRectangle>,
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+struct OverlayRectangle {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+impl OverlayRectangle {
+    fn validate(&self) -> Result<(), String> {
+        if [self.x, self.y, self.width, self.height]
+            .iter()
+            .any(|value| !value.is_finite() || *value < 0.0 || *value > 32_768.0)
+        {
+            return Err("Invalid terminal overlay.".into());
+        }
+        Ok(())
+    }
 }
 
 impl Layout {
@@ -464,6 +490,9 @@ impl Layout {
             .any(|value| !value.is_finite() || *value < 0.0 || *value > 32_768.0)
         {
             return Err("Invalid terminal size.".into());
+        }
+        if let Some(overlay) = self.overlay {
+            overlay.validate()?;
         }
         Ok(())
     }
@@ -627,6 +656,7 @@ pub(crate) async fn start_reserved(
             }
             return Err(error);
         }
+        let overlay = layout.overlay.unwrap_or_default();
         unsafe {
             brig_terminal_layout(
                 pointer,
@@ -635,6 +665,10 @@ pub(crate) async fn start_reserved(
                 layout.width,
                 layout.height,
                 false,
+                overlay.x,
+                overlay.y,
+                overlay.width,
+                overlay.height,
             );
         }
         Ok(())
@@ -746,6 +780,7 @@ pub async fn terminal_layout(
         let state = session(identifier).ok_or("Terminal closed.")?;
         let pointer = state.view.pointer();
         if pointer != 0 {
+            let overlay = layout.overlay.unwrap_or_default();
             unsafe {
                 brig_terminal_layout(
                     pointer as *mut c_void,
@@ -754,6 +789,10 @@ pub async fn terminal_layout(
                     layout.width,
                     layout.height,
                     layout.visible,
+                    overlay.x,
+                    overlay.y,
+                    overlay.width,
+                    overlay.height,
                 );
             }
         }
@@ -907,6 +946,68 @@ pub async fn close_environment(app: AppHandle, project: &projects::Project) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminal_layout_accepts_existing_requests_and_optional_overlay_rectangles() {
+        let mut layout: Layout = serde_json::from_value(serde_json::json!({
+            "x": 0, "y": 0, "width": 800, "height": 600, "visible": true
+        }))
+        .unwrap();
+        assert!(layout.overlay.is_none());
+        assert!(layout.validate().is_ok());
+        layout.overlay = Some(OverlayRectangle {
+            x: 600.0,
+            y: 400.0,
+            width: 400.0,
+            height: 300.0,
+        });
+        assert!(layout.validate().is_ok());
+        layout.overlay = Some(OverlayRectangle::default());
+        assert!(layout.validate().is_ok());
+        assert!(serde_json::from_value::<Layout>(serde_json::json!({
+            "x": 0, "y": 0, "width": 800, "height": 600, "visible": true,
+            "overlay": {"x": 0, "y": 0, "width": 200}
+        }))
+        .is_err());
+    }
+
+    #[test]
+    fn terminal_overlay_rejects_nonfinite_negative_and_oversized_coordinates() {
+        let rectangle = OverlayRectangle {
+            x: 10.0,
+            y: 20.0,
+            width: 200.0,
+            height: 100.0,
+        };
+        for overlay in [
+            OverlayRectangle {
+                x: f64::NAN,
+                ..rectangle
+            },
+            OverlayRectangle {
+                y: -1.0,
+                ..rectangle
+            },
+            OverlayRectangle {
+                width: f64::INFINITY,
+                ..rectangle
+            },
+            OverlayRectangle {
+                height: 32_769.0,
+                ..rectangle
+            },
+        ] {
+            let layout = Layout {
+                x: 0.0,
+                y: 0.0,
+                width: 800.0,
+                height: 600.0,
+                visible: true,
+                overlay: Some(overlay),
+            };
+            assert_eq!(layout.validate().unwrap_err(), "Invalid terminal overlay.");
+        }
+    }
 
     #[test]
     fn completed_outputs_do_not_consume_live_capacity_and_retention_never_evicts_running_processes()

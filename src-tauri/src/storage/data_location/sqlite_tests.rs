@@ -162,6 +162,68 @@ fn a_closed_sqlite_dataset_moves_out_and_back_with_its_marker_and_originals() {
     );
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "requires a disposable mounted FAT image"]
+fn a_fat_destination_rejects_new_and_saved_moves_before_copy() {
+    let mount = PathBuf::from(
+        std::env::var_os("TUGBOAT_REC09_FAT_MOUNT").expect("disposable FAT fixture mount"),
+    );
+    let root = mount.parent().unwrap();
+    assert_eq!(fs::canonicalize(&mount).unwrap(), mount);
+    assert_eq!(root.parent(), Some(Path::new("/private/tmp")));
+    assert!(root
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .starts_with("tugboat-rec09."));
+    assert_eq!(mount, root.join("mount"));
+    assert_ne!(
+        fs::metadata(&mount).unwrap().dev(),
+        fs::metadata(root).unwrap().dev()
+    );
+    let target = mount.join(format!("records-{}", std::process::id()));
+    fs::create_dir(&target).unwrap();
+    let fixture = Fixture::new("unsupported-permission-volume");
+    let location = fixture.open();
+    let records = fixture.seed(&location);
+    let database = records.path().join("usage.sqlite3");
+    let original = fs::read(&database).unwrap();
+    let pointer = fs::read(&location.pointer).unwrap();
+    let message = "This volume does not support private file permissions. Choose a records folder on another volume.";
+
+    assert_eq!(location.schedule(&target, false).unwrap_err(), message);
+    assert_eq!(fs::read(&location.pointer).unwrap(), pointer);
+    assert!(location.status().unwrap().pending_directory.is_none());
+    assert!(fs::read_dir(&target).unwrap().next().is_none());
+
+    // Simulate a move already saved by an older Tugboat build.
+    let mut pending: Location = storage::read(&location.pointer).unwrap().unwrap();
+    pending.pending = Some(PendingLocation {
+        directory: target.clone(),
+        kind: ChangeKind::Move,
+    });
+    storage::write(&location.pointer, &pending).unwrap();
+    let pending_pointer = fs::read(&location.pointer).unwrap();
+    drop(location);
+
+    let reopened = fixture.open();
+    let status = reopened.status().unwrap();
+    assert!(status.available);
+    assert_eq!(status.directory.as_deref(), Some(records.path()));
+    assert_eq!(status.pending_directory.as_ref(), Some(&target));
+    assert_eq!(
+        status.message.unwrap(),
+        format!("Could not finish moving records. {message}")
+    );
+    assert_eq!(fs::read(&reopened.pointer).unwrap(), pending_pointer);
+    assert_eq!(fs::read(&database).unwrap(), original);
+    assert_eq!(marker(records.path()).unwrap().id, records.id());
+    Store::open(&records).unwrap().integrity_check().unwrap();
+    assert!(fs::read_dir(&target).unwrap().next().is_none());
+    fs::remove_dir(&target).unwrap();
+}
+
 #[test]
 fn a_missing_or_linked_active_database_never_creates_a_replacement() {
     for case in ["missing", "link"] {
@@ -299,16 +361,48 @@ fn a_sqlite_dataset_reconnects_at_a_new_path_without_reimport() {
     assert!(!offline.status().unwrap().available);
     assert!(!drive.exists());
     offline.schedule(&reconnected, true).unwrap();
+    let pending = offline.status().unwrap();
+    assert!(!pending.available);
+    assert_eq!(pending.pending_directory.as_ref(), Some(&reconnected));
+    assert!(pending.message.unwrap().contains("unavailable"));
     drop(offline);
+
+    let database = reconnected.join("usage.sqlite3");
+    let detached_database = fixture.root.join("detached.sqlite3");
+    fs::rename(&database, &detached_database).unwrap();
+    let failed = fixture.open();
+    let failed_status = failed.status().unwrap();
+    assert!(!failed_status.available);
+    assert_eq!(failed_status.pending_directory.as_ref(), Some(&reconnected));
+    assert!(failed_status
+        .message
+        .unwrap()
+        .starts_with("Could not finish moving records."));
+    drop(failed);
+    fs::rename(detached_database, &database).unwrap();
+
     let located = fixture.open();
-    assert!(located.status().unwrap().available);
-    assert!(located.status().unwrap().message.is_none());
+    let status = located.status().unwrap();
+    assert!(status.available);
+    assert!(status.pending_directory.is_none());
     assert_eq!(
-        located.status().unwrap().directory,
-        Some(reconnected.clone())
+        status.message.as_deref(),
+        Some("Records folder reconnected. Tugboat verified your original records.")
     );
-    assert_eq!(fs::read(reconnected.join("usage.sqlite3")).unwrap(), before);
+    assert_eq!(status.directory.as_ref(), Some(&reconnected));
+    assert_eq!(fs::read(&database).unwrap(), before);
     assert_eq!(marker(&reconnected).unwrap().schema_version, 2);
+
+    fs::rename(&reconnected, &drive).unwrap();
+    assert!(located
+        .status()
+        .unwrap()
+        .message
+        .unwrap()
+        .contains("unavailable"));
+    fs::rename(&drive, &reconnected).unwrap();
+    drop(located);
+    assert!(fixture.open().status().unwrap().message.is_none());
 }
 
 #[test]
@@ -505,7 +599,7 @@ fn bootstrap_tightens_only_the_app_owned_directories_and_preserves_their_files()
         )
         .unwrap();
     }
-    prepare_bootstrap_directories(&fixture.default, &fixture.legacy).unwrap();
+    prepare_bootstrap_directories(&fixture.default, Some(&fixture.legacy)).unwrap();
     for directory in [&fixture.default, &fixture.legacy] {
         assert_eq!(
             fs::metadata(directory).unwrap().permissions().mode() & 0o777,
@@ -632,6 +726,7 @@ fn located_runtime_records_flush_the_final_native_request_before_pointer_commit(
     location.use_reconnected(&target).unwrap();
     shared.with(|store| store.connection.execute_batch("CREATE TEMP TRIGGER fail_final_cursor BEFORE UPDATE ON source_cursors BEGIN SELECT RAISE(ABORT,'injected final flush failure'); END;").map_err(crate::usage_store::error)).unwrap();
     assert!(history.flush().is_err());
+    assert!(location.status().unwrap().message.is_none());
     assert_eq!(fs::read(&location.pointer).unwrap(), pointer);
     assert!(!records.path().exists());
     history.reconnect_records(&shared, &target).unwrap();
@@ -666,8 +761,12 @@ fn located_runtime_records_flush_the_final_native_request_before_pointer_commit(
     drop(history);
     drop(location);
     let restarted = fixture.open();
-    assert!(restarted.status().unwrap().message.is_none());
-    assert_eq!(restarted.status().unwrap().directory, Some(located.clone()));
+    let status = restarted.status().unwrap();
+    assert_eq!(
+        status.message.as_deref(),
+        Some("Records folder reconnected. Tugboat verified your original records.")
+    );
+    assert_eq!(status.directory, Some(located.clone()));
     let final_records = RecordsDirectory::fixture_existing(&located, records.id());
     let store = Store::open(&final_records).unwrap();
     let ledger = store.load_environment(&environment).unwrap();

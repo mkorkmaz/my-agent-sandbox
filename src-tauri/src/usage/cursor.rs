@@ -126,9 +126,18 @@ fn request_tier(turns: &mut BTreeMap<String, TurnUsage>, identity: &str, tier: &
             continue;
         }
         if record.rates.as_ref().is_some_and(|rates| {
-            super::tier_multiplier(record.model.as_deref().unwrap_or_default(), &rates.tier)
-                .is_none()
-        }) || super::tier_multiplier(record.model.as_deref().unwrap_or_default(), tier).is_none()
+            super::tier_multiplier(
+                record.model.as_deref().unwrap_or_default(),
+                &rates.tier,
+                &record.at,
+            )
+            .is_none()
+        }) || super::tier_multiplier(
+            record.model.as_deref().unwrap_or_default(),
+            tier,
+            &record.at,
+        )
+        .is_none()
         {
             record.service_tier = Some(tier.into());
             record.tier_source = Some("request".into());
@@ -220,9 +229,9 @@ fn compatible_class(record: &RequestUsage, next: &Tokens) -> bool {
     {
         return true;
     }
-    record.model.as_deref() == Some("gpt-6.1-sol")
-        && rates.date == PRICING_DATE
-        && rates.long_context == (next.input > 272_000)
+    let known_threshold = rates.date == PRICING_DATE
+        || (rates.date == "2026-11-10" && record.model.as_deref() == Some("gpt-6.1-sol"));
+    known_threshold && rates.long_context == (next.input > super::LONG_CONTEXT_THRESHOLD)
 }
 fn attach(record: &mut RequestUsage, exact: &Exact) -> Result<(), String> {
     if record

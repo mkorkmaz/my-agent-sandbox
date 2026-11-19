@@ -66,3 +66,420 @@
  		t.Errorf("no mke2fs: %+v, want unavailable with the fix", got)
  	}
  	overlayHost(t)
+--- a/internal/runtime/gateway.go
++++ b/internal/runtime/gateway.go
+@@ -298,2 +298,2 @@
+-// leaseSharedGateway marks one boot as on the shared gateway, and returns the
+-// lease file and its release.
++// leaseSharedGateway marks one boot as using this gateway, and returns the
++// lease file and its release. Isolated gateway recovery uses the same lease.
+@@ -931,7 +931,4 @@
+-// Best effort, like releasing the network: a gateway left behind holds a
+-// socket and 28.7 MB, but nothing about stopping or removing the sandbox
+-// depends on it, and there is no answer to "the kill failed" worth
+-// interrupting a `brig rm` with. The shared gateway is never stopped here: it
+-// serves sandboxes this one knows nothing about. PruneSharedNetwork stops it,
+-// once the process table shows nothing on it.
+-func shutDownGateway(name string) {
++// The result confirms that the isolated endpoint is gone. Stop reports a
++// failure if the gateway could not be stopped. PruneSharedNetwork owns the
++// lifecycle of the shared gateway.
++func shutDownGateway(name string) bool {
+@@ -940 +937,2 @@
+-		return
++		// This directory has no usable path for the sandbox's gateway.
++		return true
+@@ -942 +940 @@
+-	stopGatewayAt(sock)
++	return stopGatewayAt(sock)
+--- a/internal/runtime/hull.go
++++ b/internal/runtime/hull.go
+@@ -451 +451 @@
+-func (h *hull) Run(spec RunSpec) error {
++func (h *hull) Run(spec RunSpec) (runErr error) {
+@@ -473 +473 @@
+-			sock, err := ensureIsolatedGateway(h.bin, spec.Name, index, spec.Egress)
++			sock, err := isolatedSocket(spec.Name)
+@@ -476,0 +477,14 @@
++			lease, release, err := leaseSharedGateway(sock)
++			if err != nil {
++				return err
++			}
++			defer release()
++			sock, err = ensureIsolatedGateway(h.bin, spec.Name, index, spec.Egress)
++			if err != nil {
++				return err
++			}
++			defer func() {
++				if runErr != nil {
++					h.releaseAbsentGateway(spec.Name, lease)
++				}
++			}()
+@@ -945,4 +959,5 @@
+-// Stop also stops the gateway of an isolated sandbox. That gateway serves
+-// this sandbox alone, so a stopped sandbox holding one is 28.7 MB and a socket
+-// spent on a VM that is not running -- a leak the shared gateway cannot have,
+-// because it is still serving everything else.
++// ErrStopUnconfirmed means the adapter could not confirm cleanup. An
++// inventory check cannot override an error from the runtime's process check.
++var ErrStopUnconfirmed = errors.New("sandbox stop was not confirmed")
++
++// Stop also stops the gateway that serves this isolated sandbox.
+@@ -950,3 +965,10 @@
+-	err := h.quiet("stop", name, true)
+-	releaseGateway(name, err)
+-	return err
++	if err := h.quiet("stop", name, true); err != nil {
++		if h.releaseAbsentGateway(name, "") {
++			return nil
++		}
++		return fmt.Errorf("%w: %w", ErrStopUnconfirmed, err)
++	}
++	if !releaseGateway(name, nil) {
++		return fmt.Errorf("%w: could not stop the isolated gateway for %s", ErrStopUnconfirmed, name)
++	}
++	return nil
+@@ -954,0 +977,27 @@
++// Release a gateway left by a failed boot only when the pinned hull confirms
++// the exact instance is absent. A boot that still holds this gateway may not
++// have created its hull record yet. Keep the lock across the check and release
++// so a new boot cannot acquire a lease between them.
++func (h *hull) releaseAbsentGateway(name, ownLease string) bool {
++	sock, err := isolatedSocket(name)
++	if err != nil {
++		// This directory has no usable path for the sandbox's gateway.
++		return h.instanceAbsent(name)
++	}
++	unlock, err := flock(sock)
++	if err != nil {
++		return false
++	}
++	defer unlock()
++	if bootsInFlight(sock, ownLease) || !h.instanceAbsent(name) {
++		return false
++	}
++	return stopGatewayAt(sock)
++}
++
++func (h *hull) instanceAbsent(name string) bool {
++	_, stderr, err := inspectNetwork(h.bin, "inspect", name)
++	var exit *exec.ExitError
++	return errors.As(err, &exit) && exit.ExitCode() == 1 && stderr == "error: instance not found: "+name
++}
++
+@@ -1250 +1299 @@
+-func releaseGateway(name string, err error) {
++func releaseGateway(name string, err error) bool {
+@@ -1252 +1301 @@
+-		return
++		return false
+@@ -1265 +1314 @@
+-	shutDownGateway(name)
++	return shutDownGateway(name)
+--- a/internal/wrap/run.go
++++ b/internal/wrap/run.go
+@@ -897,0 +898,5 @@
++	// Hull handles idempotent absence in its stop adapter. A stopped record
++	// can still have an owned process that hull could not reap.
++	if errors.Is(err, runtime.ErrStopUnconfirmed) {
++		return fmt.Errorf("the sandbox %s would not stop (%s): %w", c.VMName, c.logHint(), err)
++	}
+--- /dev/null
++++ b/internal/runtime/desktop_gateway_lifecycle_test.go
+@@ -0,0 +1,144 @@
++package runtime
++
++import (
++	"errors"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++	"time"
++)
++
++const desktopSandbox = "brig-desktop-fixture"
++
++func desktopLifecycleHull(t *testing.T, state string) *hull {
++	t.Helper()
++	directory := filepath.Join(t.TempDir(), "Fixture App.app", "Contents", "MacOS")
++	if err := os.MkdirAll(directory, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	self, err := os.Executable()
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Exercise gateway recognition with a space in the actual executable path.
++	helper := filepath.Join(directory, "gateway-helper")
++	if err := os.Link(self, helper); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("DO_NOT_TRACK", "1")
++	t.Setenv("TUGBOAT_GATEWAY_TEST_HELPER", helper)
++	t.Setenv("TUGBOAT_GATEWAY_TEST_STATE", state)
++	bin := filepath.Join(directory, "hull")
++	script := `#!/bin/sh
++case "$1" in
++  network-gateway) BRIG_TEST_GATEWAY_HELPER=1 exec "$TUGBOAT_GATEWAY_TEST_HELPER" -test.run='^TestGatewayHelperProcess$' -- "$@" ;;
++  run) printf 'fixture boot failed\n' >&2; exit 3 ;;
++  stop)
++    if [ "$TUGBOAT_GATEWAY_TEST_STATE" = stop-succeeded ]; then exit 0; fi
++    printf 'fixture stop failed\n' >&2; exit 4 ;;
++  inspect)
++    case "$TUGBOAT_GATEWAY_TEST_STATE" in
++      absent) printf 'error: instance not found: %s\n' "$2" >&2; exit 1 ;;
++      running|starting|creating|stopped) printf '{"id":"%s","status":"%s"}\n' "$2" "$TUGBOAT_GATEWAY_TEST_STATE" ;;
++      *) printf 'error: could not read store containing instance not found: %s\n' "$2" >&2; exit 1 ;;
++    esac ;;
++  *) exit 9 ;;
++esac
++`
++	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
++		t.Fatal(err)
++	}
++	return &hull{bin: bin}
++}
++
++func TestDesktopFailedIsolatedBootReleasesOnlyItsGateway(t *testing.T) {
++	shared := scratchSharedGateway(t)
++	sharedPID := startHelperGateway(t, shared, true, false)
++	sibling := mustSocket(t, "brig-sibling")
++	siblingPID := startHelperGateway(t, sibling, true, false)
++	writeGatewayRecord(sibling, siblingPID, "sibling gateway")
++	sock := mustSocket(t, desktopSandbox)
++	t.Cleanup(func() { killGatewaysOn(sock) })
++
++	h := desktopLifecycleHull(t, "absent")
++	err := h.Run(RunSpec{Name: desktopSandbox, Image: "fixture", Hypervisor: "hvi", Net: "isolated"})
++	if err == nil || !strings.Contains(err.Error(), "fixture boot failed") {
++		t.Fatalf("expected the boot failure, got %v", err)
++	}
++	if gatewayReachable(sock) {
++		t.Fatal("the failed boot left its isolated gateway running")
++	}
++	if _, err := os.Stat(gatewayPIDPath(sock)); !errors.Is(err, os.ErrNotExist) {
++		t.Errorf("the failed boot left its PID record: %v", err)
++	}
++	if !alive(siblingPID) || !alive(sharedPID) {
++		t.Fatal("the failed boot stopped a sibling or shared gateway")
++	}
++}
++
++func TestDesktopFailedStopChecksExactInstanceAbsence(t *testing.T) {
++	for _, state := range []string{"absent", "running", "starting", "creating", "stopped", "unknown"} {
++		t.Run(state, func(t *testing.T) {
++			scratchSharedGateway(t)
++			sock := mustSocket(t, desktopSandbox)
++			pid := startHelperGateway(t, sock, true, false)
++			writeGatewayRecord(sock, pid, "target gateway")
++			absent := state == "absent"
++			err := desktopLifecycleHull(t, state).Stop(desktopSandbox)
++			if (err == nil) != absent {
++				t.Errorf("stop returned %v for state %q", err, state)
++			}
++			if absent {
++				for deadline := time.Now().Add(time.Second); alive(pid) && time.Now().Before(deadline); {
++					time.Sleep(10 * time.Millisecond)
++				}
++			}
++			if alive(pid) == absent || gatewayReachable(sock) == absent {
++				t.Errorf("gateway lifetime was wrong for state %q", state)
++			}
++		})
++	}
++}
++
++func TestDesktopFailedStopPreservesGatewayDuringAnotherBoot(t *testing.T) {
++	scratchSharedGateway(t)
++	sock := mustSocket(t, desktopSandbox)
++	pid := startHelperGateway(t, sock, true, false)
++	writeGatewayRecord(sock, pid, "target gateway")
++	_, release, err := leaseSharedGateway(sock)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer release()
++	if err := desktopLifecycleHull(t, "absent").Stop(desktopSandbox); err == nil {
++		t.Fatal("stop reported completion while a boot still held the gateway")
++	}
++	if !alive(pid) || !gatewayReachable(sock) {
++		t.Fatal("stop disconnected a gateway that a boot still held")
++	}
++}
++
++func TestDesktopStopReportsUnreleasedIsolatedGateway(t *testing.T) {
++	shared := scratchSharedGateway(t)
++	sharedPID := startHelperGateway(t, shared, true, false)
++	sock := mustSocket(t, desktopSandbox)
++	pid := startHelperGateway(t, sock, true, false)
++	writeGatewayRecord(sock, sharedPID, "stale PID record")
++	h := desktopLifecycleHull(t, "stop-succeeded")
++
++	if err := h.Stop(desktopSandbox); err == nil || !strings.Contains(err.Error(), "could not stop the isolated gateway") {
++		t.Fatalf("stop did not report the live gateway: %v", err)
++	}
++	if !alive(sharedPID) || !gatewayReachable(sock) {
++		t.Fatal("the stop signaled a process without the target's identity")
++	}
++
++	writeGatewayRecord(sock, pid, "target gateway")
++	if err := h.Stop(desktopSandbox); err != nil {
++		t.Fatalf("could not stop the recorded gateway: %v", err)
++	}
++	if alive(pid) || gatewayReachable(sock) || !alive(sharedPID) {
++		t.Fatal("stop ended the wrong gateway or failed to reap its own gateway")
++	}
++}
+--- /dev/null
++++ b/internal/wrap/desktop_stop_test.go
+@@ -0,0 +1,50 @@
++package wrap
++
++import (
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"github.com/brig-sh/brig/internal/runtime"
++)
++
++func TestDesktopStopDoesNotHideHullCleanupFailure(t *testing.T) {
++	t.Setenv("BRIG_RUNTIME", "hull")
++	t.Setenv("DO_NOT_TRACK", "1")
++	t.Setenv("BRIG_STATE_DIR", filepath.Join(t.TempDir(), "state"))
++	t.Setenv("BRIG_GATEWAY_DIR", t.TempDir())
++	bin := filepath.Join(t.TempDir(), "hull")
++	const script = `#!/bin/sh
++case "$1" in
++  stop) printf 'failed to reap the recorded virtual machine\n' >&2; exit 1 ;;
++  inspect)
++    if [ "$TUGBOAT_STOP_TEST_STATE" = absent ]; then
++      printf 'error: instance not found: %s\n' "$2" >&2; exit 1
++    fi
++    printf '{"id":"%s","status":"stopped"}\n' "$2" ;;
++  ps) printf '%s stopped\n' "$TUGBOAT_STOP_TEST_VM" ;;
++  *) exit 9 ;;
++esac
++`
++	if err := os.WriteFile(bin, []byte(script), 0o700); err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("BRIG_RUNTIME_BIN", bin)
++	c := testConfig(t, t.TempDir(), t.TempDir())
++	c.broker = &fakeBroker{}
++	t.Setenv("TUGBOAT_STOP_TEST_VM", c.VMName)
++	t.Setenv("TUGBOAT_STOP_TEST_STATE", "stopped")
++	var err error
++	c.Runtime, err = runtime.Detect()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := c.Stop(); err == nil || !strings.Contains(err.Error(), "failed to reap the recorded virtual machine") {
++		t.Errorf("the stop did not report Hull's cleanup error: %v", err)
++	}
++	t.Setenv("TUGBOAT_STOP_TEST_STATE", "absent")
++	if err := c.Stop(); err != nil {
++		t.Errorf("stopping an absent Hull instance failed: %v", err)
++	}
++}
+--- a/internal/wrap/index.go
++++ b/internal/wrap/index.go
+@@ -381,2 +381,2 @@
+-// PruneSessions drops every entry whose sandbox is not in the list of what the
+-// runtime has.
++// PruneSessions drops stale runtime entries. A recorded Brig home can
++// outlive its VM during a restart and stays owned until explicit removal.
+@@ -387,3 +387,2 @@
+-// lost with a runtime that was reinstalled. The cost of being wrong is small
+-// in the direction that matters: a list that came back short prunes an entry
+-// that was still good, and the session pays one restart for it.
++// lost with a runtime that was reinstalled. The absence of a VM does not
++// establish that its guest home was removed.
+@@ -411 +410 @@
+-		if !have[entry.Sandbox] {
++		if !have[entry.Sandbox] && !entry.hasRecoverableHome() {
+@@ -419,0 +419,14 @@
++}
++
++// A retry can recreate the VM. Dropping its only ownership record would let
++// reapOrphanHome delete the previous guest state before that boot.
++func (entry sessionEntry) hasRecoverableHome() bool {
++	if !entry.Ephemeral {
++		return false
++	}
++	_, name, ok := homeName(entry.Home)
++	if !ok || name != entry.Sandbox {
++		return false
++	}
++	_, err := os.Lstat(entry.Home)
++	return !os.IsNotExist(err)
+--- /dev/null
++++ b/internal/wrap/desktop_history_test.go
+@@ -0,0 +1,65 @@
++package wrap
++
++import (
++	"errors"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"github.com/brig-sh/brig/internal/creds"
++	"github.com/brig-sh/brig/internal/verify"
++)
++
++func TestDesktopOfflineRetryPreservesRecordedHome(t *testing.T) {
++	state, _ := isolateHome(t)
++	state, err := filepath.EvalSymlinks(state)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Setenv("BRIG_STATE_DIR", state)
++	options := Options{Name: "project-a"}
++	session := mustLoad(t, options)
++	bootHome(t, session)
++	transcripts := filepath.Join(session.Workspace, ".claude", "projects", "-work-project-a")
++	if err := os.MkdirAll(transcripts, 0o700); err != nil {
++		t.Fatal(err)
++	}
++	for _, id := range []string{"first", "second"} {
++		if err := os.WriteFile(filepath.Join(transcripts, id+".jsonl"), []byte(id), 0o600); err != nil {
++			t.Fatal(err)
++		}
++	}
++	t.Setenv("BRIG_NETWORK", "offline")
++	failed := &bootFailRuntime{}
++	attempt := mustLoad(t, options)
++	attempt.Runtime, attempt.Verify = failed, verify.Off
++	failure := attempt.EnsureRunning(creds.Set{})
++	if failure == nil || failed.boots != 1 {
++		t.Fatalf("the Offline attempt did not fail during boot: %v", failure)
++	}
++	PruneSessions(nil)
++	retry := mustLoad(t, options)
++	retry.Runtime = &desktopRetryRuntime{livenessRuntime{workspace: session.Workspace}}
++	retry.Verify = verify.Off
++	retry.Profile.Volumes, retry.Profile.Files = nil, nil
++	if err := retry.EnsureRunning(creds.Set{}); err != nil {
++		t.Fatal(err)
++	}
++	for _, id := range []string{"first", "second"} {
++		data, err := os.ReadFile(filepath.Join(transcripts, id+".jsonl"))
++		if err != nil || string(data) != id {
++			t.Fatalf("retry lost transcript %s: %v", id, err)
++		}
++	}
++	retry.Runtime = &removingRuntime{}
++	if err := retry.Remove(); err != nil || retry.HomeErr != nil {
++		t.Fatalf("explicit removal: %v, home: %v", err, retry.HomeErr)
++	}
++	if _, err := os.Stat(session.Workspace); !errors.Is(err, os.ErrNotExist) {
++		t.Fatalf("explicit removal left the guest home: %v", err)
++	}
++}
++
++type desktopRetryRuntime struct{ livenessRuntime }
++
++func (*desktopRetryRuntime) Exists(string) (bool, error) { return false, nil }

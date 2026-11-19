@@ -82,7 +82,6 @@ case "$4 $5" in
     printf '%s' "$AUTH_STATUS"; exit "$AUTH_EXIT" ;;
   "claude auth") printf '%s' "$AUTH_STATUS"; exit "$AUTH_EXIT" ;;
   "claude --help") printf '%s' "$HELP" ;;
-  "auth logout") exit "$LOGOUT_EXIT" ;;
   "--help ") printf '%s' "$HELP" ;;
   *) exit 7 ;;
 esac
@@ -94,7 +93,6 @@ esac
             ("CALLS".into(), root.join("calls").to_string_lossy().into()),
             ("AUTH_STATUS".into(), "{\"loggedIn\":true}".into()),
             ("AUTH_EXIT".into(), "0".into()),
-            ("LOGOUT_EXIT".into(), "0".into()),
             ("HELP".into(), HELP.into()),
         ]);
         let plan =
@@ -189,54 +187,7 @@ fn new_session_ids_are_unique_rfc4122_version_four_ids_and_only_resume_accepts_s
 }
 
 #[test]
-fn login_results_are_matched_to_both_environment_and_terminal_attempt() {
-    let fixture = Fixture::new();
-    let project = &fixture.checked.project;
-    let mut codex = project.clone();
-    codex.agent_kind = AgentKind::Codex;
-    codex.environment_id = EnvironmentId::for_agent(&project.id, AgentKind::Codex);
-    let accounts = Accounts::default();
-    let status = accounts.begin(project, 10, "first-plan").unwrap();
-    assert_eq!(status.state, State::SigningIn);
-    assert_eq!(status.terminal_identifier, Some(10));
-    assert_eq!(
-        accounts
-            .pending_fingerprint(project, 10)
-            .unwrap()
-            .as_deref(),
-        Some("first-plan")
-    );
-    assert!(accounts.pending_fingerprint(project, 11).unwrap().is_none());
-    assert!(accounts.pending_fingerprint(&codex, 10).unwrap().is_none());
-    assert!(accounts.finish(&codex, 10, Ok(true)).unwrap().is_none());
-    assert!(accounts.finish(project, 11, Ok(true)).unwrap().is_none());
-    assert!(accounts.begin(project, 11, "second-plan").is_err());
-    let pending = accounts
-        .publish(project, Status::verified(project, false))
-        .unwrap();
-    assert_eq!(pending.state, State::SigningIn);
-    assert_eq!(
-        accounts
-            .finish(project, 10, Ok(true))
-            .unwrap()
-            .unwrap()
-            .state,
-        State::SignedIn
-    );
-    assert!(accounts.pending(project).unwrap().is_none());
-    accounts.begin(project, 11, "second-plan").unwrap();
-    assert!(accounts.finish(project, 10, Ok(false)).unwrap().is_none());
-    let failure = accounts
-        .finish(project, 11, Err("The environment changed.".into()))
-        .unwrap()
-        .unwrap();
-    assert_eq!(failure.state, State::Unknown);
-    assert_eq!(failure.terminal_identifier, Some(11));
-    assert_eq!(failure.message, "The environment changed.");
-}
-
-#[test]
-fn environment_account_locks_and_invalidation_do_not_cross_project_or_environment_boundaries() {
+fn environment_account_locks_do_not_cross_project_or_environment_boundaries() {
     let fixture = Fixture::new();
     let project = &fixture.checked.project;
     let mut other = project.clone();
@@ -252,16 +203,8 @@ fn environment_account_locks_and_invalidation_do_not_cross_project_or_environmen
     other.environment_id = EnvironmentId::for_agent(&other.id, AgentKind::ClaudeCode);
     other.agent_kind = AgentKind::ClaudeCode;
     assert!(accounts.operation(&other).unwrap().try_lock().is_ok());
-    accounts.begin(project, 1, "plan-one").unwrap();
-    accounts.begin(&other, 2, "plan-two").unwrap();
-    assert_eq!(
-        accounts.invalidate(project).unwrap().state,
-        State::EnvironmentStopped
-    );
-    assert!(accounts.pending(project).unwrap().is_none());
-    assert!(accounts.finish(project, 1, Ok(true)).unwrap().is_none());
-    assert!(accounts.pending(&other).unwrap().is_some());
     drop(guard);
+    assert!(accounts.operation(project).unwrap().try_lock().is_ok());
 }
 
 #[test]
@@ -295,20 +238,13 @@ fn terminal_identity_requires_the_project_environment_and_agent_to_match() {
 }
 
 #[test]
-fn claude_account_and_chat_commands_use_only_the_selected_guest_reference() {
-    let mut fixture = Fixture::new();
+fn claude_chat_and_shell_commands_use_only_the_selected_guest_reference() {
+    let fixture = Fixture::new();
     let checked = &fixture.checked;
     let session = SessionId::new(SESSION).unwrap();
-    assert_eq!(
-        claude::arguments(checked, Action::Login, None, None).unwrap(),
-        vec![
-            "sh",
-            &checked.project.reference(),
-            "claude",
-            "auth",
-            "login"
-        ]
-    );
+    assert!(claude::arguments(checked, Action::Login, None, None)
+        .unwrap_err()
+        .contains("Settings"));
     assert!(fixture.calls().is_empty());
     assert_eq!(
         claude::arguments(checked, Action::Shell, None, None).unwrap(),
@@ -362,26 +298,6 @@ fn claude_account_and_chat_commands_use_only_the_selected_guest_reference() {
             "--help"
         ]
     );
-    fixture.set("AUTH_STATUS", "{\"loggedIn\":false}");
-    fixture.set("AUTH_EXIT", "1");
-    assert!(!claude::logout(&fixture.checked).unwrap());
-    assert_eq!(
-        &fixture.calls()[calls.len()..],
-        &[
-            "sh",
-            &fixture.checked.project.reference(),
-            "claude",
-            "auth",
-            "logout",
-            "exec",
-            &fixture.checked.project.reference(),
-            "--",
-            "claude",
-            "auth",
-            "status",
-            "--json"
-        ]
-    );
 }
 
 #[test]
@@ -409,14 +325,6 @@ fn account_status_rejects_malformed_or_contradictory_cli_responses_without_expos
     );
     fixture.set("AUTH_EXIT", "1");
     assert!(!claude::signed_in(&fixture.checked).unwrap());
-    fixture.set("LOGOUT_EXIT", "1");
-    assert!(claude::logout(&fixture.checked).is_err());
-    fixture.set("LOGOUT_EXIT", "0");
-    fixture.set("AUTH_STATUS", "{\"loggedIn\":true}");
-    fixture.set("AUTH_EXIT", "0");
-    assert!(claude::logout(&fixture.checked)
-        .unwrap_err()
-        .contains("still signed in"));
 }
 
 #[test]
@@ -457,10 +365,10 @@ fn unprepared_offline_unsigned_and_unsupported_guests_do_not_start_claude_chats(
     let mut fixture = Fixture::new();
     let session = SessionId::new(SESSION).unwrap();
     fixture.checked.project.stage = crate::projects::ProjectStage::Ready;
-    assert!(claude::arguments(&fixture.checked, Action::Login, None, None).is_err());
+    assert!(claude::arguments(&fixture.checked, Action::NewChat, Some(&session), None).is_err());
     fixture.checked.project.stage = crate::projects::ProjectStage::EnvironmentReady;
     fixture.checked.settings.network = crate::desktop::settings::Network::Offline;
-    for action in [Action::Login, Action::NewChat, Action::Resume] {
+    for action in [Action::NewChat, Action::Resume] {
         assert!(
             claude::arguments(&fixture.checked, action, Some(&session), None)
                 .unwrap_err()
@@ -512,6 +420,38 @@ fn resume_accepts_a_main_chat_or_subdirectory_and_ignores_an_unfinished_last_lin
     )
     .unwrap();
     assert!(resume::require(&fixture.checked, &session).is_ok());
+}
+
+#[test]
+fn resume_accepts_a_claude_chat_from_the_verified_former_folder_name() {
+    let mut fixture = Fixture::new();
+    let original = fixture.root.join("p");
+    let renamed = fixture.root.join("moved p");
+    fs::create_dir(&original).unwrap();
+    let mut registry = Registry::default();
+    let project = registry.register(&original, "codex").unwrap();
+    let claude = registry
+        .ensure_environment(
+            &project.id,
+            AgentKind::ClaudeCode,
+            &fixture.checked.settings,
+        )
+        .unwrap();
+    fs::rename(original, &renamed).unwrap();
+    registry.register(&renamed, "codex").unwrap();
+    fixture.checked.project = registry
+        .environment(&project.id, &claude.environment_id)
+        .unwrap();
+    fixture.checked.paths.guest_project = "/work/moved p".into();
+
+    let session = SessionId::new(SESSION).unwrap();
+    let mut header = fixture.header();
+    header["cwd"] = json!("/work/p/src");
+    fixture.write_header(&header);
+    assert!(resume::require(&fixture.checked, &session).is_ok());
+    header["cwd"] = json!("/work/p-copy/src");
+    fixture.write_header(&header);
+    assert!(resume::require(&fixture.checked, &session).is_err());
 }
 
 #[test]

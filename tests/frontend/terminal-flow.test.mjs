@@ -488,6 +488,42 @@ test('local and guest actions explain a conflicting process without entering the
   }
 });
 
+for (const action of ['new-chat', 'resume']) {
+  test(`Guest terminal identifies a conflicting Claude ${action} chat and allows a retry`, async t => {
+    const claude = { ...project, agentKind: 'claude-code', environmentId: 'b'.repeat(32), profile: 'tugboat-claude' };
+    const conversation = { id: '1a5bc5b5-af21-432d-bf07-e2218dd9f9bf', title: 'Saved Claude chat', updatedAt: 1000, environmentId: claude.environmentId, agentKind: claude.agentKind };
+    const harness = await interfaceHarness({
+      register_project: () => claude,
+      project_dashboard: () => sessionDashboard(action === 'resume' ? [conversation] : []),
+      read_project_preferences: () => ({ project: claude, options: { cpus: 4, memoryMb: 4096, verification: 'require', network: 'isolated' } }),
+    });
+    t.after(() => harness.dom.window.close());
+    await harness.ready;
+    harness.element('choose-folder').click(); await flush();
+    const launch = action === 'resume' ? harness.element('sidebar-session-list').querySelector('button') : harness.element('start-codex');
+    launch.click(); await flush();
+    assert.equal([...harness.terminals.values()][0]?.purpose, action === 'resume' ? 'claude-resume' : 'claude');
+    harness.element('hide-terminal').click(); await flush();
+    harness.element('project-settings-button').click(); await flush();
+    const guestShell = harness.element('guest-shell');
+    guestShell.focus(); guestShell.click(); await flush();
+
+    const chat = action === 'resume' ? 'chat “Saved Claude chat”' : 'chat';
+    assert.equal(harness.element('guest-terminal-status').textContent, `End the running ${chat} before opening Guest terminal.`);
+    assert.equal(harness.element('project-settings-dialog').open, true);
+    assert.equal(harness.dom.window.document.activeElement, guestShell);
+    assert.deepEqual(harness.calls.filter(call => call.command === 'start_agent_session').map(call => call.args.action), [action]);
+
+    harness.element('close-project-settings').click(); await flush();
+    harness.element('sidebar-session-list').querySelector('button').click(); await flush();
+    harness.element('close-terminal').click(); await flush();
+    harness.element('project-settings-button').click(); await flush();
+    guestShell.click(); await flush();
+    assert.equal(harness.element('project-settings-dialog').open, false);
+    assert.deepEqual(harness.calls.filter(call => call.command === 'start_agent_session').map(call => call.args.action), [action, 'shell']);
+  });
+}
+
 test('matching local and guest actions restore their own terminal only', async () => {
   for (const [button, purpose] of [['start-terminal', 'local'], ['guest-shell', 'shell']]) {
     const harness = await interfaceHarness();
