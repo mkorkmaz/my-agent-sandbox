@@ -252,6 +252,60 @@ mod subagents;
 mod costs;
 
 #[test]
+fn claude_titles_skip_command_records_and_follow_native_titles() {
+    let fixture = Fixture::new("claude-titles");
+    let watch = fixture.watch(AgentKind::ClaudeCode);
+    let path = claude_file(&watch, CHAT);
+    let mut file = fs::File::create(&path).unwrap();
+    let user = |content| claude_message(CHAT, "/work/p", false, content, "2026-11-12T00:00:00Z");
+    let title = || {
+        synchronize(&watch).unwrap().0.conversations[0]
+            .title
+            .clone()
+    };
+    let mut caveat = user("<local-command-caveat>The command below was run directly in Claude Code</local-command-caveat>");
+    caveat["isMeta"] = true.into();
+    writeln!(file, "{caveat}").unwrap();
+    for flag in ["isMeta", "isCompactSummary"] {
+        let mut context = user("Internal context");
+        context[flag] = true.into();
+        writeln!(file, "{context}").unwrap();
+    }
+    for text in [
+        "<command-name>/status</command-name><command-args></command-args>",
+        "<local-command-stdout>Ready</local-command-stdout>",
+        "<local-command-stderr>Unavailable</local-command-stderr>",
+    ] {
+        writeln!(file, "{}", user(text)).unwrap();
+    }
+    assert_eq!(title(), "Untitled Claude chat");
+
+    let mut prompt = user("");
+    prompt["message"]["content"] = json!([
+        {"type":"text","text":"<local-command-caveat>Local command notice</local-command-caveat>"},
+        {"type":"text","text":"  Explain the <section> element  "}
+    ]);
+    writeln!(file, "{prompt}").unwrap();
+    assert_eq!(title(), "Explain the <section> element");
+
+    for (kind, field, text, expected) in [
+        ("ai-title", "aiTitle", "HTML elements", "HTML elements"),
+        ("ai-title", "aiTitle", "HTML sections", "HTML sections"),
+        ("ai-title", "aiTitle", "", "HTML sections"),
+        ("custom-title", "customTitle", "My notes", "My notes"),
+        ("ai-title", "aiTitle", "Generated later", "My notes"),
+    ] {
+        writeln!(
+            file,
+            "{}",
+            json!({"type":kind, "sessionId":CHAT, (field):text})
+        )
+        .unwrap();
+        assert_eq!(title(), expected);
+    }
+}
+
+#[test]
 fn claude_waits_for_newline_and_accepts_project_subdirectories() {
     let fixture = Fixture::new("partial");
     let watch = fixture.watch(AgentKind::ClaudeCode);

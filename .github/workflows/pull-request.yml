@@ -121,4 +121,4 @@ jobs:
           npm run test:terminal
           npm run test:hull -- --no-sign
           npm run test:brig -- --no-sign
-          node --test tests/native/disk-tools.test.mjs
+          node --test tests/native/disk-tools.test.mjs tests/native/application-quit.test.mjs

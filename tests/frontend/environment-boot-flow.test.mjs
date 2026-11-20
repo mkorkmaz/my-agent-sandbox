@@ -15,13 +15,15 @@ function bootGeometry(dom) {
 
 async function stoppedEnvironment() {
   let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
+  let nextTerminal = 70;
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
     prepare_environment: () => {
       current = { ...current, stage: 'environment-starting' };
-      harness.setTerminal({ identifier: 70, projectId: project.id, environmentId: project.environmentId, agentKind: 'codex', purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
-      return 70;
+      const identifier = nextTerminal++;
+      harness.setTerminal({ identifier, projectId: project.id, environmentId: project.environmentId, agentKind: 'codex', purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      return identifier;
     },
   }, bootGeometry);
   await harness.ready;
@@ -60,7 +62,7 @@ test('environment startup shows setup logs and the matching agent boot overlay',
     harness.element('choose-folder').click(); await flush();
     assert.equal(harness.element('terminal-panel').hidden, false);
     assert.equal(overlay.hidden, false);
-    assert.equal(harness.element('environment-boot-message').textContent, 'Brig environment booting');
+    assert.equal(harness.element('environment-boot-message').textContent, 'Brig started the guest setup process');
     assert.equal(harness.element('environment-boot-canvas').tagName, 'CANVAS');
     const request = harness.calls.find(call => call.command === 'prepare_environment');
     assert.equal(request.args.environmentId, current.environmentId);
@@ -85,7 +87,7 @@ test('environment startup shows setup logs and the matching agent boot overlay',
   });
 });
 
-test('environment verification and completion errors close setup and retain retry feedback', async t => {
+test('environment verification and completion errors close setup and retain retry feedback and output', async t => {
   for (const event of ['environment-preparation-finished', 'environment-preparation-error']) await t.test(event, async t => {
     const fixture = await stoppedEnvironment(), { harness } = fixture;
     t.after(() => harness.dom.window.close());
@@ -101,12 +103,18 @@ test('environment verification and completion errors close setup and retain retr
     }
     assert.equal(harness.element('environment-boot-overlay').hidden, true);
     assert.equal(harness.element('terminal-panel').hidden, true);
-    assert.equal(harness.terminals.has(70), false);
-    assert.equal(harness.element('sidebar-terminal-list').querySelector('[data-terminal-id="70"]'), null);
-    assert.equal(harness.element('start-codex').disabled, true);
+    assert.equal(harness.terminals.has(70), true);
+    assert.ok(harness.element('sidebar-terminal-list').querySelector('[data-terminal-id="70"]'));
+    assert.equal(harness.element('project-preparation-output').hidden, false);
+    assert.match(harness.element('project-preparation-last-stage').textContent, /Last confirmed stage.*Brig started/);
+    assert.equal(harness.element('start-codex').disabled, event === 'environment-preparation-error');
+    assert.equal(harness.calls.some(call => call.command === 'start_agent_session'), false);
     assert.equal(harness.element('retry-project-plan').hidden, false);
     assert.match(harness.element('project-plan-status').textContent, /failed|Could not verify/);
-    assert.equal(harness.calls.filter(call => call.command === 'terminal_close' && call.args.identifier === 70).length, 1);
+    assert.equal(harness.calls.filter(call => call.command === 'terminal_close' && call.args.identifier === 70).length, 0);
+    harness.element('project-preparation-output').click(); await flush();
+    assert.equal(harness.element('terminal-panel').hidden, false);
+    assert.equal(harness.element('environment-boot-overlay').hidden, true);
   });
 });
 
@@ -181,7 +189,7 @@ test('foreign and superseded environment events cannot stop the active boot over
   await harness.listeners.get('environment-preparation-finished')({ payload: { project: { ...fixture.prepared().project, stage: 'environment-ready' }, terminalIdentifier: 69, message: null } });
   await harness.listeners.get('environment-preparation-error')({ payload: { projectId: project.id, environmentId: project.environmentId, terminalIdentifier: 69, message: 'Old attempt failed.' } }); await flush();
   assert.equal(harness.element('environment-boot-overlay').hidden, false);
-  assert.equal(harness.element('environment-boot-message').textContent, 'Brig environment booting');
+  assert.equal(harness.element('environment-boot-message').textContent, 'Brig started the guest setup process');
   assert.equal(harness.element('folder-error').hidden, true);
   await fixture.finish();
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
@@ -239,7 +247,7 @@ test('boot completion preserves an open project settings dialog and its field fo
   assert.equal(harness.calls.filter(call => call.command === 'terminal_layout').at(-1).args.layout.visible, false);
   await fixture.finish();
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
-  assert.equal(harness.element('project-settings-dialog').open, true);
+  assert.equal(harness.element('project-settings-dialog').hidden, false);
   assert.equal(harness.dom.window.document.activeElement, focused);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, 0);
   harness.element('close-project-settings').click(); await flush();
@@ -289,7 +297,7 @@ test('choosing the next chat agent preserves the shared boot overlay', async t =
   assert.equal(harness.element('agent-choice').value, 'claude-code');
   await choose('codex');
   assert.equal(harness.element('environment-boot-overlay').hidden, false);
-  assert.equal(harness.element('environment-boot-message').textContent, 'Brig environment booting');
+  assert.equal(harness.element('environment-boot-message').textContent, 'Brig started the guest setup process');
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
 });
 
@@ -322,7 +330,7 @@ test('setup completed while another agent is selected closes only its own termin
   assert.equal(harness.calls.find(call => call.command === 'terminal_close').args.identifier, 70);
 });
 
-test('a failed setup disappears and keeps retry feedback after Help navigation', async t => {
+test('a failed setup keeps its output and retry feedback after Help navigation', async t => {
   const fixture = await stoppedEnvironment(), { harness } = fixture;
   t.after(() => harness.dom.window.close());
   await fixture.start();
@@ -334,17 +342,17 @@ test('a failed setup disappears and keeps retry feedback after Help navigation',
   assert.equal(harness.calls.filter(call => call.command === 'terminal_close').length, 0);
   harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 1 });
   await harness.listeners.get('terminal-exit')({ payload: { identifier: 70, projectId: project.id, environmentId: project.environmentId, agentKind: 'codex', purpose: 'environment', code: 1 } }); await flush();
-  assert.equal(harness.terminals.has(70), false);
+  assert.equal(harness.terminals.has(70), true);
   harness.element('help-navigation').click(); await flush();
   harness.element('sidebar-current-project').click(); await flush();
   assert.equal(harness.element('help-view').hidden, true);
   assert.equal(harness.element('terminal-panel').hidden, true);
-  assert.equal(harness.element('sidebar-terminal-list').querySelector('[data-terminal-id="70"]'), null);
+  assert.ok(harness.element('sidebar-terminal-list').querySelector('[data-terminal-id="70"]'));
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
   assert.equal(harness.element('retry-project-plan').hidden, false);
   assert.match(harness.element('project-plan-status').textContent, /Could not verify the environment/);
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
-  assert.equal(harness.calls.filter(call => call.command === 'terminal_close' && call.args.identifier === 70).length, 1);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_close' && call.args.identifier === 70).length, 0);
 });
 
 test('a previous project cannot replace the new workspace when environment startup finishes', async t => {
@@ -449,17 +457,54 @@ test('terminal checking releases completed setup cleanup when it reuses a shell 
   });
 });
 
-test('closing setup output hides the boot overlay and late failure cannot reopen it', async t => {
+test('preparation reports native phases and elapsed time and can reveal its output', async t => {
   const fixture = await stoppedEnvironment(), { harness } = fixture;
   t.after(() => harness.dom.window.close());
+  let now = 2000;
+  Object.defineProperty(harness.dom.window.performance, 'now', { value: () => now });
   await fixture.start();
-  harness.element('close-terminal').click(); await flush();
+  const stage = harness.element('environment-boot-message');
+  assert.equal(stage.textContent, 'Brig started the guest setup process');
+  assert.equal(stage.getAttribute('role'), 'status');
+  assert.equal(harness.element('environment-boot-elapsed').textContent, 'Elapsed 0:00');
+  assert.equal(harness.element('cancel-preparation').disabled, false);
+  const output = harness.element('show-preparation-output');
+  output.click(); await flush();
+  assert.equal(harness.element('environment-boot-overlay').hidden, true);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_layout').at(-1).args.layout.overlay, undefined);
+  assert.equal(output.textContent, 'Show preparation progress');
+  now += 67000;
+  output.click(); await flush();
+  assert.equal(harness.element('environment-boot-elapsed').textContent, 'Elapsed 1:07');
+  await harness.listeners.get('environment-preparation-verifying')({ payload: { projectId: project.id, environmentId: project.environmentId, terminalIdentifier: 70 } }); await flush();
+  assert.equal(stage.textContent, 'Verifying the running guest and agent versions');
+  assert.equal(harness.element('cancel-preparation').disabled, true);
+});
+
+test('cancellation targets the active native attempt and late results cannot replace the retry', async t => {
+  const fixture = await stoppedEnvironment(), { harness } = fixture;
+  t.after(() => harness.dom.window.close());
+  harness.handlers.cancel_environment_preparation = () => true;
+  await fixture.start();
+  assert.equal(harness.element('close-terminal').hidden, true);
+  harness.element('cancel-preparation').click(); harness.element('cancel-preparation').click(); await flush();
+  const cancels = harness.calls.filter(call => call.command === 'cancel_environment_preparation');
+  assert.equal(cancels.length, 1);
+  assert.deepEqual({ ...cancels[0].args }, { projectId: project.id, environmentId: project.environmentId, identifier: 70 });
+  assert.match(harness.element('environment-boot-message').textContent, /Stopping environment preparation/);
+  await fixture.finish('Environment preparation cancelled.');
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
   assert.equal(harness.element('terminal-panel').hidden, true);
-  assert.equal(harness.terminals.has(70), false);
-  await harness.listeners.get('environment-preparation-error')({ payload: { projectId: project.id, environmentId: project.environmentId, terminalIdentifier: 70, message: 'Environment setup was cancelled.' } }); await flush();
-  assert.equal(harness.element('environment-boot-overlay').hidden, true);
-  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.match(harness.element('project-plan-status').textContent, /cancelled/);
+  assert.equal(harness.element('retry-project-plan').hidden, false);
+  assert.equal(harness.element('project-preparation-output').hidden, false);
+  harness.element('retry-project-plan').click(); await flush();
+  assert.equal(harness.terminals.get(71).running, true);
+  await harness.listeners.get('environment-preparation-error')({ payload: { projectId: project.id, environmentId: project.environmentId, terminalIdentifier: 70, message: 'Old attempt failed.' } });
+  await harness.listeners.get('environment-preparation-verifying')({ payload: { projectId: project.id, environmentId: project.environmentId, terminalIdentifier: 70 } }); await flush();
+  assert.equal(harness.element('environment-boot-overlay').hidden, false);
+  assert.equal(harness.element('environment-boot-message').textContent, 'Brig started the guest setup process');
+  assert.equal(harness.element('retry-project-plan').hidden, true);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, 0);
-  assert.equal(harness.calls.filter(call => call.command === 'terminal_close' && call.args.identifier === 70).length, 1);
+  assert.equal(harness.calls.filter(call => call.command === 'terminal_close' && call.args.identifier === 70).length, 0);
 });

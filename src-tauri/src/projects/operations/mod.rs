@@ -13,8 +13,10 @@ use std::process::Command;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 pub(crate) mod gateway_logs;
+pub(super) mod inventory;
 mod removal_target;
 pub(crate) mod retired_history;
+pub(crate) mod shutdown;
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(rename_all = "kebab-case")]

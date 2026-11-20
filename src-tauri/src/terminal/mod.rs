@@ -629,7 +629,7 @@ pub async fn start(
     .await
 }
 
-pub(crate) type ExitHandler = Box<dyn FnOnce(Option<i32>) + Send>;
+pub(crate) type ExitHandler = Box<dyn FnOnce(Option<i32>, bool) + Send>;
 pub(crate) struct Reservation {
     pub identifier: u64,
     pub on_exit: Option<ExitHandler>,
@@ -829,12 +829,12 @@ pub(crate) async fn start_reserved(
     std::thread::spawn(move || {
         let status = child.wait();
         let code = status.ok().and_then(|status| status.code());
-        state.process.child_exited();
+        let cancelled = state.process.child_exited();
         if let Ok(mut stored) = state.exit_code.lock() {
             *stored = code;
         }
         if let Some(on_exit) = on_exit {
-            on_exit(code);
+            on_exit(code, cancelled);
         }
         state.process.exited();
         trim_finished(&app);
@@ -902,6 +902,36 @@ pub async fn terminal_focus(window: WebviewWindow, identifier: u64) -> Result<()
         Ok(())
     })
     .await
+}
+
+#[tauri::command]
+pub async fn cancel_environment_preparation(
+    project_id: String,
+    environment_id: projects::EnvironmentId,
+    identifier: u64,
+) -> Result<bool, String> {
+    let Some(state) = session(identifier) else {
+        return Ok(false);
+    };
+    if state.purpose != "environment"
+        || !state
+            .status(identifier)
+            .belongs_to_environment(&project_id, &environment_id)
+    {
+        return Err("This terminal belongs to a different project operation.".into());
+    }
+    if !state.process.cancel_startup() {
+        return Ok(false);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        pty::terminate(
+            std::slice::from_ref(&state.process),
+            std::time::Duration::from_millis(500),
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    Ok(true)
 }
 
 #[tauri::command]

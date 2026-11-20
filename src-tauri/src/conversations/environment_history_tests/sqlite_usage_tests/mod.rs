@@ -70,6 +70,33 @@ fn value(value: &impl Serialize) -> Value {
 }
 
 #[test]
+fn claude_history_refresh_corrects_a_saved_command_title() {
+    let fixture = Fixture::new("sqlite-claude-command-title");
+    let watch = fixture.watch(AgentKind::ClaudeCode);
+    let path = write_claude(&watch);
+    let mut file = OpenOptions::new().append(true).open(path).unwrap();
+    writeln!(
+        file,
+        "{}",
+        json!({"type":"ai-title","sessionId":CHAT,"aiTitle":"Test the chat history"})
+    )
+    .unwrap();
+    let usage = synchronize(&watch).unwrap().0.usage;
+    let mut ledger = watch.selected_ledger().unwrap();
+    let record = ledger.sessions.get_mut(CHAT).unwrap();
+    record.title = "<local-command-caveat>The command below was run directly in Claude Code".into();
+    record.state = SessionState::Archived;
+    let (sql, _) = seeded(&fixture, &watch, &ledger);
+
+    synchronize(&sql).unwrap();
+    let saved = sql.saved_dashboard().unwrap();
+    assert_eq!(saved.conversations.len(), 1);
+    assert_eq!(saved.conversations[0].title, "Test the chat history");
+    assert_eq!(saved.conversations[0].state, SessionState::Archived);
+    assert_eq!(saved.usage, usage);
+}
+
+#[test]
 fn saved_project_snapshot_uses_only_recorded_usage_and_keeps_sessions_unavailable() {
     for kind in [AgentKind::Codex, AgentKind::ClaudeCode] {
         let fixture = Fixture::new(&format!("sqlite-opening-snapshot-{kind:?}"));

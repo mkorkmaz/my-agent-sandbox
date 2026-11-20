@@ -55,11 +55,7 @@ pub fn brig_for_project(
     let mut checked = settings.clone();
     checked.cli_path = None;
     let directory = crate::storage::data_location::directory(app)?;
-    let mut brig = Brig::new(&checked)?.for_project(project, &directory.join("profiles"))?;
-    if project.github_access.is_some() {
-        brig.enable_host_keychain(&directory)?;
-    }
-    Ok(brig)
+    Brig::new(&checked)?.for_registered_project(project, &directory)
 }
 
 pub fn checked_project(
@@ -239,7 +235,7 @@ pub async fn preview_project(
     app: AppHandle,
     identifier: String,
     environment_id: Option<EnvironmentId>,
-) -> Result<Preview, String> {
+) -> Result<Preview, Value> {
     tauri::async_runtime::spawn_blocking(move || {
         let checked = checked_environment(&app, &identifier, environment_id.as_ref(), None)?;
         Ok(Preview {
@@ -249,7 +245,13 @@ pub async fn preview_project(
         })
     })
     .await
-    .map_err(|error| error.to_string())?
+    .map_err(|error| Value::String(error.to_string()))?
+    .map_err(|message: String| {
+        if message == brig::MISSING_PROJECT_POLICY {
+            return serde_json::json!({ "code": "missing-project-policy", "message": message });
+        }
+        Value::String(message)
+    })
 }
 
 pub fn command(checked: &CheckedProject, arguments: Vec<String>) -> Command {
@@ -398,9 +400,15 @@ async fn launch_preparation_terminal(
     let completed_project = project_id.clone();
     let completed_token = token.clone();
     let completed_environment = environment_id.clone();
-    let on_exit = Box::new(move |code| {
+    let on_exit = Box::new(move |code, cancelled| {
         let result = if code == Some(0) {
+            let _ = completed_app.emit(
+                "environment-preparation-verifying",
+                serde_json::json!({"projectId":completed_project,"environmentId":completed_environment,"terminalIdentifier":terminal_identifier}),
+            );
             Ok(())
+        } else if cancelled {
+            Err("Environment preparation cancelled.".into())
         } else {
             Err("Could not verify the guest agent version. Check the terminal output and prepare the environment again.".into())
         };

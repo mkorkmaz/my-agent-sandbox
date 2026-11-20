@@ -27,6 +27,7 @@ fn main() {
         .file("native/TerminalDrawing.m")
         .file("native/TerminalInput.m")
         .file("native/WindowAppearance.m")
+        .file("native/ApplicationQuit.m")
         .include(install.join("include"))
         .flag("-fobjc-arc")
         .flag("-mmacosx-version-min=15.0")
@@ -55,6 +56,7 @@ fn main() {
     println!("cargo:rerun-if-changed=native/TerminalTheme.h");
     println!("cargo:rerun-if-changed=native/WindowAppearance.m");
     println!("cargo:rerun-if-changed=native/WindowAppearance.h");
+    println!("cargo:rerun-if-changed=native/ApplicationQuit.m");
     configure_development_identity();
     tauri_build::build();
 }

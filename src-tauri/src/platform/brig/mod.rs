@@ -34,16 +34,33 @@ impl Brig {
         if !crate::environment::managed_profile::shared(project) {
             return Err("The project does not use the managed shared Tugboat profile.".into());
         }
-        crate::environment::managed_profile::install(profiles)?;
-        let mut brig = self.clone();
+        let mut brig = self.with_shared_profile(profiles)?;
         brig.environment.extend([
-            (
-                "BRIG_PROFILE_DIR".into(),
-                profiles.to_string_lossy().into_owned(),
-            ),
             ("BRIG_VERIFY".into(), "require".into()),
             ("BRIG_IMAGE".into(), project.image_ref.clone()),
         ]);
+        Ok(brig)
+    }
+
+    pub(crate) fn with_shared_profile(&self, profiles: &std::path::Path) -> Result<Self, String> {
+        crate::environment::managed_profile::install(profiles)?;
+        let mut brig = self.clone();
+        brig.environment.insert(
+            "BRIG_PROFILE_DIR".into(),
+            profiles.to_string_lossy().into_owned(),
+        );
+        Ok(brig)
+    }
+
+    pub(crate) fn for_registered_project(
+        &self,
+        project: &Project,
+        records: &std::path::Path,
+    ) -> Result<Self, String> {
+        let mut brig = self.for_project(project, &records.join("profiles"))?;
+        if project.github_access.is_some() {
+            brig.enable_host_keychain(records)?;
+        }
         Ok(brig)
     }
 
@@ -158,6 +175,9 @@ pub fn fingerprint(value: &Value) -> Result<String, String> {
     )))
 }
 
+pub(crate) const MISSING_PROJECT_POLICY: &str =
+    "The selected policy is missing from the Brig plan.";
+
 pub fn validate_plan(
     plan: &Value,
     project: &Project,
@@ -165,24 +185,47 @@ pub fn validate_plan(
 ) -> Result<PlanPaths, String> {
     validate_plan_context(plan, project, settings)?;
     let data = &plan["data"];
-    if data["noPolicy"] != false || data["egress"]["default"] != "deny" {
-        return Err("Attach a network policy that denies access by default.".into());
-    }
     let policy = project
         .policy
         .as_ref()
         .ok_or("The project policy binding is missing.")?;
-    let policies = data["policies"]
-        .as_array()
-        .ok_or("The plan policy list is missing.")?;
+    let policies = checked_policy_bindings(plan, project)?;
     let grant = crate::projects::project_github_access::approved_policy(project);
-    if !policies.iter().any(|name| name == &policy.name)
-        || policies.len() != 1 + usize::from(grant.is_some())
-        || grant.is_some_and(|grant| !policies.iter().any(|name| name == grant))
+    if !policies.iter().any(|name| name == &policy.name) {
+        return Err(MISSING_PROJECT_POLICY.into());
+    }
+    if data["noPolicy"] != false || data["egress"]["default"] != "deny" {
+        return Err("Attach a network policy that denies access by default.".into());
+    }
+    if grant.is_some_and(|grant| policies.len() != 2 || !policies.iter().any(|name| name == grant))
     {
-        return Err("The selected policy is missing from the Brig plan.".into());
+        return Err("The GitHub access policy is missing from the Brig plan.".into());
     }
     PlanPaths::from_plan(plan)
+}
+
+pub(crate) fn checked_policy_bindings<'a>(
+    plan: &'a Value,
+    project: &Project,
+) -> Result<&'a [Value], String> {
+    let policies = plan["data"]["policies"]
+        .as_array()
+        .ok_or("The plan policy list is missing.")?;
+    let expected = [
+        project.policy.as_ref().map(|policy| policy.name.as_str()),
+        crate::projects::project_github_access::approved_policy(project),
+    ];
+    if policies.len() > expected.iter().flatten().count()
+        || policies.iter().enumerate().any(|(index, name)| {
+            policies[..index].contains(name)
+                || name
+                    .as_str()
+                    .is_none_or(|name| !expected.contains(&Some(name)))
+        })
+    {
+        return Err("Brig reports unexpected policies for this session. Review the policy bindings before retrying setup.".into());
+    }
+    Ok(policies)
 }
 
 pub fn validate_plan_context(
@@ -291,6 +334,17 @@ mod tests {
         plan["data"]["credentials"] = serde_json::json!([]);
         let settings = Settings::default();
         assert!(validate_plan(&plan, &project, &settings).is_ok());
+        let mut unexpected = plan.clone();
+        unexpected["data"]["policies"] = serde_json::json!(["bd01-fixture", "old-policy"]);
+        assert!(validate_plan(&unexpected, &project, &settings)
+            .unwrap_err()
+            .contains("unexpected policies"));
+        let mut missing = plan.clone();
+        missing["data"]["policies"] = serde_json::json!([]);
+        assert_eq!(
+            validate_plan(&missing, &project, &settings).unwrap_err(),
+            "The selected policy is missing from the Brig plan."
+        );
         plan["data"]["project"]["guest"] = "/work/sample project".into();
         assert!(validate_plan(&plan, &project, &settings).is_ok());
         let mut unsupported = plan.clone();

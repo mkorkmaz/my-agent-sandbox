@@ -81,7 +81,9 @@ export async function initializeClaudeAccount(changed: () => void): Promise<Clau
   await listen<string>('shared-claude-error', event => { error = event.payload; render(); });
   providerLogin = await initializeProviderSignIn('claude', {
     signIn: 'claude-sign-in', cancel: 'claude-cancel', status: 'claude-sign-in-status',
-  }, () => { render(); changed(); }, refresh);
+  }, () => { render(); changed(); }, refresh, {
+    signIn: 'first-chat-claude-sign-in', cancel: 'first-chat-claude-cancel', status: 'first-chat-claude-status',
+  });
   await refresh();
   return { status, select: render, refresh };
 }

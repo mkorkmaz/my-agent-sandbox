@@ -14,6 +14,7 @@ enum ProcessState {
     Reserved,
     Running(i32),
     Stopping(i32),
+    Cancelling(i32),
     Finishing,
     Exited,
 }
@@ -50,7 +51,9 @@ impl Process {
 
     fn signal(&self, signal: i32) {
         let pid = match self.state() {
-            ProcessState::Running(pid) | ProcessState::Stopping(pid) => pid,
+            ProcessState::Running(pid)
+            | ProcessState::Stopping(pid)
+            | ProcessState::Cancelling(pid) => pid,
             _ => return,
         };
         if let Ok(control) = self.control.lock() {
@@ -70,6 +73,10 @@ impl Process {
         let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
         let pid = match self.state() {
             ProcessState::Running(pid) | ProcessState::Stopping(pid) => pid,
+            ProcessState::Cancelling(_) => {
+                self.signal(signal);
+                return;
+            }
             ProcessState::Finishing => return,
             _ => {
                 self.transition(ProcessState::Exited);
@@ -87,16 +94,28 @@ impl Process {
         self.transition(ProcessState::Exited);
     }
 
-    pub fn child_exited(&self) {
+    pub fn cancel_startup(&self) -> bool {
         let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
+        let ProcessState::Running(pid) = self.state() else {
+            return false;
+        };
+        self.transition(ProcessState::Cancelling(pid));
+        self.signal(libc::SIGHUP);
+        true
+    }
+
+    pub fn child_exited(&self) -> bool {
+        let _guard = START_STOP.lock().unwrap_or_else(|error| error.into_inner());
+        let state = self.state();
         if !matches!(
-            self.state(),
-            ProcessState::Running(_) | ProcessState::Stopping(_)
+            state,
+            ProcessState::Running(_) | ProcessState::Stopping(_) | ProcessState::Cancelling(_)
         ) {
-            return;
+            return false;
         }
         self.signal(libc::SIGKILL);
         self.transition(ProcessState::Finishing);
+        matches!(state, ProcessState::Cancelling(_))
     }
 
     fn state(&self) -> ProcessState {
@@ -245,11 +264,29 @@ mod tests {
             .unwrap();
         process.child_exited();
         assert_eq!(process.state(), ProcessState::Finishing);
+        assert!(!process.cancel_startup());
         process.stop(libc::SIGKILL);
         assert!(process.running());
         assert!(process
             .spawn(&pty, &mut Command::new("/usr/bin/true"))
             .is_err());
+        process.exited();
+        assert!(!process.running());
+    }
+
+    #[test]
+    fn preparation_cancellation_only_interrupts_a_running_process_once() {
+        let pty = Pty::open().unwrap();
+        let process = Process::new(&pty).unwrap();
+        assert!(!process.cancel_startup());
+        let mut child = process
+            .spawn(&pty, &mut Command::new("/bin/sleep").arg("60"))
+            .unwrap();
+        assert!(process.cancel_startup());
+        assert!(!process.cancel_startup());
+        assert_eq!(child.wait().unwrap().signal(), Some(libc::SIGHUP));
+        assert!(process.child_exited());
+        assert!(!process.cancel_startup());
         process.exited();
         assert!(!process.running());
     }

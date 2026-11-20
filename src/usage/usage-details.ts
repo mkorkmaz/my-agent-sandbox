@@ -101,7 +101,7 @@ function turnSection(turn: TurnUsage, index: number, agent: AgentUsageDetails, p
   heading.textContent = (promptLabel ? 'Prompt ' : 'Agent turn ') + (index + 1) + ' · ' + turn.status; oldHeading.replaceWith(heading);
   if (!turn.requests.length) {
     section.querySelector('.table-scroll')!.remove();
-    section.append(note('No request usage was recorded for this ' + (promptLabel ? 'prompt' : 'agent turn') + '. Token counts and API cost are unknown.'));
+    section.append(note('No request usage was recorded for this ' + (promptLabel ? 'prompt' : 'agent turn') + '. Token counts and the estimated API equivalent are unknown.'));
     return section;
   }
   const table = section.querySelector('table')!; table.setAttribute('aria-labelledby', heading.id);
@@ -121,7 +121,7 @@ function scopeTable(details: ConversationUsageDetails, selected: AgentUsageDetai
   const table = document.createElement('table'); table.className = 'data-table usage-scope-table';
   const caption = table.createCaption(); caption.className = 'visually-hidden'; caption.textContent = 'Recorded usage by agent scope';
   const head = table.createTHead().insertRow();
-  for (const label of ['Scope', 'Input', 'Cached input', 'Cache writes', 'Output', 'Total tokens', 'API cost']) { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; head.append(cell); }
+  for (const label of ['Scope', 'Input', 'Cached input', 'Cache writes', 'Output', 'Total tokens', 'Estimated API equivalent']) { const cell = document.createElement('th'); cell.scope = 'col'; cell.textContent = label; head.append(cell); }
   const body = table.createTBody();
   const scopes: [string, UsageSummary][] = [[selected.lineage.kind === 'subagent' ? 'Selected agent' : 'Main agent', details.ownUsage], ['Subagents', details.descendantsUsage], ['Combined', details.combinedUsage]];
   for (const [label, usage] of scopes) {
@@ -134,7 +134,7 @@ function scopeTable(details: ConversationUsageDetails, selected: AgentUsageDetai
 export function usageDetailsStatus(details: ConversationUsageDetails): string {
   const selected = details.agents.find(agent => agent.sessionId === details.sessionId)!;
   const agentTurns = selected.lineage.kind === 'subagent' || selected.agentKind === 'claude-code';
-  const base = !details.agentTurnCount ? (agentTurns ? 'No agent turns have been recorded for this session yet.' : 'No prompts have been recorded for this session yet.') : details.combinedUsage.requests ? 'Recorded after each response. Available prices are retained with each request.' : (agentTurns ? 'Agent turns are recorded, but no request usage is available. Token counts and API cost are unknown.' : 'Prompts are recorded, but no request usage is available. Token counts and API cost are unknown.');
+  const base = !details.agentTurnCount ? (agentTurns ? 'No agent turns have been recorded for this session yet.' : 'No prompts have been recorded for this session yet.') : details.combinedUsage.requests ? 'Recorded after each response. Available prices are retained with each request.' : (agentTurns ? 'Agent turns are recorded, but no request usage is available. Token counts and the estimated API equivalent are unknown.' : 'Prompts are recorded, but no request usage is available. Token counts and the estimated API equivalent are unknown.');
   const messages = [base];
   if (agentTurns || details.agents.length > 1 || details.userPromptCount !== null) {
     messages.push(details.userPromptCount === null ? 'User prompt count unknown.' : count(details.userPromptCount) + ' user prompt(s).');
@@ -142,9 +142,9 @@ export function usageDetailsStatus(details: ConversationUsageDetails): string {
     messages.push('Recorded source coverage: ' + details.coverage + '.');
   }
   if (selected.lineage.kind === 'subagent') messages.push('Selected agent subtree only' + (details.rootSessionId ? '; ancestor main session is excluded.' : '; main session could not be established.'));
-  if (details.combinedUsage.unmeasuredTurns) messages.push(count(details.combinedUsage.unmeasuredTurns) + ' agent turn(s) have unknown token counts and API cost.');
+  if (details.combinedUsage.unmeasuredTurns) messages.push(count(details.combinedUsage.unmeasuredTurns) + ' agent turn(s) have unknown token counts and an unknown API equivalent.');
   const claude = details.agents.some(agent => agent.agentKind === 'claude-code');
-  messages.push(claude ? 'Token API equivalent in USD. Estimates use saved rates and labelled assumptions. Subscription charges, account discounts, and server-tool charges are separate.' : 'API equivalent in USD. ChatGPT subscription billing is separate.');
+  messages.push(claude ? 'Estimated API equivalent in USD. Estimates use saved rates and labelled assumptions. Subscription charges, account discounts, and server-tool charges are separate.' : 'Estimated API equivalent in USD. ChatGPT subscription billing is separate.');
   messages.push(...details.warnings);
   return messages.join(' ');
 }

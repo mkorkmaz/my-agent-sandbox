@@ -186,10 +186,12 @@ fn production_shared_guest_boot_and_reopen() {
         .json(&["--json".into(), "ls".into()], "SandboxList", None)
         .unwrap();
     assert_eq!(list["data"]["sandboxes"].as_array().unwrap().len(), 1);
-    guest
-        .brig
-        .checked(&["stop".into(), guest.reference.clone()], None)
-        .unwrap();
+    crate::projects::operations::shutdown::stop_registered(
+        &brig,
+        &file,
+        &mut Registry::load(&file).unwrap(),
+    )
+    .unwrap();
     assert!(!environment::listed_as_running(&guest.brig, &checked.project).unwrap());
 
     let bwrap = checked

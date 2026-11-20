@@ -29,5 +29,5 @@ export function money(usage: UsageSummary): string {
   return amount + (usage.unpricedRequests ? ' + unpriced' : '') + (usage.unmeasuredTurns ? ' + unknown' : '');
 }
 export function summaryText(usage: UsageSummary): string {
-  return usageCount(usage, 'total') + ' tokens · ' + usageCount(usage, 'input') + ' input · ' + cachedCount(usage) + ' cached input · ' + cacheWrites(usage) + ' cache writes · ' + usageCount(usage, 'output') + ' output · ' + money(usage) + ' API equivalent';
+  return usageCount(usage, 'total') + ' tokens · ' + usageCount(usage, 'input') + ' input · ' + cachedCount(usage) + ' cached input · ' + cacheWrites(usage) + ' cache writes · ' + usageCount(usage, 'output') + ' output · ' + money(usage) + ' estimated API equivalent';
 }

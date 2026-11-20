@@ -45,7 +45,7 @@ function renderSessionRows(body: HTMLElement, sessions: Conversation[], state: S
     titleCell.append(title, date); row.append(titleCell);
     const totals = readOnly ? conversation.usage : conversation.familyUsage;
     for (const value of conversation.usageAvailable === false ? ['—', '—', '—', '—', 'Usage unavailable'] : [usageCount(totals, 'input', true), cachedCount(totals, true), usageCount(totals, 'output', true), usageCount(totals, 'total', true), money(totals)]) {
-      const cell = document.createElement('td'); cell.className = 'number-column'; cell.textContent = value; cell.title = conversation.usageAvailable === false ? 'No token measurements are available for this chat.' : [usageCount(totals, 'input') + ' input', cachedCount(totals) + ' cached input', cacheWrites(totals) + ' cache writes', usageCount(totals, 'output') + ' output', usageCount(totals, 'total') + ' total tokens', money(totals) + ' API equivalent', 'Recorded source coverage: ' + conversation.coverage].join(' · '); row.append(cell);
+      const cell = document.createElement('td'); cell.className = 'number-column'; cell.textContent = value; cell.title = conversation.usageAvailable === false ? 'No token measurements are available for this chat.' : [usageCount(totals, 'input') + ' input', cachedCount(totals) + ' cached input', cacheWrites(totals) + ' cache writes', usageCount(totals, 'output') + ' output', usageCount(totals, 'total') + ' total tokens', money(totals) + ' estimated API equivalent', 'Recorded source coverage: ' + conversation.coverage].join(' · '); row.append(cell);
     }
     const actions = document.createElement('td'); actions.className = 'session-row-actions';
     const usage = actionButton('usage', 'Usage for ' + actionTarget, () => { void details(conversation); });
@@ -76,7 +76,7 @@ export function renderDashboard(dashboard: Dashboard, state: SessionState, resum
   });
   const hasClaude = dashboard.conversations.some(conversation => conversation.agentKind === 'claude-code');
   const hasCodex = dashboard.conversations.some(conversation => conversation.agentKind === 'codex');
-  const notes = ['Token API equivalent in USD', 'Includes archived and deleted sessions'];
+  const notes = ['Estimated API equivalent in USD', 'Includes archived and deleted sessions'];
   if (hasCodex) notes.push('OpenAI catalogue checked ' + dashboard.pricingDate);
   if (hasClaude) notes.push(dashboard.anthropicPricingDate ? 'Anthropic catalogue checked ' + dashboard.anthropicPricingDate : 'See request details for dated Anthropic rates');
   notes.push('Each request retains its dated rates');

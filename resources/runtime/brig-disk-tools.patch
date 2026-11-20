@@ -483,3 +483,117 @@
 +type desktopRetryRuntime struct{ livenessRuntime }
 +
 +func (*desktopRetryRuntime) Exists(string) (bool, error) { return false, nil }
+--- a/internal/runtime/sandboxnet.go
++++ b/internal/runtime/sandboxnet.go
+@@ -19,0 +20,6 @@
++// Keep the first range in place so saved sandbox slots keep their addresses.
++var isolatedSpaces = [...]netip.Prefix{
++	netip.MustParsePrefix("198.18.1.0/24"),
++	netip.MustParsePrefix("198.18.2.0/24"),
++}
++
+@@ -21,24 +27,4 @@
+-	// The space the isolated networks are carved out of.
+-	//
+-	// A different /24 from the shared network's, and it has to be: the shared
+-	// gateway serves the whole of gatewaySubnet and hands out addresses across
+-	// it, so a /30 taken from there would be a network inside a network, with
+-	// two gateways claiming the same addresses.
+-	//
+-	// Adjacent to it, and inside the same 198.18.0.0/15 the shared network
+-	// already sits in, so brig's claim on the host's address space grows by
+-	// one /24 rather than moving somewhere new. Every reason gatewaySubnet
+-	// gives for that range applies here unchanged, including leaving the
+-	// sibling 198.19.0.0/16 to OrbStack.
+-	isolatedSpace = "198.18.1.0/24"
+-
+-	// One sandbox's slice of it: a network address, the gateway, the guest,
+-	// and a broadcast address. Four is every address a network with a single
+-	// member on it can use, so nothing is wasted by making them this small.
+-	sandboxNetBits   = 30
+-	sandboxBlockSize = 4
+-
+-	// How many sandboxes the space holds. Well past what a host can run one
+-	// microVM each for, and past what their gateways alone would fit in
+-	// memory: 64 of them is nearly 2 GB before a single guest boots.
+-	sandboxNets = 256 / sandboxBlockSize
++	sandboxNetBits      = 30
++	sandboxBlockSize    = 4
++	sandboxNetsPerRange = 256 / sandboxBlockSize
++	sandboxNets         = len(isolatedSpaces) * sandboxNetsPerRange
+@@ -61 +47 @@
+-		space: "the isolated address space " + isolatedSpace,
++		space: "the isolated address space " + isolatedSpaces[0].String() + " and " + isolatedSpaces[1].String(),
+@@ -79 +65 @@
+-// spend one of the 64 networks; see netAlloc.lookup.
++// spend an isolated network; see netAlloc.lookup.
+@@ -96,4 +81,0 @@
+-//
+-// The arithmetic is on the last octet alone, which holds while the space is a
+-// /24 and the blocks divide it evenly. Both are constants above, and a test
+-// checks they still agree.
+@@ -101,2 +83,2 @@
+-	octets := netip.MustParsePrefix(isolatedSpace).Addr().As4()
+-	octets[3] = byte(index * sandboxBlockSize)
++	octets := isolatedSpaces[index/sandboxNetsPerRange].Addr().As4()
++	octets[3] = byte((index % sandboxNetsPerRange) * sandboxBlockSize)
+--- a/internal/runtime/sandboxnet_test.go
++++ b/internal/runtime/sandboxnet_test.go
+@@ -97,3 +96,0 @@
+-// Every isolated network stays inside the one /24 claimed for them, so brig's
+-// claim on the host's address space is two adjacent /24s and not whatever the
+-// arithmetic happens to produce.
+@@ -101,21 +98,32 @@
+-	space, err := netip.ParsePrefix(isolatedSpace)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	for index := range sandboxNets {
+-		subnet, err := netip.ParsePrefix(sandboxSubnet(index))
+-		if err != nil {
+-			t.Fatal(err)
+-		}
+-		if !space.Contains(subnet.Addr()) {
+-			t.Fatalf("network %d (%s) is outside %s", index, subnet, space)
+-		}
+-		if subnet.Bits() != sandboxNetBits {
+-			t.Fatalf("network %d carries the wrong prefix: %s", index, subnet)
+-		}
+-	}
+-	// And the space holds exactly the number of them claimed, so the two
+-	// constants cannot drift into a sandbox addressed outside the space.
+-	if got := 1 << (32 - space.Bits()) / sandboxBlockSize; got != sandboxNets {
+-		t.Errorf("%s holds %d networks of %d addresses, but sandboxNets is %d",
+-			space, got, sandboxBlockSize, sandboxNets)
++	for index := range sandboxNets {
++		subnet := netip.MustParsePrefix(sandboxSubnet(index))
++		space := isolatedSpaces[index/sandboxNetsPerRange]
++		if !space.Contains(subnet.Addr()) || subnet.Bits() != sandboxNetBits {
++			t.Fatalf("sandbox %d got subnet %s outside %s", index, subnet, space)
++		}
++	}
++}
++
++func TestDesktopIsolatedNetworkAfter64SavedSandboxes(t *testing.T) {
++	scratchIsolatedDir(t)
++	alloc, err := isolatedNets()
++	if err != nil {
++		t.Fatal(err)
++	}
++	saved := map[string]int{}
++	for index := range 64 {
++		saved[strings.Repeat("s", index+1)] = index
++	}
++	if err := alloc.write(saved); err != nil {
++		t.Fatal(err)
++	}
++	index, err := sandboxNet("new-project")
++	if err != nil || index != 64 || sandboxSubnet(index) != "198.18.2.0/30" {
++		t.Fatalf("first additional sandbox got slot %d, error %v", index, err)
++	}
++	for name, old := range saved {
++		slot, ok := lookupSandboxNet(name)
++		base := netip.AddrFrom4([4]byte{198, 18, 1, byte(old * 4)})
++		if !ok || slot != old || sandboxBase(slot) != base {
++			t.Fatalf("saved sandbox %s lost its original address", name)
++		}

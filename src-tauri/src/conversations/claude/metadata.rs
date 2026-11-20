@@ -20,16 +20,35 @@ fn title(value: &Value) -> Option<String> {
     Some(text.chars().take(160).collect())
 }
 
-fn user_title(value: &Value) -> Option<String> {
-    let content = &value["message"]["content"];
-    if let Some(text) = title(content) {
-        return Some(text);
+fn message_title(value: &Value) -> Option<String> {
+    let text = value.as_str()?.trim_start();
+    let command_tags = [
+        "<local-command-caveat>",
+        "<command-name>",
+        "<command-message>",
+        "<command-args>",
+        "<local-command-stdout>",
+        "<local-command-stderr>",
+    ];
+    if command_tags.iter().any(|tag| text.starts_with(tag)) {
+        return None;
     }
-    content.as_array()?.iter().find_map(|block| {
-        (block["type"] == "text")
-            .then(|| title(&block["text"]))
-            .flatten()
-    })
+    title(value)
+}
+
+fn user_title(value: &Value) -> Option<String> {
+    if value["isMeta"] == true || value["isCompactSummary"] == true {
+        return None;
+    }
+    let content = &value["message"]["content"];
+    if content.is_string() {
+        return message_title(content);
+    }
+    content
+        .as_array()?
+        .iter()
+        .filter(|block| block["type"] == "text")
+        .find_map(|block| message_title(&block["text"]))
 }
 
 pub(in crate::conversations) fn read(
@@ -49,6 +68,7 @@ pub(in crate::conversations) fn read(
     let mut source = BufReader::new(file);
     let mut first = None;
     let mut custom_title = None;
+    let mut generated_title = None;
     let mut updated_at = 0;
     let mut consumed = 0;
     let mut turns = BTreeMap::new();
@@ -84,6 +104,9 @@ pub(in crate::conversations) fn read(
         }
         if value["type"] == "custom-title" && value["sessionId"] == expected {
             custom_title = title(&value["customTitle"]).or(custom_title);
+        }
+        if value["type"] == "ai-title" && value["sessionId"] == expected {
+            generated_title = message_title(&value["aiTitle"]).or(generated_title);
         }
         if !matches!(value["type"].as_str(), Some("user" | "assistant")) {
             continue;
@@ -190,6 +213,7 @@ pub(in crate::conversations) fn read(
             agent_kind: AgentKind::ClaudeCode,
             usage_available: true,
             title: custom_title
+                .or(generated_title)
                 .or(initial_title)
                 .unwrap_or_else(|| "Untitled Claude chat".into()),
             updated_at,

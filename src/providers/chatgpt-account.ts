@@ -115,7 +115,10 @@ export async function initializeChatgptAccount(
   providerLogin = await initializeProviderSignIn('chatgpt', {
     signIn: 'shared-chatgpt-sign-in', cancel: 'shared-chatgpt-cancel', status: 'shared-chatgpt-hint',
     deviceCode: { input: 'chatgpt-device-code', field: 'chatgpt-device-code-field' },
-  }, () => { render(); const account = status(); if (account) changed(account); }, refresh);
+  }, () => { render(); const account = status(); if (account) changed(account); }, refresh, {
+    signIn: 'first-chat-chatgpt-sign-in', cancel: 'first-chat-chatgpt-cancel', status: 'first-chat-chatgpt-status',
+    deviceCode: { input: 'first-chat-chatgpt-device-code', field: 'first-chat-chatgpt-device-code-field' },
+  });
   await refresh();
   return { status, refresh, updateAvailability: render, accept,
     connectionFailed: message => { error = message; render(); } };

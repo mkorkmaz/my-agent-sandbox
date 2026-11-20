@@ -152,7 +152,14 @@ fn prepare_selected(
     }
     let definition = brig.agent_profile(&project.profile)?;
     managed_profile::validate(&project, &definition)?;
-    checked_plan(brig, &project, settings, private_records)?;
+    let plan = checked_plan(brig, &project, settings, private_records)?;
+    let bindings = brig::checked_policy_bindings(&plan, &project)?;
+    if project.policy.as_ref().is_some_and(|policy| {
+        policy.fingerprint.is_some() && !bindings.iter().any(|name| name == &policy.name)
+    }) && crate::environment::listed_as_running(brig, &project)?
+    {
+        return Err("Stop the running environment before restoring its project policy.".into());
+    }
     let hosts = allowed_hosts(settings);
     if project.policy.is_none() {
         if hosts.len() > 64 {
@@ -246,9 +253,9 @@ fn prepare_selected(
     project.stage = crate::projects::ProjectStage::PolicyCreated;
     save(registry_file, &project)?;
     let before = brig.plan(&project, settings)?;
-    if !before["data"]["policies"]
-        .as_array()
-        .is_some_and(|policies| policies.iter().any(|name| name == &policy_link.name))
+    if !brig::checked_policy_bindings(&before, &project)?
+        .iter()
+        .any(|name| name == &policy_link.name)
     {
         project.stage = crate::projects::ProjectStage::AttachingPolicy;
         project.owns_binding = true;
@@ -438,8 +445,65 @@ mod tests {
             inventory.to_string_lossy().into_owned(),
         );
         let brig = brig.for_project(&project, &root.join("profiles")).unwrap();
+        let stale_policy = "previous-project-policy";
+        let stale_file = root.join("policies").join(format!("{stale_policy}.yaml"));
+        let stale_document = serde_json::json!({
+            "apiVersion": "brig.sh/v1alpha1",
+            "kind": "Policy",
+            "metadata": { "name": stale_policy },
+            "spec": { "egress": { "default": "deny" } }
+        })
+        .to_string();
+        fs::write(&stale_file, &stale_document).unwrap();
+        let bind_policy = |action: &str, name: &str| {
+            brig.checked(
+                &[
+                    "policy".into(),
+                    action.into(),
+                    name.into(),
+                    project.profile.clone(),
+                    "-n".into(),
+                    project.label.clone(),
+                ],
+                None,
+            )
+            .unwrap();
+        };
+        let conflict = "Brig reports unexpected policies for this session. Review the policy bindings before retrying setup.";
+        bind_policy("attach", stale_policy);
+        let before = fs::read(&registry_file).unwrap();
+        assert_eq!(
+            prepare(&brig, &registry_file, &settings, &project.id)
+                .err()
+                .unwrap(),
+            conflict
+        );
+        assert_eq!(fs::read(&registry_file).unwrap(), before);
+        bind_policy("detach", stale_policy);
+
         let first = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
         assert_eq!(first.project.stage, "ready");
+        bind_policy("attach", stale_policy);
+        let before = fs::read(&registry_file).unwrap();
+        for _ in 0..2 {
+            assert_eq!(
+                prepare(&brig, &registry_file, &settings, &project.id)
+                    .err()
+                    .unwrap(),
+                conflict
+            );
+        }
+        assert_eq!(fs::read(&registry_file).unwrap(), before);
+        assert_eq!(fs::read_to_string(&stale_file).unwrap(), stale_document);
+        bind_policy("detach", stale_policy);
+
+        let name = &first.project.policy.as_ref().unwrap().name;
+        bind_policy("detach", name);
+        let missing = brig.plan(&first.project, &settings).unwrap();
+        assert_eq!(
+            brig::validate_plan(&missing, &first.project, &settings).unwrap_err(),
+            brig::MISSING_PROJECT_POLICY
+        );
         let second = prepare(&brig, &registry_file, &settings, &project.id).unwrap();
         assert_eq!(first.project.reference(), second.project.reference());
         let mut stale_ready = second.project.clone();

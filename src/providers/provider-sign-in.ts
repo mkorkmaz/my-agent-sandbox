@@ -19,14 +19,30 @@ export interface ProviderSignIn {
   render(signedIn: boolean, accountBusy: boolean): void;
 }
 
+interface SignInControls {
+  signIn: string;
+  cancel: string;
+  status: string;
+  deviceCode?: { input: string; field: string };
+}
+
 export async function initializeProviderSignIn(
   provider: Provider,
-  identifiers: { signIn: string; cancel: string; status: string; deviceCode?: { input: string; field: string } },
+  settings: SignInControls,
   changed: () => void,
   completed: () => Promise<void>,
+  setup: SignInControls,
 ): Promise<ProviderSignIn> {
   const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-  const signIn = element<HTMLButtonElement>(identifiers.signIn), cancel = element<HTMLButtonElement>(identifiers.cancel);
+  const views = [settings, setup].map(identifiers => ({
+    signIn: element<HTMLButtonElement>(identifiers.signIn),
+    cancel: element<HTMLButtonElement>(identifiers.cancel),
+    message: element(identifiers.status),
+    code: identifiers.deviceCode ? {
+      field: element(identifiers.deviceCode.field),
+      input: element<HTMLInputElement>(identifiers.deviceCode.input),
+    } : null,
+  }));
   const label = provider === 'chatgpt' ? 'ChatGPT' : 'Claude';
   let operation: 'idle' | 'starting' | 'opening' | 'cancelling' = 'idle';
   let account = { signedIn: false, busy: false };
@@ -40,22 +56,24 @@ export async function initializeProviderSignIn(
     const current = appDataStore.getState().providerLogins[provider];
     const waiting = current?.phase === 'waiting';
     const busy = active() && !waiting || operation !== 'idle';
-    signIn.textContent = waiting ? 'Return to browser' : active() ? 'Connecting ' + label + '…'
+    const action = waiting ? 'Return to browser' : active() ? 'Connecting ' + label + '…'
       : account.signedIn ? 'Sign in with another account' : 'Sign in with ' + label;
-    signIn.disabled = account.busy || busy;
-    cancel.hidden = !active() || current?.phase === 'saving';
-    cancel.disabled = account.busy || operation === 'cancelling';
-    const message = element(identifiers.status);
-    message.textContent = error ?? current?.message ?? '';
-    setBusy(message, busy && operation !== 'cancelling');
-    const progress = busy && !waiting && operation !== 'cancelling' && !error ? message.textContent || 'Connecting ' + label + '…' : null;
-    message.hidden = progress !== null;
-    setWorkspaceStatus('provider-' + provider, progress, 'settings-panel-providers');
-    if (identifiers.deviceCode) {
-      const code = current?.userCode ?? '';
-      element(identifiers.deviceCode.field).hidden = !waiting || code === '';
-      element<HTMLInputElement>(identifiers.deviceCode.input).value = code;
+    const status = error ?? current?.message ?? '';
+    const progress = busy && !waiting && operation !== 'cancelling' && !error ? status || 'Connecting ' + label + '…' : null;
+    for (const { signIn, cancel, message, code } of views) {
+      const inline = signIn.id === setup.signIn;
+      signIn.textContent = action;
+      signIn.disabled = account.busy || busy;
+      cancel.hidden = !active() || current?.phase === 'saving';
+      cancel.disabled = account.busy || operation === 'cancelling';
+      message.textContent = inline ? progress ?? status : status;
+      message.hidden = !inline && progress !== null;
+      setBusy(message, busy && operation !== 'cancelling');
+      if (!code) continue;
+      code.input.value = current?.userCode ?? '';
+      code.field.hidden = !waiting || code.input.value === '';
     }
+    setWorkspaceStatus('provider-' + provider, progress, 'settings-panel-providers');
   }
 
   function accept(status: LoginStatus): void {
@@ -67,7 +85,7 @@ export async function initializeProviderSignIn(
     if (wasActive && !active()) void completed();
   }
 
-  async function run(action: 'start' | 'open' | 'cancel'): Promise<void> {
+  async function run(action: 'start' | 'open' | 'cancel', { signIn, cancel }: typeof views[number]): Promise<void> {
     if (operation !== 'idle' && action !== 'cancel') return;
     const restoreFocus = action === 'cancel' && document.activeElement === cancel;
     operation = action === 'start' ? 'starting' : action === 'open' ? 'opening' : 'cancelling';
@@ -79,13 +97,15 @@ export async function initializeProviderSignIn(
     } catch (caught) { error = String(caught); }
     finally {
       operation = 'idle'; render(); changed();
-      if (restoreFocus && !signIn.disabled && (document.activeElement === cancel || document.activeElement === document.body)) signIn.focus();
+      if (restoreFocus && !signIn.disabled && !signIn.closest('[hidden]') && (document.activeElement === cancel || document.activeElement === document.body)) signIn.focus();
     }
   }
 
-  signIn.addEventListener('click', () => { void run(appDataStore.getState().providerLogins[provider]?.phase === 'waiting' ? 'open' : 'start'); });
-  cancel.addEventListener('click', () => { void run('cancel'); });
-  if (identifiers.deviceCode) element<HTMLInputElement>(identifiers.deviceCode.input).addEventListener('focus', event => { (event.target as HTMLInputElement).select(); });
+  for (const view of views) {
+    view.signIn.addEventListener('click', () => { void run(appDataStore.getState().providerLogins[provider]?.phase === 'waiting' ? 'open' : 'start', view); });
+    view.cancel.addEventListener('click', () => { void run('cancel', view); });
+    view.code?.input.addEventListener('focus', () => { view.code?.input.select(); });
+  }
   await listen<LoginStatus>('provider-login-changed', event => { accept(event.payload); });
   try { accept(await invoke<LoginStatus>('provider_login_status', { provider })); }
   catch (caught) { error = String(caught); render(); }

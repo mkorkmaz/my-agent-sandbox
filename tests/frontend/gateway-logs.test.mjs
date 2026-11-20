@@ -11,7 +11,7 @@ async function openSettings(harness, selected) {
   await flush();
   harness.element('project-settings-button').click();
   await flush();
-  assert.equal(harness.element('project-settings-dialog').open, true);
+  assert.equal(harness.element('project-settings-dialog').hidden, false);
 }
 
 test('reads two registered gateway refs and rejects results after a project switch', async t => {

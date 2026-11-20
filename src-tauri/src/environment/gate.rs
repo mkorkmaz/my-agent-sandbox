@@ -1,9 +1,11 @@
 use crate::projects::EnvironmentId;
 use std::collections::{HashMap, HashSet};
-use std::sync::{mpsc, Mutex, OnceLock};
+use std::sync::{mpsc, Condvar, Mutex, OnceLock};
+use std::time::Duration;
 
 type EnvironmentScope = (String, EnvironmentId);
 static ACTIVE: OnceLock<Mutex<HashSet<EnvironmentScope>>> = OnceLock::new();
+static IDLE: Condvar = Condvar::new();
 
 fn active() -> &'static Mutex<HashSet<EnvironmentScope>> {
     ACTIVE.get_or_init(Default::default)
@@ -15,6 +17,9 @@ impl EnvironmentOperation {
     pub fn begin(project_id: &str, environment_id: &EnvironmentId) -> Result<Self, String> {
         let scope = (project_id.to_owned(), environment_id.clone());
         let mut operations = active().lock().map_err(|error| error.to_string())?;
+        if crate::desktop::lifecycle::is_closing() {
+            return Err("The app is closing.".into());
+        }
         if !operations.insert(scope.clone()) {
             return Err(
                 "This environment operation is already in progress. Wait and retry.".into(),
@@ -29,6 +34,20 @@ impl EnvironmentOperation {
             .unwrap_or_else(|error| error.into_inner())
             .contains(&(project_id.to_owned(), environment_id.clone()))
     }
+
+    pub(crate) fn wait_for_idle(timeout: Duration) -> Result<(), String> {
+        let operations = active().lock().map_err(|error| error.to_string())?;
+        let (operations, _) = IDLE
+            .wait_timeout_while(operations, timeout, |active| !active.is_empty())
+            .map_err(|error| error.to_string())?;
+        if !operations.is_empty() {
+            return Err(
+                "A project environment operation is still in progress. Retry closing the app."
+                    .into(),
+            );
+        }
+        Ok(())
+    }
 }
 
 impl Drop for EnvironmentOperation {
@@ -37,6 +56,7 @@ impl Drop for EnvironmentOperation {
             .lock()
             .unwrap_or_else(|error| error.into_inner())
             .remove(&self.0);
+        IDLE.notify_all();
     }
 }
 

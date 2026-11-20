@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 pub(super) mod retired_history;
+mod schema;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum RecoveryState {
@@ -51,14 +52,24 @@ impl Store {
         }
         let before = regular(path)?;
         verify_journal(path)?;
-        let connection = open_existing(path)?;
-        verify_database(&connection, records)?;
+        let mut connection = open_existing(path)?;
+        let version = schema::verified_version(&connection, records)?;
         let after = regular(path)?;
         if before.dev() != after.dev() || before.ino() != after.ino() {
             return Err("The usage database changed while opening it. Reconnect the original records folder.".into());
         }
         require_same_directory(records, &directory)?;
+        if version == 1
+            && (path != records.path().join("usage.sqlite3")
+                || after.nlink() != 1
+                || records.schema_version()? != 2)
+        {
+            return Err("Only the active usage database can be upgraded.".into());
+        }
         configure(&connection)?;
+        if version == 1 {
+            schema::upgrade_identity(&mut connection, records)?;
+        }
         let store = Self {
             connection,
             binding: Binding {
@@ -433,24 +444,8 @@ fn open_existing(path: &Path) -> Result<Connection, String> {
 }
 
 fn verify_database(connection: &Connection, records: &RecordsDirectory) -> Result<(), String> {
-    let application: i64 = connection
-        .query_row("PRAGMA application_id", [], |row| row.get(0))
-        .map_err(error)?;
-    let version: i64 = connection
-        .query_row("PRAGMA user_version", [], |row| row.get(0))
-        .map_err(error)?;
-    if application != APPLICATION_ID || version != SCHEMA_VERSION {
-        return Err("This usage database belongs to another application or schema version.".into());
-    }
-    let identity: String = connection
-        .query_row(
-            "SELECT records_directory_id FROM store_identity WHERE singleton=1",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(error)?;
-    if identity != records.id() {
-        return Err("This usage database belongs to a different records folder.".into());
+    if schema::verified_version(connection, records)? != SCHEMA_VERSION {
+        return Err("The usage database needs a schema upgrade.".into());
     }
     Ok(())
 }

@@ -35,6 +35,122 @@
       </nav>
       <div class="workspace">
       <main>
+    <div class="project-settings-backdrop" aria-hidden="true"></div>
+    <section id="project-settings-dialog" class="project-settings-dialog" role="dialog" aria-labelledby="project-settings-heading" data-inline-modal hidden>
+      <header class="dialog-header"><h2 id="project-settings-heading">Project settings</h2><button id="close-project-settings" class="icon-button" title="Close settings" aria-label="Close project settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
+      <div class="dialog-content">
+        <section id="project-actions" hidden aria-label="Project setup">
+              <section id="project-access-summary" aria-labelledby="project-access-heading" hidden>
+                <h3 id="project-access-heading">Project access</h3>
+                <dl class="project-access-values">
+                  <div><dt>Agent for next chat</dt><dd id="project-access-agent"></dd></div>
+                  <div><dt>Shared folder on this Mac</dt><dd id="project-access-folder"></dd></div>
+                  <div><dt>Shared Brig environment</dt><dd id="managed-environment"></dd></div>
+                  <div><dt>Allowed guest destinations</dt><dd id="project-access-network"></dd></div>
+                  <div><dt>Image signature verification</dt><dd id="project-access-verification"></dd></div>
+                </dl>
+                <p id="project-sharing-details" class="support-text">Codex and Claude Code can access the same project files and guest processes. They use the same network permissions. Tugboat keeps provider sign-in and token renewal on this Mac.</p>
+              </section>
+              <div class="action-row" id="prepare-controls"><button class="primary-button" id="prepare-environment" hidden>Prepare environment</button><button class="secondary-button" id="refresh-plan" hidden>Refresh plan</button></div>
+              <p id="preparation-status" class="support-text" role="status"></p>
+              <button class="secondary-button" id="retry-preparation" hidden>Retry setup</button>
+              <details id="sharing-plan" hidden><summary>Sharing and execution plan</summary><dl id="sharing-plan-values" class="plan-values"></dl></details>
+              <details class="advanced-actions" id="project-resources"><summary>Resource and project settings</summary>
+                <form id="project-preferences"><fieldset id="project-preference-fields" class="loading-fields" disabled>
+                  <label class="field-label" for="project-name">Project name</label><input id="project-name" class="text-field" maxlength="120" required>
+                  <div class="field-pair"><div><label class="field-label" for="project-cpus">CPU count</label><input id="project-cpus" type="number" class="text-field" min="1" max="32" step="1" required></div><div><label class="field-label" for="project-memory">Memory (MB)</label><input id="project-memory" type="number" class="text-field" min="1024" max="65536" step="256" required></div></div>
+                  <div class="field-pair"><div><label class="field-label" for="project-verification">Image signature</label><select id="project-verification" class="text-field" disabled><option value="require">Required</option></select></div><div><label class="field-label" for="project-network">Network</label><select id="project-network" class="text-field"><option value="isolated">Access allowed by policy</option><option value="offline">Offline</option></select></div></div>
+                  <div class="action-row"><button type="submit" class="primary-button" id="save-project-preferences">Save project settings</button></div>
+                  <p class="support-text">Stop the environment before changing these settings. Guest home and chats are preserved.</p>
+                </fieldset><p id="project-preferences-status" class="support-text" role="status"></p></form>
+              </details>
+              <div id="codex-actions" hidden>
+                <div class="action-row" id="codex-launch-actions"><button class="secondary-button" id="guest-shell">Guest terminal</button></div>
+                <p id="guest-terminal-status" class="support-text" role="status"></p>
+                <details class="advanced-actions"><summary>File and network boundaries</summary>
+                  <p class="support-text">The check tests file sharing and selects guest network probes from the active mode and policy. Offline and deny-all plans expect blocked traffic. A policy without a verified comparison is reported as inconclusive.</p>
+                  <button class="secondary-button" id="run-boundary-tests">Check Brig boundaries</button>
+                  <p id="boundary-status" class="support-text" role="status"></p><ul id="boundary-results" class="probe-results"></ul>
+                  <div id="codex-boundary-options"><label class="checkbox-field"><input type="checkbox" id="use-brig-boundary" checked> Use the Brig boundary for Codex chats</label>
+                  <p class="support-text">Enabled by default. Codex runs without its own sandbox and does not request approval. Brig controls file sharing and network access. Clear this option to use the Codex workspace sandbox with command network access disabled.</p>
+                  <p class="support-text">When using the Codex workspace sandbox, paste this check into the same conversation. Project writes should work. Writes under /etc and network access from commands should be blocked. Review the results in the terminal.</p>
+                  <button class="secondary-button" id="copy-inner-boundary-prompt">Copy Codex sandbox check</button></div>
+                </details>
+              </div>
+              <details class="advanced-actions"><summary>Project network policy</summary>
+                <p class="support-text">Allowed hosts control network connections from guest commands. Hosted agent tools, including web search, have a separate scope. Tugboat does not read or set the web search mode.</p>
+                <button class="secondary-button" id="read-project-policy">Read or refresh policy</button>
+                <p id="project-policy-status" class="support-text" role="status"></p>
+                <pre id="project-policy-document" class="policy-document"></pre>
+                <fieldset id="project-policy-fields" disabled>
+                  <label class="field-label" for="project-policy-hosts">Allowed guest hosts for this project</label>
+                  <textarea id="project-policy-hosts" class="text-field" rows="4" spellcheck="false"></textarea>
+                  <div class="action-row"><button class="secondary-button" id="save-project-policy">Save allowed hosts</button><button class="secondary-button" id="attach-project-policy">Attach to this session</button><button class="secondary-button" id="detach-project-policy">Detach from this session</button></div>
+                  <button class="secondary-button" id="accept-project-policy">Accept this policy version</button>
+                </fieldset>
+              </details>
+              <details class="advanced-actions" id="project-github-access"><summary>GitHub access</summary>
+                <p class="support-text">Grant both agents fetch-only access to one repository. Tugboat saves the token in the Mac Keychain.</p>
+                <form id="project-github-form" autocomplete="off">
+                  <label class="field-label" for="project-github-repository">GitHub repository</label>
+                  <input id="project-github-repository" class="text-field" type="text" placeholder="owner/repository" maxlength="140" spellcheck="false" required>
+                  <label class="field-label" for="project-github-token">GitHub access token</label>
+                  <input id="project-github-token" class="text-field" type="password" maxlength="512" autocomplete="off" spellcheck="false" required>
+                  <p class="support-text">Use a token with Contents read permission for this repository.</p>
+                  <p id="project-github-stop-impact" class="support-text" hidden>Stopping ends the Codex, Claude Code, and guest terminals for this project. Tugboat keeps saved chats.</p>
+                  <div class="action-row"><button class="secondary-button" type="submit" id="save-project-github" aria-describedby="project-github-stop-impact" disabled>Save fetch access</button><button class="secondary-button" type="button" id="check-project-github">Check access</button><button class="secondary-button destructive-button" type="button" id="revoke-project-github" disabled>Revoke access</button><button class="secondary-button" type="button" id="cancel-project-github">Cancel</button></div>
+                </form>
+                <p id="project-github-status" class="support-text" role="status"></p>
+              </details>
+              <details class="advanced-actions" id="project-preview-section"><summary>Local web preview</summary>
+                <p class="support-text">Publish one TCP port from this project on this Mac.</p>
+                <form id="publish-project-preview">
+                  <div class="field-pair">
+                    <div><label class="field-label" for="preview-host-port">Mac port</label><input id="preview-host-port" class="text-field" type="number" min="1" max="65535" step="1" required></div>
+                    <div><label class="field-label" for="preview-guest-port">Guest port</label><input id="preview-guest-port" class="text-field" type="number" min="1" max="65535" step="1" required></div>
+                  </div>
+                  <div class="action-row"><button class="secondary-button" type="submit" id="publish-preview-port">Publish preview</button><button class="secondary-button" type="button" id="check-preview-port">Check preview</button><button class="secondary-button" type="button" id="open-preview-browser" disabled>Open in browser</button><button class="secondary-button" type="button" id="close-preview-port" disabled>Close preview</button></div>
+                </form>
+                <p id="project-preview-status" class="support-text" role="status"></p>
+              </details>
+              <details class="advanced-actions" id="project-image-update"><summary>Update guest image</summary>
+                <p class="support-text">Close this project's chats and terminals before review. Review stops the guest to inspect its writable system disk.</p>
+                <p id="project-image-update-status" class="support-text" role="status"></p>
+                <dl id="project-image-update-images" class="plan-values" hidden></dl>
+                <section id="project-image-update-impact" aria-labelledby="project-image-update-heading" hidden>
+                  <h4 id="project-image-update-heading">Guest system changes</h4>
+                  <p class="support-text">Applying replaces the listed system changes. The guest uses the same project folder, persistent home, network policy, and approved preview. Keep current restores the reviewed system disk.</p>
+                  <p id="project-image-update-empty" class="support-text" hidden>No guest system changes found.</p>
+                  <ul id="project-image-update-files" class="policy-document" aria-label="Guest system paths" tabindex="0" hidden></ul>
+                </section>
+                <div class="action-row">
+                  <button class="secondary-button" id="check-project-image">Check image status</button>
+                  <button class="secondary-button" id="review-project-image" hidden disabled>Review update</button>
+                  <button class="primary-button" id="apply-project-image" hidden disabled>Apply update</button>
+                  <button class="secondary-button" id="keep-project-image" hidden disabled>Keep current</button>
+                  <button class="secondary-button" id="recover-project-image" hidden disabled>Recover image</button>
+                </div>
+              </details>
+              <details class="advanced-actions"><summary>Changes and environment management</summary>
+                <button class="secondary-button" id="start-terminal">Open local terminal</button>
+                <p id="local-terminal-status" class="support-text" role="status"></p>
+                <p class="support-text">Reopen test and diagnostic output from Terminals in the sidebar. This app session keeps up to 32 completed outputs; the oldest are then closed. Close output discards only that terminal view.</p>
+                <div class="action-row"><button class="secondary-button" id="git-status">Git status</button><button class="secondary-button" id="git-diff">Working tree diff</button><button class="secondary-button" id="git-staged-diff">Staged diff</button><button class="secondary-button" id="project-tests">Run project tests</button></div>
+                <p class="support-text">Runs the configured npm, Composer, Cargo or pytest tests. The running chat stays open in its own terminal.</p>
+                <div class="action-row"><button class="secondary-button" id="project-doctor">Brig doctor</button><button class="secondary-button" id="project-info">Session info</button><button class="secondary-button" id="project-policy">Policy bindings</button><button class="secondary-button" id="project-logs">Guest logs</button><button class="secondary-button" id="read-project-gateway-logs" aria-controls="project-gateway-log">Gateway logs</button></div>
+                <p id="project-gateway-log-status" class="support-text" role="status"></p>
+                <pre id="project-gateway-log" role="region" aria-label="Recent project gateway logs" tabindex="0" hidden></pre>
+                <button class="secondary-button" id="copy-project-gateway-logs" hidden disabled>Copy gateway logs</button>
+                <section id="stop-impact" hidden aria-labelledby="stop-impact-heading">
+                  <p id="stop-impact-heading" class="support-text">Stop will end these running processes.</p>
+                  <ul id="stop-impact-list" class="support-text"></ul>
+                </section>
+                <div class="action-row"><button class="secondary-button" id="stop-project">Stop Brig environment</button><button class="secondary-button destructive-button" id="preview-removal">Preview environment removal…</button></div>
+                <p id="operation-status" class="support-text" role="status"></p>
+              </details>
+            </section>
+      </div>
+    </section>
         <section id="project-view" class="project-view" aria-labelledby="project-heading">
           <header class="workspace-header">
             <div class="project-identity">
@@ -49,15 +165,33 @@
           </header>
           <div class="project-content">
             <p id="folder-error" class="error-message" role="alert" hidden></p>
-            <div id="project-plan-feedback" hidden><p id="project-plan-status" class="support-text" role="status"></p><button id="retry-project-plan" class="secondary-button" hidden>Retry setup</button></div>
+            <div id="project-plan-feedback" hidden><p id="project-plan-status" class="support-text" role="status"></p><p id="project-preparation-last-stage" class="support-text" hidden></p><div class="action-row"><button id="retry-project-plan" class="secondary-button" hidden>Retry setup</button><button id="project-preparation-output" class="secondary-button" hidden>View preparation output</button></div></div>
             <button id="resume-removal" class="secondary-button" hidden>Review incomplete removal…</button>
             <p id="project-description">Choose where Brig and your agents will work.</p>
             <p id="project-rescan-status" class="support-text" role="status" hidden></p>
             <section id="recent-projects" hidden aria-label="Projects, most recently opened first">
               <div class="table-scroll"><table class="data-table project-table"><colgroup><col class="project-name-column"><col class="project-branch-column"><col class="project-opened-column"></colgroup><thead><tr><th scope="col">Project</th><th scope="col">Branch</th><th scope="col">Last opened</th></tr></thead><tbody id="recent-project-list"></tbody></table></div>
             </section>
-            <section id="empty-projects" hidden><h2>Your projects, in one place</h2><p>Add a project folder to start working with Codex or Claude Code.</p></section>
+            <section id="empty-projects" hidden><h2>Your projects, in one place</h2><p>Add a project folder to start working with Codex or Claude Code.</p><button id="choose-first-chat" class="primary-button">Choose a folder for your first chat…</button></section>
             <section id="project-dashboard" hidden aria-label="Project overview">
+              <section id="first-chat-setup" class="first-chat-setup" aria-labelledby="first-chat-heading" hidden>
+                <h2 id="first-chat-heading" tabindex="-1">Start your first chat</h2>
+                <p id="first-chat-host" class="support-text" role="status"></p>
+                <button id="first-chat-system-checks" class="secondary-button" hidden>Open Mac checks</button>
+                <label for="first-chat-agent" class="field-label">Agent</label>
+                <select id="first-chat-agent" class="text-field"><option value="">Choose an agent</option><option value="codex">Codex</option><option value="claude-code">Claude Code</option></select>
+                <p id="first-chat-account" class="support-text" role="status"></p>
+                <div id="first-chat-chatgpt" hidden>
+                  <div class="action-row"><button id="first-chat-chatgpt-sign-in" class="primary-button">Sign in with ChatGPT</button><button id="first-chat-chatgpt-cancel" class="secondary-button" hidden>Cancel sign-in</button></div>
+                  <div id="first-chat-chatgpt-device-code-field" hidden><label for="first-chat-chatgpt-device-code" class="field-label">ChatGPT device code</label><input id="first-chat-chatgpt-device-code" class="text-field" readonly></div>
+                  <p id="first-chat-chatgpt-status" class="support-text" role="status"></p>
+                </div>
+                <div id="first-chat-claude" hidden>
+                  <div class="action-row"><button id="first-chat-claude-sign-in" class="primary-button">Sign in with Claude</button><button id="first-chat-claude-cancel" class="secondary-button" hidden>Cancel sign-in</button></div>
+                  <p id="first-chat-claude-status" class="support-text" role="status"></p>
+                </div>
+                <button id="first-chat-open" class="primary-button" hidden>Start first chat</button>
+              </section>
               <div id="project-setup" class="project-setup" hidden>
                 <button class="setup-settings-button" id="setup-project"><svg class="navigation-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span>Review project settings</span></button>
                 <p>Open project settings to review the details that need your attention.</p>
@@ -68,30 +202,31 @@
                   <div><dt>Input</dt><dd></dd></div>
                   <div><dt>Cached input</dt><dd></dd></div>
                   <div><dt>Output</dt><dd></dd></div>
-                  <div class="usage-cost"><dt>Total API cost <details id="usage-info" class="usage-info" hidden><summary aria-label="About total API cost"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 11v5M12 8h.01"/></svg></summary><div class="usage-info-popover"><p id="usage-note" class="support-text usage-note"></p></div></details></dt><dd></dd></div>
+                  <div class="usage-cost"><dt>Estimated API equivalent <details id="usage-info" class="usage-info" hidden><summary aria-label="About the estimated API equivalent"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M12 11v5M12 8h.01"/></svg></summary><div class="usage-info-popover"><p id="usage-note" class="support-text usage-note"></p></div></details><span id="usage-billing-note">Subscription billing is separate.</span></dt><dd></dd></div>
                 </dl>
                 <div class="dashboard-toolbar">
                   <div class="session-tabs" role="group" aria-label="Session view"><button class="session-tab" data-session-state="active" aria-pressed="true">Sessions</button><button class="session-tab" data-session-state="archived" aria-pressed="false">Archived</button><button class="session-tab" data-session-state="deleted" aria-pressed="false">Trash</button></div>
-                  <div class="action-row"><label class="agent-choice"><span class="visually-hidden">Agent for New Chat</span><select id="agent-choice" class="text-field"><option value="codex">Codex</option><option value="claude-code">Claude Code</option></select></label><button class="primary-button icon-label-button" id="start-codex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg><span>New Chat</span></button></div>
+                  <div class="action-row" id="dashboard-new-chat"><label class="agent-choice"><span class="visually-hidden">Agent for New Chat</span><select id="agent-choice" class="text-field"><option value="codex">Codex</option><option value="claude-code">Claude Code</option></select></label><button class="primary-button icon-label-button" id="start-codex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg><span>New Chat</span></button></div>
                 </div>
                 <div id="project-account-feedback" hidden><p id="project-account-status" class="support-text" role="status"></p><button id="project-provider-settings" class="secondary-button">Open application settings…</button></div>
                 <p id="dashboard-session-status" class="support-text" role="status"></p>
-                <div class="table-scroll"><table id="session-table" class="data-table session-table"><thead><tr><th scope="col">Session</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">API cost</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="session-table-body"></tbody></table></div>
+                <div class="table-scroll"><table id="session-table" class="data-table session-table"><thead><tr><th scope="col">Session</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">Estimated API equivalent</th><th scope="col"><span class="visually-hidden">Actions</span></th></tr></thead><tbody id="session-table-body"></tbody></table></div>
                 <section id="unlinked-subagents" class="unlinked-subagents" aria-labelledby="unlinked-subagents-heading" hidden>
                   <h2 id="unlinked-subagents-heading">Unlinked subagents</h2>
                   <p class="support-text">Read-only recorded usage. These agents could not be linked to a main session. Open usage to inspect their own requests.</p>
-                  <div class="table-scroll"><table class="data-table session-table" aria-labelledby="unlinked-subagents-heading"><thead><tr><th scope="col">Subagent</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">API cost</th><th scope="col"><span class="visually-hidden">Details</span></th></tr></thead><tbody id="unlinked-subagent-body"></tbody></table></div>
+                  <div class="table-scroll"><table class="data-table session-table" aria-labelledby="unlinked-subagents-heading"><thead><tr><th scope="col">Subagent</th><th scope="col" class="number-column">Input</th><th scope="col" class="number-column">Cached</th><th scope="col" class="number-column">Output</th><th scope="col" class="number-column">Total</th><th scope="col" class="number-column">Estimated API equivalent</th><th scope="col"><span class="visually-hidden">Details</span></th></tr></thead><tbody id="unlinked-subagent-body"></tbody></table></div>
                 </section>
               </div>
             </section>
           </div>
           <section class="terminal-panel" id="terminal-panel" aria-label="Terminal" hidden>
-            <div class="terminal-toolbar"><span id="terminal-status" role="status">Local terminal</span><div class="terminal-actions"><button class="secondary-button" id="hide-terminal">Return to project</button><button class="secondary-button" id="close-terminal">Close terminal</button></div></div>
+            <div class="terminal-toolbar"><span id="terminal-status" role="status">Local terminal</span><div class="terminal-actions"><button class="secondary-button" id="show-preparation-output" hidden>Show setup output</button><button class="secondary-button" id="cancel-preparation" hidden>Cancel preparation</button><button class="secondary-button" id="hide-terminal">Return to project</button><button class="secondary-button" id="close-terminal">Close terminal</button></div></div>
             <div id="terminal-surface" aria-label="Terminal surface">
               <div id="environment-boot-overlay" class="environment-boot-overlay" hidden>
-                <div id="environment-boot-card" class="environment-boot-card" role="status" aria-live="polite" aria-atomic="true">
+                <div id="environment-boot-card" class="environment-boot-card" role="region" aria-label="Environment preparation" tabindex="-1">
                   <canvas id="environment-boot-canvas" width="200" height="160" aria-hidden="true"></canvas>
-                  <p id="environment-boot-message"></p>
+                  <p id="environment-boot-message" role="status" aria-live="polite" aria-atomic="true"></p>
+                  <p id="environment-boot-elapsed"></p>
                 </div>
               </div>
             </div>
@@ -193,110 +328,6 @@
       </div>
       </div>
     </div>
-    <dialog id="project-settings-dialog" class="project-settings-dialog" aria-labelledby="project-settings-heading">
-      <header class="dialog-header"><h2 id="project-settings-heading">Project settings</h2><button id="close-project-settings" class="icon-button" title="Close settings" aria-label="Close project settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
-      <div class="dialog-content">
-        <p id="managed-environment" class="support-text"></p>
-        <p id="project-sharing-details" class="support-text">Codex and Claude Code can access the same project files and guest processes. They use the same network permissions. Tugboat keeps provider sign-in and token renewal on this Mac.</p>
-        <form id="project-preferences"><fieldset id="project-preference-fields" class="loading-fields" disabled>
-          <label class="field-label" for="project-name">Project name</label><input id="project-name" class="text-field" maxlength="120" required>
-          <div class="field-pair"><div><label class="field-label" for="project-cpus">CPU count</label><input id="project-cpus" type="number" class="text-field" min="1" max="32" step="1" required></div><div><label class="field-label" for="project-memory">Memory (MB)</label><input id="project-memory" type="number" class="text-field" min="1024" max="65536" step="256" required></div></div>
-          <div class="field-pair"><div><label class="field-label" for="project-verification">Image signature</label><select id="project-verification" class="text-field" disabled><option value="require">Required</option></select></div><div><label class="field-label" for="project-network">Network</label><select id="project-network" class="text-field"><option value="isolated">Access allowed by policy</option><option value="offline">Offline</option></select></div></div>
-          <div class="action-row"><button type="submit" class="primary-button" id="save-project-preferences">Save project settings</button></div>
-          <p class="support-text">Stop the environment before changing these settings. Guest home and chats are preserved.</p>
-        </fieldset><p id="project-preferences-status" class="support-text" role="status"></p></form>
-        <section id="project-actions" hidden aria-label="Project setup">
-              <p id="preparation-status" class="support-text" role="status"></p>
-              <button class="secondary-button" id="retry-preparation" hidden>Retry setup</button>
-              <div id="codex-actions" hidden>
-                <div class="action-row" id="codex-launch-actions"><button class="secondary-button" id="guest-shell">Guest terminal</button></div>
-                <p id="guest-terminal-status" class="support-text" role="status"></p>
-                <details class="advanced-actions"><summary>File and network boundaries</summary>
-                  <p class="support-text">The check tests file sharing and selects guest network probes from the active mode and policy. Offline and deny-all plans expect blocked traffic. A policy without a verified comparison is reported as inconclusive.</p>
-                  <button class="secondary-button" id="run-boundary-tests">Check Brig boundaries</button>
-                  <p id="boundary-status" class="support-text" role="status"></p><ul id="boundary-results" class="probe-results"></ul>
-                  <div id="codex-boundary-options"><label class="checkbox-field"><input type="checkbox" id="use-brig-boundary" checked> Use the Brig boundary for Codex chats</label>
-                  <p class="support-text">Enabled by default. Codex runs without its own sandbox and does not request approval. Brig controls file sharing and network access. Clear this option to use the Codex workspace sandbox with command network access disabled.</p>
-                  <p class="support-text">When using the Codex workspace sandbox, paste this check into the same conversation. Project writes should work. Writes under /etc and network access from commands should be blocked. Review the results in the terminal.</p>
-                  <button class="secondary-button" id="copy-inner-boundary-prompt">Copy Codex sandbox check</button></div>
-                </details>
-              </div>
-              <div class="action-row" id="prepare-controls"><button class="primary-button" id="prepare-environment" hidden>Prepare environment</button><button class="secondary-button" id="refresh-plan" hidden>Refresh plan</button></div>
-              <details id="sharing-plan" hidden><summary>Sharing and execution plan</summary><dl id="sharing-plan-values" class="plan-values"></dl></details>
-              <details class="advanced-actions"><summary>Project network policy</summary>
-                <p class="support-text">Allowed hosts control network connections from guest commands. Hosted agent tools, including web search, have a separate scope. Tugboat does not read or set the web search mode.</p>
-                <button class="secondary-button" id="read-project-policy">Read or refresh policy</button>
-                <p id="project-policy-status" class="support-text" role="status"></p>
-                <pre id="project-policy-document" class="policy-document"></pre>
-                <fieldset id="project-policy-fields" disabled>
-                  <label class="field-label" for="project-policy-hosts">Allowed guest hosts for this project</label>
-                  <textarea id="project-policy-hosts" class="text-field" rows="4" spellcheck="false"></textarea>
-                  <div class="action-row"><button class="secondary-button" id="save-project-policy">Save allowed hosts</button><button class="secondary-button" id="attach-project-policy">Attach to this session</button><button class="secondary-button" id="detach-project-policy">Detach from this session</button></div>
-                  <button class="secondary-button" id="accept-project-policy">Accept this policy version</button>
-                </fieldset>
-              </details>
-              <details class="advanced-actions" id="project-github-access"><summary>GitHub access</summary>
-                <p class="support-text">Grant both agents fetch-only access to one repository. Tugboat saves the token in the Mac Keychain.</p>
-                <form id="project-github-form" autocomplete="off">
-                  <label class="field-label" for="project-github-repository">GitHub repository</label>
-                  <input id="project-github-repository" class="text-field" type="text" placeholder="owner/repository" maxlength="140" spellcheck="false" required>
-                  <label class="field-label" for="project-github-token">GitHub access token</label>
-                  <input id="project-github-token" class="text-field" type="password" maxlength="512" autocomplete="off" spellcheck="false" required>
-                  <p class="support-text">Use a token with Contents read permission for this repository.</p>
-                  <p id="project-github-stop-impact" class="support-text" hidden>Stopping ends the Codex, Claude Code, and guest terminals for this project. Tugboat keeps saved chats.</p>
-                  <div class="action-row"><button class="secondary-button" type="submit" id="save-project-github" aria-describedby="project-github-stop-impact" disabled>Save fetch access</button><button class="secondary-button" type="button" id="check-project-github">Check access</button><button class="secondary-button destructive-button" type="button" id="revoke-project-github" disabled>Revoke access</button><button class="secondary-button" type="button" id="cancel-project-github">Cancel</button></div>
-                </form>
-                <p id="project-github-status" class="support-text" role="status"></p>
-              </details>
-              <details class="advanced-actions" id="project-preview-section"><summary>Local web preview</summary>
-                <p class="support-text">Publish one TCP port from this project on this Mac.</p>
-                <form id="publish-project-preview">
-                  <div class="field-pair">
-                    <div><label class="field-label" for="preview-host-port">Mac port</label><input id="preview-host-port" class="text-field" type="number" min="1" max="65535" step="1" required></div>
-                    <div><label class="field-label" for="preview-guest-port">Guest port</label><input id="preview-guest-port" class="text-field" type="number" min="1" max="65535" step="1" required></div>
-                  </div>
-                  <div class="action-row"><button class="secondary-button" type="submit" id="publish-preview-port">Publish preview</button><button class="secondary-button" type="button" id="check-preview-port">Check preview</button><button class="secondary-button" type="button" id="open-preview-browser" disabled>Open in browser</button><button class="secondary-button" type="button" id="close-preview-port" disabled>Close preview</button></div>
-                </form>
-                <p id="project-preview-status" class="support-text" role="status"></p>
-              </details>
-              <details class="advanced-actions" id="project-image-update"><summary>Update guest image</summary>
-                <p class="support-text">Close this project's chats and terminals before review. Review stops the guest to inspect its writable system disk.</p>
-                <p id="project-image-update-status" class="support-text" role="status"></p>
-                <dl id="project-image-update-images" class="plan-values" hidden></dl>
-                <section id="project-image-update-impact" aria-labelledby="project-image-update-heading" hidden>
-                  <h4 id="project-image-update-heading">Guest system changes</h4>
-                  <p class="support-text">Applying replaces the listed system changes. The guest uses the same project folder, persistent home, network policy, and approved preview. Keep current restores the reviewed system disk.</p>
-                  <p id="project-image-update-empty" class="support-text" hidden>No guest system changes found.</p>
-                  <ul id="project-image-update-files" class="policy-document" aria-label="Guest system paths" tabindex="0" hidden></ul>
-                </section>
-                <div class="action-row">
-                  <button class="secondary-button" id="check-project-image">Check image status</button>
-                  <button class="secondary-button" id="review-project-image" hidden disabled>Review update</button>
-                  <button class="primary-button" id="apply-project-image" hidden disabled>Apply update</button>
-                  <button class="secondary-button" id="keep-project-image" hidden disabled>Keep current</button>
-                  <button class="secondary-button" id="recover-project-image" hidden disabled>Recover image</button>
-                </div>
-              </details>
-              <details class="advanced-actions"><summary>Changes and environment management</summary>
-                <button class="secondary-button" id="start-terminal">Open local terminal</button>
-                <p id="local-terminal-status" class="support-text" role="status"></p>
-                <p class="support-text">Reopen test and diagnostic output from Terminals in the sidebar. This app session keeps up to 32 completed outputs; the oldest are then closed. Close output discards only that terminal view.</p>
-                <div class="action-row"><button class="secondary-button" id="git-status">Git status</button><button class="secondary-button" id="git-diff">Working tree diff</button><button class="secondary-button" id="git-staged-diff">Staged diff</button><button class="secondary-button" id="project-tests">Run project tests</button></div>
-                <p class="support-text">Runs the configured npm, Composer, Cargo or pytest tests. The running chat stays open in its own terminal.</p>
-                <div class="action-row"><button class="secondary-button" id="project-doctor">Brig doctor</button><button class="secondary-button" id="project-info">Session info</button><button class="secondary-button" id="project-policy">Policy bindings</button><button class="secondary-button" id="project-logs">Guest logs</button><button class="secondary-button" id="read-project-gateway-logs" aria-controls="project-gateway-log">Gateway logs</button></div>
-                <p id="project-gateway-log-status" class="support-text" role="status"></p>
-                <pre id="project-gateway-log" role="region" aria-label="Recent project gateway logs" tabindex="0" hidden></pre>
-                <button class="secondary-button" id="copy-project-gateway-logs" hidden disabled>Copy gateway logs</button>
-                <section id="stop-impact" hidden aria-labelledby="stop-impact-heading">
-                  <p id="stop-impact-heading" class="support-text">Stop will end these running processes.</p>
-                  <ul id="stop-impact-list" class="support-text"></ul>
-                </section>
-                <div class="action-row"><button class="secondary-button" id="stop-project">Stop Brig environment</button><button class="secondary-button destructive-button" id="preview-removal">Preview environment removal…</button></div>
-                <p id="operation-status" class="support-text" role="status"></p>
-              </details>
-            </section>
-      </div>
-    </dialog>
     <dialog id="forget-project-dialog" aria-labelledby="forget-project-heading">
       <h2 id="forget-project-heading">Forget this project record?</h2>
       <p id="forget-project-name"></p>
@@ -320,12 +351,12 @@
                 <th scope="col">Cached input</th>
                 <th scope="col">Cache writes</th>
                 <th scope="col">Output</th>
-                <th scope="col">API cost</th>
+                <th scope="col">Estimated API equivalent</th>
               </tr>
             </thead>
             <tbody></tbody>
             <tfoot>
-              <tr><th scope="row" colspan="5">Total API cost</th><td></td></tr>
+              <tr><th scope="row" colspan="5">Total estimated API equivalent</th><td></td></tr>
             </tfoot>
           </table>
         </div>

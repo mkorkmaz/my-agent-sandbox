@@ -78,6 +78,59 @@ fn record() -> SessionRecord {
 }
 
 #[test]
+fn opening_an_active_v1_store_upgrades_once_and_keeps_session_keys() {
+    let fixture = Fixture::new();
+    let records = RecordsDirectory::fixture(&fixture.0);
+    let path = fixture.0.join("usage.sqlite3");
+    let old = rusqlite::Connection::open(&path).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    old.execute_batch(include_str!(
+        "../../../tests/fixtures/tugboat/usage-schema-v1.sql"
+    ))
+    .unwrap();
+    old.execute("INSERT INTO store_identity VALUES(1,?1)", [records.id()])
+        .unwrap();
+    old.execute("INSERT INTO usage_environments(environment_key,project_id,environment_id,agent_kind) VALUES(7,?1,?1,'codex')", [PROJECT]).unwrap();
+    old.execute("INSERT INTO session_groups VALUES(11,7,?1,0)", [SESSION])
+        .unwrap();
+    old.execute_batch("INSERT INTO session_records(session_key,title,updated_at,state,available,parser_version,lineage_json) VALUES(11,'Saved chat',1,'active',1,1,'{}');
+        INSERT INTO legacy_imports VALUES('conversation-ledgers/old.json',7,1,zeroblob(32),50,1,0,0);").unwrap();
+    drop(old);
+    records.activate_sqlite().unwrap();
+
+    for _ in 0..2 {
+        let store = bootstrap::open_or_initialize(&records).unwrap();
+        let title: String = store.connection.query_row("SELECT title FROM session_records JOIN session_groups USING(session_key) JOIN legacy_imports USING(environment_key) WHERE session_key=11 AND environment_key=7", [], |row| row.get(0)).unwrap();
+        assert_eq!(title, "Saved chat");
+        store.require_active().unwrap();
+        store.close().unwrap();
+    }
+    let store = Store::open(&records).unwrap();
+    store.connection.execute("INSERT INTO usage_environments(project_id,environment_id,agent_kind) VALUES(?1,?1,'claude-code')", [PROJECT]).unwrap();
+    store.integrity_check().unwrap();
+}
+
+#[test]
+fn automatic_usage_upgrade_preserves_unrecognized_or_inconsistent_databases() {
+    for (setup, message) in [
+        ("PRAGMA user_version=3", "schema version"),
+        ("PRAGMA user_version=1; PRAGMA application_id=0", "another application"),
+        ("PRAGMA user_version=1; UPDATE store_identity SET records_directory_id=lower(hex(randomblob(16)))", "different records folder"),
+        ("PRAGMA user_version=1; PRAGMA foreign_keys=OFF; INSERT INTO session_groups VALUES(11,7,'00000000-0000-4000-8000-000000000001',0)", "broken references"),
+    ] {
+        let fixture = Fixture::new();
+        let (records, store) = fixture.store();
+        store.connection.execute_batch(setup).unwrap();
+        drop(store);
+        let path = fixture.0.join("usage.sqlite3");
+        let original = fs::read(&path).unwrap();
+        let failure = bootstrap::open_or_initialize(&records).err().unwrap();
+        assert!(failure.contains(message), "{failure}");
+        assert_eq!(fs::read(&path).unwrap(), original);
+    }
+}
+
+#[test]
 fn exact_schema_and_all_fields_round_trip_after_reopen() {
     let fixture = Fixture::new();
     let (records, mut store) = fixture.store();

@@ -43,7 +43,7 @@ struct Running;
 impl Running {
     fn enter() -> Result<Self, String> {
         let mut count = ACTIVE.0.lock().map_err(|error| error.to_string())?;
-        if crate::desktop::lifecycle::is_closing() {
+        if crate::desktop::lifecycle::blocks_commands() {
             return Err("The app is closing.".into());
         }
         *count += 1;
@@ -239,7 +239,7 @@ pub fn run_with_input(
         }
         completion = Completion::observe(
             started.elapsed() >= timeout,
-            cancellation.load(Ordering::SeqCst) || crate::desktop::lifecycle::is_closing(),
+            cancellation.load(Ordering::SeqCst) || crate::desktop::lifecycle::blocks_commands(),
             exceeded.load(Ordering::SeqCst),
         );
         if completion != Completion::Exited {
@@ -326,9 +326,37 @@ mod tests {
             }
             // Before confirmation, the same running command remains active.
             assert!(wait_for_idle(Duration::from_millis(30)).is_err());
+            let environment_id = crate::projects::EnvironmentId::for_project("shutdown-gate");
+            let operation =
+                crate::environment::EnvironmentOperation::begin("shutdown-gate", &environment_id)
+                    .unwrap();
             crate::desktop::lifecycle::set_closing_for_test(true);
             wait_for_idle(Duration::from_secs(2)).unwrap();
             assert!(query.join().unwrap().cancelled);
+            assert!(Running::enter().is_err());
+            assert!(
+                crate::environment::EnvironmentOperation::begin("new", &environment_id).is_err()
+            );
+            assert!(
+                crate::environment::EnvironmentOperation::wait_for_idle(Duration::ZERO).is_err()
+            );
+            drop(operation);
+            crate::environment::EnvironmentOperation::wait_for_idle(Duration::ZERO).unwrap();
+            crate::desktop::lifecycle::stop_before_exit(|| {
+                assert!(thread::spawn(|| Running::enter().is_err()).join().unwrap());
+                let result = run(
+                    Path::new("/bin/sleep"),
+                    &["0.1".into()],
+                    None,
+                    &environment(),
+                    Duration::from_secs(2),
+                    &AtomicBool::new(false),
+                )?;
+                assert_eq!(result.exit_code, Some(0));
+                assert!(!result.cancelled);
+                Ok(())
+            })
+            .unwrap();
             assert!(Running::enter().is_err());
             return;
         }

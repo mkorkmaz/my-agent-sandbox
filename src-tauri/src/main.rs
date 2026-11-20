@@ -159,10 +159,12 @@ fn main() {
             terminal::terminal_layout,
             terminal::terminal_focus,
             terminal::terminal_close,
+            terminal::cancel_environment_preparation,
             terminal::terminal_sessions,
             terminal::terminal_snapshot
         ])
         .setup(|app| {
+            lifecycle::install_native_quit(app.handle()).map_err(std::io::Error::other)?;
             app.manage(data_location::initialize(
                 &app.path().config_dir()?,
                 app.path().app_config_dir()?,

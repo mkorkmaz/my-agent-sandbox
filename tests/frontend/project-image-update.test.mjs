@@ -46,7 +46,7 @@ async function open(harness, owner) {
 async function openPanel(harness) {
   harness.element('project-settings-button').click();
   await flush();
-  assert.equal(harness.element('project-settings-dialog').open, true);
+  assert.equal(harness.element('project-settings-dialog').hidden, false);
   harness.element('project-image-update').open = true;
   await flush();
 }

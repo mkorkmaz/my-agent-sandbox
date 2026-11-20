@@ -12,7 +12,7 @@ Choose a local folder and review its environment. Codex and Claude Code can use 
 
 - Add project folders, see their Git branches, and return to projects in last-opened order.
 - Browse saved Codex and Claude Code sessions together, with each agent named beside its chats.
-- Prepare one reviewed Brig environment, policy, and persistent guest home for each project.
+- Tugboat automatically prepares one Brig environment, network policy, and persistent guest home for each project.
 - Connect ChatGPT and Claude once from Settings, before adding a project.
 - Run multiple conversations per project and switch between their live terminals in the sidebar.
 - Set CPU and memory limits, network mode, and allowed hosts per project. Tugboat requires image signatures.
@@ -72,12 +72,9 @@ Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. 
 1. Open **Settings** with **⌘,**.
 2. Open **Providers**. Select **Sign in with ChatGPT** or **Sign in with Claude**.
 3. Complete browser authorization. Enter the ChatGPT device code shown in Settings when requested.
-4. Review **System Checks** and the resource and network defaults when needed.
-5. Open **Projects**. Select **Add new project** or **⌘O**.
-6. Choose **Codex** or **Claude Code** beside **New Chat** inside the project.
-7. Open **Project settings** and review **Sharing and execution plan**. Select **Prepare environment** to start a new or changed plan.
-8. Tugboat starts the project environment and verifies both guest agents. It reuses an already verified running environment.
-9. Select **New Chat**, or select a saved session from the project table or sidebar.
+4. Open your project, or select **Add new project** and choose its folder.
+5. Select **Open Claude Code** or **Open Codex** for the first chat. In an existing project, select the agent beside **New Chat**.
+6. Select **New Chat** in an existing project. Tugboat opens the requested chat as soon as the environment and account are ready.
 
 The project environment uses the Brig copy bundled with Tugboat. System Checks shows the runtime version and tool paths. Replace the app if a bundled tool is missing or fails its hash check.
 
@@ -115,7 +112,7 @@ Claude uses the Brig boundary and manual permission requests. The Codex sandbox 
 
 ### Chats and environments
 
-Configured projects show saved chats and measured usage while Tugboat checks the shared environment. Reopening a stopped project starts its last approved plan automatically when the plan still matches. An updated plan requires review. Startup failures offer **Retry environment**. **Stop Brig environment** ends both agents’ chats and other guest processes. The persistent guest home and chat history stay available.
+Configured projects show saved chats and measured usage while Tugboat checks the shared environment. Tugboat checks the current plan and starts a stopped environment automatically. It reuses a verified running guest. You can inspect the plan in **Project settings**. Startup failures offer **Retry environment**. **Stop Brig environment** ends both agents’ chats and other guest processes. The persistent guest home and chat history stay available.
 
 **New Chat** starts a process for the chosen agent inside the project environment. Selecting an open chat restores its terminal and scrollback. Claude new chats receive a UUID from Tugboat. Resume uses the saved agent and native ID. Two agents can use the same native ID and keep distinct chats.
 
@@ -204,7 +201,7 @@ If an activated database is missing, damaged, replaced, or bound to another data
 After an I/O or uncertain commit error, the next usage access opens a new connection to the same verified database. Identity, integrity, and committed parser progress must verify before an idempotent scan can continue. Detected corruption blocks later writes through the existing shared store.
 
 
-Brig manages guest homes and conversation history in its existing locations. Closing or restarting the app while a process runs asks for confirmation. Cancel keeps the app and process open. Confirming ends open terminal processes and saves final usage before a restart applies a pending records move.
+Closing the main window, quitting with ⌘Q, or restarting Tugboat stops the running Brig environments registered to this app. If a terminal is active, **Cancel** keeps it running. When shutdown proceeds, Tugboat ends its terminal processes, saves final usage, and checks that Brig stopped each guest. If a stop fails, the app stays open and identifies the project. Opening a configured project starts its environment again with its saved files and chats.
 
 Git commands, tests, diagnostics, policy checks, boundary checks, and **Stop Brig environment** target the selected environment. Stopping one environment preserves the other agent's environment.
 

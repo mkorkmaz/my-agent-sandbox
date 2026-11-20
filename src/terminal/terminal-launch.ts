@@ -10,7 +10,7 @@ type ProjectOperation = 'git-status' | 'git-diff' | 'git-staged-diff' | 'tests' 
 
 export type TerminalLaunchRequest =
   | [command: 'terminal_start', arguments_: { projectId: string }, caption: string, foreground?: boolean]
-  | [command: 'prepare_environment', arguments_: CheckedEnvironment, caption: string, foreground?: boolean]
+  | [command: 'prepare_environment', arguments_: CheckedEnvironment, caption: string, foreground?: boolean, fromReview?: boolean]
   | [command: 'start_agent_session', arguments_: AgentSession, caption: string, foreground?: boolean]
   | [command: 'start_project_operation', arguments_: Omit<CheckedEnvironment, 'fingerprint'> & { fingerprint: string | null; operation: ProjectOperation }, caption: string, foreground?: boolean];
 export type OpenTerminal = (...request: TerminalLaunchRequest) => Promise<void>;

@@ -20,6 +20,240 @@ test('initial project reads show skeletons and then show records or a real empty
   }
 });
 
+const newChatProject = { ...project, stage: 'selected', policy: null, approvedPlan: undefined };
+const signedOutChatgpt = { ...sharedAccount, state: 'signed-out', email: null };
+const signedOutClaude = { ...sharedClaudeAccount, state: 'signed-out', email: null };
+
+test('connecting Claude prepares the selected project and opens a requested chat once after verification', async t => {
+  const boot = deferred();
+  let current = newChatProject;
+  const result = () => ({ project: current, plan, fingerprint: 'plan-a', message: null });
+  const h = await interfaceHarness({
+    register_project: () => current,
+    shared_chatgpt_status: () => signedOutChatgpt,
+    shared_claude_status: () => signedOutClaude,
+    prepare_project: () => { current = { ...current, stage: 'ready', policy: project.policy }; return result(); },
+    preview_project: result,
+    prepare_environment: () => boot.promise,
+  });
+  t.after(() => h.dom.window.close());
+  await h.ready; h.element('choose-first-chat').click(); await flush();
+  await h.listeners.get('shared-claude-changed')({ payload: { ...sharedClaudeAccount, generation: 2 } });
+  await flush();
+  assert.equal(h.calls.filter(call => call.command === 'prepare_environment').length, 1);
+  assert.equal(h.element('project-settings-dialog').hidden, true);
+  assert.equal(h.element('terminal-panel').hidden, true);
+  assert.equal(h.element('first-chat-agent').value, 'claude-code');
+  const chat = h.element('first-chat-open');
+  assert.equal(chat.closest('[hidden]'), null);
+  assert.equal(chat.disabled, false);
+  chat.click(); chat.click(); await flush();
+  assert.equal(h.calls.some(call => call.command === 'start_agent_session'), false);
+  current = { ...current, stage: 'environment-starting' };
+  h.setTerminal({ identifier: 70, projectId: current.id, environmentId: current.environmentId, purpose: 'environment', running: true });
+  boot.resolve(70); await flush();
+  current = { ...current, stage: 'environment-ready' };
+  h.setTerminal({ ...h.terminals.get(70), running: false, exitCode: 0 });
+  const completed = { payload: { project: current, terminalIdentifier: 70, message: null } };
+  await h.listeners.get('environment-preparation-finished')(completed);
+  await h.listeners.get('environment-preparation-finished')(completed);
+  await flush();
+  const chats = h.calls.filter(call => call.command === 'start_agent_session');
+  assert.equal(chats.length, 1);
+  assert.equal(chats[0].args.agentKind, 'claude-code');
+  assert.equal(chats[0].args.environmentId, current.environmentId);
+  assert.equal(chats[0].args.fingerprint, 'plan-a');
+});
+
+test('first chat chooses a connected agent and prepares once without opening a chat', async t => {
+  for (const [chatgpt, claude, expected] of [
+    [signedOutChatgpt, signedOutClaude, ''],
+    [signedOutChatgpt, sharedClaudeAccount, 'claude-code'],
+    [sharedAccount, signedOutClaude, 'codex'],
+    [sharedAccount, sharedClaudeAccount, 'codex'],
+  ]) {
+    const h = await interfaceHarness({
+      register_project: () => newChatProject,
+      shared_chatgpt_status: () => chatgpt, shared_claude_status: () => claude,
+    });
+    t.after(() => h.dom.window.close());
+    await h.ready; h.element('choose-first-chat').click(); await flush();
+    assert.equal(h.element('first-chat-setup').hidden, false);
+    assert.equal(h.element('selected-folder').textContent, project.path);
+    const select = h.element('first-chat-agent');
+    assert.equal(select.value, expected);
+    assert.equal(h.element('first-chat-open').hidden, !expected);
+    assert.equal(h.calls.filter(call => call.command === 'prepare_project').length, expected ? 1 : 0);
+    assert.equal(h.element('project-settings-dialog').hidden, true);
+    if (expected === 'claude-code') {
+      select.value = 'codex'; select.dispatchEvent(new h.dom.window.Event('change'));
+      assert.equal(h.element('first-chat-chatgpt').hidden, false);
+      assert.equal(h.element('first-chat-open').hidden, true);
+      select.value = 'claude-code'; select.dispatchEvent(new h.dom.window.Event('change'));
+      assert.equal(h.element('first-chat-open').disabled, false);
+      assert.equal(h.calls.filter(call => call.command === 'prepare_project').length, 1);
+    }
+    assert.equal(h.calls.some(call => call.command === 'start_agent_session'), false);
+  }
+});
+
+test('first chat retains folder and agent on browser return and cancellation, and prepares only the current project', async t => {
+  const other = { ...newChatProject, id: 'project-b', path: '/fixture/second', environmentId: 'b'.repeat(32) };
+  let records = [], claude = signedOutClaude, revision = 0;
+  const h = await interfaceHarness({
+    recent_projects: () => records,
+    register_project: () => { records = [newChatProject, other]; return newChatProject; },
+    open_project: ({ identifier }) => records.find(record => record.id === identifier),
+    shared_chatgpt_status: () => signedOutChatgpt, shared_claude_status: () => claude,
+    start_provider_login: ({ provider }) => providerLogin(provider, 'waiting', ++revision),
+    cancel_provider_login: ({ provider }) => providerLogin(provider, 'idle', ++revision),
+  });
+  t.after(() => h.dom.window.close());
+  await h.ready; h.element('choose-first-chat').click(); await flush();
+  const select = h.element('first-chat-agent');
+  function choose(agent) { select.value = agent; select.dispatchEvent(new h.dom.window.Event('change')); }
+  choose('claude-code');
+  h.element('first-chat-claude-sign-in').click(); await flush();
+  assert.equal(h.element('first-chat-claude-sign-in').textContent, 'Return to browser');
+  h.element('first-chat-claude-sign-in').click(); await flush();
+  assert.ok(h.calls.some(call => call.command === 'open_provider_login' && call.args.provider === 'claude'));
+  h.element('first-chat-claude-cancel').focus();
+  h.element('first-chat-claude-cancel').click(); await flush();
+  assert.equal(h.element('first-chat-claude-sign-in').textContent, 'Sign in with Claude');
+  assert.equal(h.dom.window.document.activeElement, h.element('first-chat-claude-sign-in'));
+  assert.equal(select.value, 'claude-code');
+  assert.equal(h.element('selected-folder').textContent, newChatProject.path);
+  h.element('first-chat-claude-sign-in').click(); await flush();
+  h.element('project-navigation').click(); await flush();
+  h.element('recent-project-list').querySelector('[data-project-id="project-b"]').click(); await flush();
+  choose('codex');
+  claude = { ...sharedClaudeAccount, generation: 2 };
+  await h.listeners.get('shared-claude-changed')({ payload: claude });
+  await h.listeners.get('provider-login-changed')({ payload: providerLogin('claude', 'idle', ++revision) });
+  await flush();
+  assert.equal(select.value, 'codex');
+  assert.equal(h.element('first-chat-open').hidden, true);
+  assert.equal(h.element('selected-folder').textContent, other.path);
+  assert.equal(h.calls.some(call => call.command === 'prepare_project' || call.command === 'start_agent_session'), false);
+  h.element('project-navigation').click(); await flush();
+  h.element('recent-project-list').querySelector('[data-project-id="project-a"]').click(); await flush();
+  assert.equal(select.value, 'claude-code');
+  assert.equal(h.element('first-chat-open').disabled, false);
+  assert.deepEqual(h.calls.filter(call => call.command === 'prepare_project').map(call => call.args.identifier), [newChatProject.id]);
+});
+
+test('a ready project keeps the direct New Chat route', async t => {
+  const h = await interfaceHarness();
+  t.after(() => h.dom.window.close());
+  await h.ready; h.element('choose-folder').click(); await flush();
+  assert.equal(h.element('first-chat-setup').hidden, true);
+  assert.equal(h.element('start-codex').disabled, false);
+  h.element('start-codex').click(); await flush();
+  assert.ok(h.calls.some(call => call.command === 'start_agent_session' && call.args.action === 'new-chat'));
+});
+
+test('project settings show the checked first-chat access plan during automatic setup', async t => {
+  const planned = { ...newChatProject, stage: 'ready', policy: project.policy };
+  const nextPlan = { data: { ...plan.data, egress: { default: 'deny', allow: [{ host: 'api.anthropic.com' }, { cidr: '192.0.2.0/24' }] } } };
+  const h = await interfaceHarness({
+    register_project: () => newChatProject,
+    prepare_environment: () => deferred().promise,
+    shared_chatgpt_status: () => signedOutChatgpt,
+    prepare_project: () => ({ project: planned, plan: nextPlan, fingerprint: 'plan-a', message: null }),
+  });
+  t.after(() => h.dom.window.close());
+  await h.ready; h.element('choose-first-chat').click(); await flush();
+  assert.equal(h.element('project-settings-dialog').hidden, true);
+  h.element('project-settings-button').click(); await flush();
+  assert.equal(h.element('project-access-summary').hidden, false);
+  assert.equal(h.element('project-access-agent').textContent, 'Claude Code');
+  assert.equal(h.element('project-access-folder').textContent, project.path);
+  assert.equal(h.element('project-access-network').textContent, 'api.anthropic.com, 192.0.2.0/24');
+  assert.equal(h.element('project-access-verification').textContent, 'Required');
+  assert.equal(h.element('project-resources').open, false);
+  assert.equal(h.element('sharing-plan').open, false);
+  assert.equal(h.element('prepare-environment').hidden, true);
+  h.element('sharing-plan').open = true;
+  assert.match(h.element('sharing-plan-values').textContent, /api\.anthropic\.com, 192\.0\.2\.0\/24/);
+  h.element('project-resources').open = true;
+  assert.equal(h.element('project-cpus').value, '4');
+  assert.equal(h.element('project-preference-fields').disabled, false);
+  assert.equal(h.calls.filter(call => call.command === 'prepare_environment').length, 1);
+});
+
+test('a first Codex chat waits for guest verification and the shared account connection', async t => {
+  const connection = deferred();
+  let current = newChatProject;
+  const prepared = () => ({ project: current, plan, fingerprint: 'plan-a', message: null });
+  const h = await interfaceHarness({
+    register_project: () => current,
+    prepare_project: () => { current = { ...current, stage: 'ready', policy: project.policy }; return prepared(); },
+    preview_project: prepared,
+    prepare_environment: () => {
+      current = { ...current, stage: 'environment-starting' };
+      h.setTerminal({ identifier: 70, projectId: current.id, environmentId: current.environmentId, purpose: 'environment', running: true });
+      return 70;
+    },
+    sync_project_chatgpt: () => connection.promise,
+  });
+  t.after(() => h.dom.window.close());
+  await h.ready; h.element('choose-first-chat').click(); await flush();
+  assert.equal(h.element('terminal-panel').hidden, true);
+  const select = h.element('first-chat-agent');
+  assert.equal(select.disabled, false);
+  select.value = 'claude-code'; select.dispatchEvent(new h.dom.window.Event('change'));
+  assert.equal(h.element('first-chat-open').textContent, 'Open Claude Code');
+  select.value = 'codex'; select.dispatchEvent(new h.dom.window.Event('change'));
+  assert.equal(h.element('first-chat-open').textContent, 'Open Codex');
+  h.element('first-chat-open').click(); await flush();
+  current = { ...current, stage: 'environment-ready' };
+  h.setTerminal({ ...h.terminals.get(70), running: false, exitCode: 0 });
+  await h.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: null } }); await flush();
+  assert.equal(h.calls.filter(call => call.command === 'sync_project_chatgpt').length, 1);
+  assert.equal(h.calls.some(call => call.command === 'start_agent_session'), false);
+  connection.resolve(sharedAccount); await flush();
+  assert.equal(h.calls.filter(call => call.command === 'prepare_environment').length, 1);
+  assert.deepEqual(h.calls.filter(call => call.command === 'start_agent_session').map(call => call.args.agentKind), ['codex']);
+  assert.equal(h.element('first-chat-setup').hidden, true);
+});
+
+test('returning from first-chat preparation keeps it running and failure offers retry in the project', async t => {
+  let current = newChatProject;
+  const prepared = () => ({ project: current, plan, fingerprint: 'plan-a', message: null });
+  const h = await interfaceHarness({
+    register_project: () => current,
+    shared_chatgpt_status: () => signedOutChatgpt,
+    prepare_project: () => { current = { ...current, stage: 'ready', policy: project.policy }; return prepared(); },
+    preview_project: prepared,
+    prepare_environment: () => {
+      current = { ...current, stage: 'environment-starting', approvedPlan: 'plan-a' };
+      h.setTerminal({ identifier: 70, projectId: current.id, environmentId: current.environmentId, purpose: 'environment', running: true });
+      return 70;
+    },
+  });
+  t.after(() => h.dom.window.close());
+  await h.ready; h.element('choose-first-chat').click(); await flush();
+  h.element('first-chat-open').click(); await flush();
+  h.element('sidebar-terminal-list').querySelector('[data-terminal-id="70"]').click(); await flush();
+  assert.equal(h.element('terminal-panel').hidden, false);
+  h.element('hide-terminal').click(); await flush();
+  assert.equal(h.element('terminal-panel').hidden, true);
+  assert.equal(h.terminals.get(70).running, true);
+  assert.match(h.element('first-chat-host').textContent, /Preparation continues/);
+  assert.equal(h.calls.some(call => call.command === 'terminal_close'), false);
+  current = { ...current, stage: 'ready', environmentAttempt: { terminalIdentifier: 70, completed: true, error: 'Version check failed.' } };
+  h.setTerminal({ ...h.terminals.get(70), running: false, exitCode: 2 });
+  await h.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: 'Version check failed.' } }); await flush();
+  assert.match(h.element('project-plan-status').textContent, /Version check failed/);
+  assert.equal(h.element('retry-project-plan').hidden, false);
+  assert.equal(h.element('first-chat-open').getAttribute('aria-busy'), 'false');
+  assert.equal(h.calls.some(call => call.command === 'start_agent_session'), false);
+  current = { ...current, stage: 'environment-ready', environmentAttempt: null };
+  await h.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 71, message: null } }); await flush();
+  assert.equal(h.calls.some(call => call.command === 'start_agent_session'), false);
+  assert.equal(h.calls.filter(call => call.command === 'prepare_environment').length, 1);
+});
+
 test('project folder loading uses the workspace status bar without shifting the library', async () => {
   const scan = deferred();
   const harness = await interfaceHarness({ rescan_projects: () => scan.promise });
@@ -132,7 +366,7 @@ test('settings progress uses the status bar only on the relevant settings page',
   harness.dom.window.close();
 });
 
-test('API cost information opens beside the total and stays open when usage updates', async () => {
+test('API-equivalent information opens beside the total and stays open when usage updates', async () => {
   const saved = deferred(), current = deferred(), planCheck = deferred();
   const chat = { id: 'cost-chat', title: 'Cost chat', updatedAt: 1000 };
   const harness = await interfaceHarness({ saved_project_dashboard: () => saved.promise, project_dashboard: () => current.promise, preview_project: () => planCheck.promise });
@@ -143,9 +377,12 @@ test('API cost information opens beside the total and stays open when usage upda
   assert.equal(details.hidden, false);
   assert.equal(details.open, false);
   const control = details.querySelector('summary');
-  assert.equal(control.getAttribute('aria-label'), 'About total API cost');
-  assert.equal(details.closest('dt').textContent.includes('Total API cost'), true);
-  assert.match(harness.element('usage-note').textContent, /Token API equivalent in USD.*Includes archived and deleted sessions.*OpenAI catalogue checked 2026-11-10.*Each request retains its dated rates.*Cache writes 0.*ChatGPT subscription billing is separate/s);
+  assert.equal(control.getAttribute('aria-label'), 'About the estimated API equivalent');
+  assert.equal(details.closest('dt').textContent.includes('Estimated API equivalent'), true);
+  assert.equal(harness.element('usage-billing-note').textContent, 'Subscription billing is separate.');
+  assert.equal(harness.element('usage-billing-note').closest('details, [hidden]'), null);
+  assert.equal(harness.element('session-table').tHead.rows[0].cells[5].textContent, 'Estimated API equivalent');
+  assert.match(harness.element('usage-note').textContent, /Estimated API equivalent in USD.*Includes archived and deleted sessions.*OpenAI catalogue checked 2026-11-10.*Each request retains its dated rates.*Cache writes 0.*ChatGPT subscription billing is separate/s);
   control.focus(); control.click();
   assert.equal(details.open, true);
   const updated = sessionDashboard([chat], { usage: { ...emptyUsage, unpricedRequests: 1 } });
@@ -164,7 +401,7 @@ test('API cost information opens beside the total and stays open when usage upda
   harness.dom.window.close();
 });
 
-test('switching projects closes the API cost information', async () => {
+test('switching projects closes the API-equivalent information', async () => {
   const second = { ...project, id: 'project-b', environmentId: 'b'.repeat(32), name: 'Second project' };
   const harness = await interfaceHarness({ recent_projects: () => [project, second], open_project: ({ identifier }) => identifier === project.id ? project : second });
   await harness.ready;
@@ -1270,32 +1507,75 @@ test('a saved project with an incomplete policy receipt resumes preparation', as
   harness.dom.window.close();
 });
 
-test('a new shared plan requires review regardless of the selected chat agent', async t => {
-  const checking = deferred();
+test('a saved project uses its connected Claude account and starts a previously unused plan', async t => {
+  const checking = deferred(), boot = deferred();
   const stopped = { ...project, stage: 'ready', approvedPlan: undefined };
   const harness = await interfaceHarness({
-    register_project: () => stopped,
+    recent_projects: () => [stopped], open_project: () => stopped,
+    shared_chatgpt_status: () => signedOutChatgpt,
     preview_project: () => checking.promise,
-    prepare_environment: () => { throw new Error('The test stops at the checked launch request.'); },
+    prepare_environment: () => boot.promise,
   });
   t.after(() => harness.dom.window.close());
-  await harness.ready; harness.element('choose-folder').click(); await flush();
-  chooseAgent(harness, 'claude-code'); await flush();
-  checking.resolve({ project: stopped, plan, fingerprint: 'new-plan' }); await flush();
+  await harness.ready; harness.element('recent-project-list').querySelector('.recent-project').click(); await flush();
   assert.equal(harness.element('agent-choice').value, 'claude-code');
-  assert.equal(harness.element('start-codex').disabled, true);
-  assert.match(harness.element('project-plan-status').textContent, /Review the sharing and execution plan/);
-  assert.equal(harness.element('retry-project-plan').hidden, true);
-  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  harness.element('project-settings-button').click(); await flush();
-  assert.match(harness.element('sharing-plan-values').textContent, /tugboat-project@sample-a/);
-  harness.element('prepare-environment').click(); await flush();
-  const start = harness.calls.find(call => call.command === 'prepare_environment');
-  assert.equal(start.args.environmentId, project.environmentId);
-  assert.equal(start.args.fingerprint, 'new-plan');
+  assert.equal(harness.element('start-codex').disabled, false);
+  harness.element('start-codex').click(); await flush();
+  assert.equal(harness.calls.some(call => call.command === 'prepare_environment'), false);
+  checking.resolve({ project: stopped, plan, fingerprint: 'new-plan' }); await flush();
+  assert.equal(harness.element('project-settings-dialog').hidden, true);
+  const starts = harness.calls.filter(call => call.command === 'prepare_environment');
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].args.environmentId, project.environmentId);
+  assert.equal(starts[0].args.fingerprint, 'new-plan');
+  assert.equal(harness.calls.some(call => call.command === 'start_agent_session'), false);
 });
 
-test('a retried plan with a new fingerprint still requires review', async t => {
+test('opening a stopped project restores a missing owned binding before starting the guest', async t => {
+  for (const owned of [true, false]) {
+    const stopped = { ...project, stage: 'ready', policy: { ...project.policy, owned } };
+    const h = await interfaceHarness({
+      register_project: () => stopped,
+      preview_project: () => Promise.reject({ code: 'missing-project-policy', message: 'The selected policy is missing from the Brig plan.' }),
+      prepare_project: () => ({ project: stopped, plan, fingerprint: 'restored-plan', message: null }),
+      prepare_environment: () => deferred().promise,
+    });
+    t.after(() => h.dom.window.close());
+    await h.ready; h.element('choose-folder').click(); await flush();
+    assert.equal(h.calls.filter(call => call.command === 'prepare_project').length, owned ? 1 : 0);
+    const boots = h.calls.filter(call => call.command === 'prepare_environment');
+    assert.deepEqual(boots.map(call => call.args.fingerprint), owned ? ['restored-plan'] : []);
+    if (!owned) assert.match(h.element('project-plan-status').textContent, /selected policy is missing/);
+  }
+});
+
+test('a pending New Chat is discarded when the project or agent changes', async t => {
+  for (const change of ['project', 'agent']) {
+    const checking = deferred();
+    const stopped = { ...project, stage: 'ready', approvedPlan: null };
+    const other = { ...project, id: 'project-b', environmentId: 'b'.repeat(32), path: '/fixture/second' };
+    const h = await interfaceHarness({
+      recent_projects: () => [stopped, other],
+      open_project: ({ identifier }) => identifier === stopped.id ? stopped : other,
+      preview_project: ({ identifier }) => identifier === stopped.id ? checking.promise : { project: other, plan, fingerprint: 'other-plan' },
+    });
+    t.after(() => h.dom.window.close());
+    await h.ready; h.element('recent-project-list').querySelector('[data-project-id="project-a"]').click(); await flush();
+    h.element('start-codex').click(); await flush();
+    assert.equal(h.element('start-codex').getAttribute('aria-busy'), 'true');
+    if (change === 'agent') chooseAgent(h, 'claude-code');
+    if (change === 'project') {
+      h.element('project-navigation').click(); await flush();
+      h.element('recent-project-list').querySelector('[data-project-id="project-b"]').click(); await flush();
+    }
+    checking.resolve({ project: { ...stopped, stage: 'environment-ready' }, plan, fingerprint: 'current-plan' }); await flush();
+    assert.equal(h.element('start-codex').getAttribute('aria-busy'), 'false');
+    assert.equal(h.calls.some(call => call.command === 'start_agent_session'), false);
+    assert.equal(h.element('start-codex').disabled, false);
+  }
+});
+
+test('retrying a failed plan check automatically starts the newly checked plan', async t => {
   const stopped = { ...project, stage: 'ready', approvedPlan: 'old-plan' };
   let attempts = 0;
   const harness = await interfaceHarness({
@@ -1304,15 +1584,15 @@ test('a retried plan with a new fingerprint still requires review', async t => {
       if (++attempts === 1) throw new Error('Plan check failed.');
       return { project: stopped, plan, fingerprint: 'new-plan' };
     },
+    prepare_environment: () => deferred().promise,
   });
   t.after(() => harness.dom.window.close());
   await harness.ready; harness.element('choose-folder').click(); await flush();
   assert.match(harness.element('project-plan-status').textContent, /Plan check failed/);
-  assert.equal(harness.element('retry-project-plan').hidden, false);
+  assert.equal(harness.calls.some(call => call.command === 'prepare_environment'), false);
   harness.element('retry-project-plan').click(); await flush();
-  assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 0);
-  assert.match(harness.element('project-plan-status').textContent, /Review the sharing and execution plan/);
-  assert.equal(harness.element('retry-project-plan').hidden, true);
+  assert.deepEqual(harness.calls.filter(call => call.command === 'prepare_environment').map(call => call.args.fingerprint), ['new-plan']);
+  assert.equal(harness.element('project-settings-dialog').hidden, true);
 });
 
 test('an approved project starts once while the next chat agent changes', async t => {
@@ -1365,9 +1645,10 @@ test('opening a stopped project shows its saved environment startup and reuses i
   assert.equal(start.args.layout.visible, false);
   assert.equal(harness.element('terminal-panel').hidden, false);
   assert.equal(harness.element('environment-boot-overlay').hidden, false);
-  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('project-settings-dialog').hidden, true);
   assert.equal(harness.element('project-setup').hidden, true);
-  assert.equal(harness.element('start-codex').disabled, true);
+  assert.equal(harness.element('start-codex').disabled, false);
+  assert.equal(harness.calls.some(call => call.command === 'start_agent_session'), false);
   assert.equal(harness.element('project-overview').hidden, false);
   assert.match(harness.element('project-plan-status').textContent, /Starting.*saved settings/);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, 0);
@@ -1447,26 +1728,30 @@ test('a failed automatic environment start offers a retry without repeating proj
   assert.match(harness.element('project-plan-status').textContent, /temporarily unavailable/);
   assert.equal(harness.element('terminal-panel').hidden, true);
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
-  assert.equal(harness.element('start-codex').disabled, true);
-  harness.element('retry-project-plan').click(); harness.element('retry-project-plan').click(); await flush();
+  assert.equal(harness.element('start-codex').disabled, false);
+  harness.element('start-codex').click(); harness.element('start-codex').click(); await flush();
   assert.equal(attempts, 2);
   assert.equal(harness.calls.filter(call => call.command === 'prepare_project').length, 0);
   assert.equal(harness.calls.filter(call => ['save_project_preferences', 'save_settings', 'terminal_close'].includes(call.command)).length, 0);
   assert.match(harness.element('project-plan-status').textContent, /Starting/);
   assert.equal(harness.element('retry-project-plan').hidden, true);
-  assert.equal(harness.element('terminal-panel').hidden, false);
-  assert.equal(harness.element('environment-boot-overlay').hidden, false);
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.calls.some(call => call.command === 'start_agent_session'), false);
+  current = { ...current, stage: 'environment-ready' };
+  harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 0 });
+  await harness.listeners.get('environment-preparation-finished')({ payload: { project: current, terminalIdentifier: 70, message: null } }); await flush();
+  assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 1);
   harness.dom.window.close();
 });
 
-test('a failed environment check retains its output, stops the overlay and leaves New Chat disabled', async () => {
+test('a failed environment check retains its output, stops the overlay and permits a new request', async () => {
   let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
     register_project: () => current, prepare_project: prepared, preview_project: prepared,
     prepare_environment: () => {
       current = { ...current, stage: 'environment-starting' };
-      harness.setTerminal({ identifier: 70, projectId: project.id, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
+      harness.setTerminal({ identifier: 70, projectId: project.id, environmentId: project.environmentId, purpose: 'environment', running: true, exitCode: null, conversationId: null, busy: false });
       return 70;
     },
   });
@@ -1477,10 +1762,13 @@ test('a failed environment check retains its output, stops the overlay and leave
   assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
   assert.equal(harness.element('retry-project-plan').hidden, false);
   assert.match(harness.element('project-plan-status').textContent, /Guest version check failed/);
-  assert.equal(harness.element('start-codex').disabled, true);
-  assert.equal(harness.element('project-settings-dialog').open, false);
+  await harness.listeners.get('terminal-exit')({ payload: { identifier: 70, projectId: current.id, environmentId: current.environmentId, purpose: 'environment', code: 2 } }); await flush();
+  assert.equal(harness.element('start-codex').disabled, false);
+  assert.equal(harness.calls.some(call => call.command === 'start_agent_session'), false);
+  assert.equal(harness.element('project-settings-dialog').hidden, true);
   assert.equal(harness.element('project-setup').hidden, true);
-  assert.equal(harness.element('terminal-panel').hidden, false);
+  assert.equal(harness.element('terminal-panel').hidden, true);
+  assert.equal(harness.element('project-preparation-output').hidden, false);
   assert.equal(harness.element('environment-boot-overlay').hidden, true);
   harness.dom.window.close();
 });
@@ -1501,7 +1789,7 @@ test('automatic environment startup preserves a project settings dialog opened d
   harness.element('project-settings-button').click(); await flush();
   harness.element('project-name').focus();
   finishStart(); await flush();
-  assert.equal(harness.element('project-settings-dialog').open, true);
+  assert.equal(harness.element('project-settings-dialog').hidden, false);
   assert.equal(harness.dom.window.document.activeElement, harness.element('project-name'));
   assert.equal(harness.element('project-cpus').value, '2');
   assert.equal(harness.element('terminal-panel').hidden, false);
@@ -1536,7 +1824,7 @@ test('automatic environment startup keeps a running local terminal and returns t
   harness.dom.window.close();
 });
 
-test('a stopped environment after completion never enables New Chat from a stale success event', async () => {
+test('a stopped environment after completion discards a pending chat after a stale success event', async () => {
   let current = { ...project, stage: 'ready', approvedPlan: 'saved-plan' };
   const prepared = () => ({ project: current, plan, fingerprint: 'saved-plan', message: null, candidates: [] });
   const harness = await interfaceHarness({
@@ -1548,10 +1836,12 @@ test('a stopped environment after completion never enables New Chat from a stale
     },
   });
   await harness.ready; harness.element('choose-folder').click(); await flush();
+  harness.element('start-codex').click(); await flush();
   current = { ...current, stage: 'ready' };
   harness.setTerminal({ ...harness.terminals.get(70), running: false, exitCode: 0 });
   await harness.listeners.get('environment-preparation-finished')({ payload: { project: { ...current, stage: 'environment-ready' }, terminalIdentifier: 70, message: null } }); await flush();
-  assert.equal(harness.element('start-codex').disabled, true);
+  assert.equal(harness.element('start-codex').getAttribute('aria-busy'), 'false');
+  assert.equal(harness.calls.some(call => call.command === 'start_agent_session'), false);
   assert.match(harness.element('project-plan-status').textContent, /environment is not running/);
   assert.equal(harness.element('retry-project-plan').textContent, 'Retry environment');
   assert.equal(harness.calls.filter(call => call.command === 'prepare_environment').length, 1);
@@ -1611,7 +1901,7 @@ test('project settings use a modal, save scoped values and hide a native termina
   await harness.ready; harness.element('choose-folder').click(); await flush();
   harness.element('start-codex').click(); await flush();
   harness.element('project-settings-button').click(); await flush();
-  assert.equal(harness.element('project-settings-dialog').open, true);
+  assert.equal(harness.element('project-settings-dialog').hidden, false);
   assert.equal(harness.calls.filter(call => call.command === 'terminal_layout').at(-1).args.layout.visible, false);
   harness.element('close-project-settings').click(); await flush();
   assert.equal(harness.calls.filter(call => call.command === 'terminal_layout').at(-1).args.layout.visible, true);
@@ -1648,7 +1938,7 @@ test('usage notifications update cumulative totals and prompt details retain unp
   const tables = [...details.querySelectorAll('table')];
   assert.deepEqual(tables.map(table => harness.element(table.getAttribute('aria-labelledby')).textContent), ['Prompt 1 · complete', 'Prompt 3 · interrupted']);
   const [first, last] = tables;
-  assert.deepEqual([...first.tHead.querySelectorAll('th[scope="col"]')].map(th => th.textContent), ['Model', 'Input', 'Cached input', 'Cache writes', 'Output', 'API cost']);
+  assert.deepEqual([...first.tHead.querySelectorAll('th[scope="col"]')].map(th => th.textContent), ['Model', 'Input', 'Cached input', 'Cache writes', 'Output', 'Estimated API equivalent']);
   const [unknown, known] = first.tBodies[0].rows;
   assert.equal(unknown.querySelector('th[scope="row"]').textContent, 'Unknown model');
   assert.equal(unknown.cells[2].textContent, '0 (0%)');
@@ -1966,7 +2256,7 @@ test('a new project connects the shared account without another login', async ()
   assert.equal(harness.element('project-account-feedback').hidden, true);
   assert.equal(harness.calls.filter(call => call.command === 'start_agent_session').length, 0);
   harness.element('settings-navigation').click(); await flush();
-  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('project-settings-dialog').hidden, true);
   assert.equal(harness.element('settings-view').hidden, false);
   assert.equal(harness.element('shared-chatgpt-email').textContent, sharedAccount.email);
   assert.equal(harness.element('shared-chatgpt-heading').textContent, 'ChatGPT');
@@ -1987,7 +2277,7 @@ test('provider details and account controls belong only to application settings'
   assert.doesNotMatch(projectSettings.textContent, /ChatGPT|Sign out|Sign in with/i);
   assert.equal(harness.element('guest-terminal-status').textContent, '');
   harness.element('settings-navigation').click(); await flush();
-  assert.equal(harness.element('project-settings-dialog').open, false);
+  assert.equal(harness.element('project-settings-dialog').hidden, true);
   assert.equal(harness.element('settings-view').contains(harness.element('shared-chatgpt-section')), true);
   assert.equal(harness.element('shared-chatgpt-heading').textContent, 'ChatGPT');
   assert.equal(harness.element('shared-chatgpt-sign-in').hidden, false);
@@ -1999,6 +2289,7 @@ test('the project account warning opens the provider section in application sett
   const account = { ...sharedAccount, state: 'signed-out', email: null };
   const harness = await interfaceHarness({ shared_chatgpt_status: () => account, sync_project_chatgpt: () => account });
   await harness.ready; harness.element('choose-folder').click(); await flush();
+  chooseAgent(harness, 'codex'); await flush();
   assert.equal(harness.element('project-account-feedback').hidden, false);
   harness.element('project-provider-settings').click(); await flush();
   assert.equal(harness.element('settings-view').hidden, false);
@@ -2388,8 +2679,8 @@ test('every recorded prompt remains visible when request measurements are missin
   await open();
   const sections = harness.element('session-usage-details').querySelectorAll('section[data-agent-turn]');
   assert.equal(sections.length, 2);
-  assert.match(sections[0].textContent, /Prompt 1 · interrupted.*No request usage.*API cost are unknown/s);
-  assert.doesNotMatch(sections[0].textContent, /\$0|Total API cost/);
+  assert.match(sections[0].textContent, /Prompt 1 · interrupted.*No request usage.*the estimated API equivalent are unknown/s);
+  assert.doesNotMatch(sections[0].textContent, /\$0|Total estimated API equivalent/);
   assert.match(sections[1].textContent, /Prompt 2 · complete/);
   assert.match(sections[1].textContent, /\$0\.000300/);
   harness.element('close-session-usage').click(); turns = turns.slice(0, 1);
@@ -2713,7 +3004,7 @@ test('unmeasured work, an exact zero request and an empty history have different
     if (name === 'genuine-unmeasured-own-turn') {
       assert.deepEqual([...harness.element('project-usage').querySelectorAll('dd')].map(value => value.textContent), ['Unknown', 'Unknown', 'Unknown', 'Unknown', 'Unknown']);
       assert.doesNotMatch(harness.element('session-table-body').textContent, /\$0/);
-      assert.match(report.textContent, /Token counts and API cost are unknown/);
+      assert.match(report.textContent, /Token counts and the estimated API equivalent are unknown/);
       assert.equal(report.querySelectorAll('.request-usage').length, 0);
     }
     if (name === 'valid-zero-token-exact-request') {
@@ -2800,7 +3091,7 @@ test('a running unlinked child stays reachable as a process without a child resu
   const process = harness.element('sidebar-session-list').querySelector('button');
   assert.equal(harness.element('sidebar-session-list').children.length, 1);
   assert.equal(process.dataset.sessionId, fixtureConversationKey('terminal-78'));
-  assert.match(process.textContent, /Codex process 78/);
+  assert.equal(process.textContent, 'Codex process');
   assert.ok(process.querySelector('.session-activity'));
   assert.equal(harness.element('session-table-body').rows.length, 0);
   assert.equal(harness.element('unlinked-subagent-body').rows.length, 1);
@@ -3142,7 +3433,7 @@ test('System Checks names the effective bundled CLI source without a Homebrew in
   h.dom.window.close();
 });
 
-test('only the top dialog is accessible and closing it returns focus to the current trigger', async t => {
+test('Project settings keeps keyboard focus inside and nested dialogs restore focus to their triggers', async t => {
   const conversation = { id: 'chat-a', title: 'QA chat', updatedAt: 1000 };
   const h = await interfaceHarness({
     preview_removal: () => ({ reference: 'tugboat-project@sample-a', workspace: '/fixture/guest-home', description: 'Test session', fingerprint: 'remove-a', external: false, hasEnvironment: true }),
@@ -3151,37 +3442,59 @@ test('only the top dialog is accessible and closing it returns focus to the curr
   });
   t.after(() => h.dom.window.close());
   const doc = h.dom.window.document;
-  function checkModal(id) {
-    for (const dialog of doc.querySelectorAll('dialog')) {
-      const active = dialog.id === id;
-      assert.equal(dialog.getAttribute('aria-modal'), active ? 'true' : null, dialog.id);
-      assert.equal(dialog.getAttribute('aria-hidden'), active ? null : 'true', dialog.id);
-      assert.equal(dialog.inert, !active, dialog.id);
+  const settings = h.element('project-settings-dialog');
+  function key(key, shiftKey = false) {
+    return doc.activeElement.dispatchEvent(new h.dom.window.KeyboardEvent('keydown', { key, shiftKey, bubbles: true, cancelable: true }));
+  }
+  function checkOpenDialogs(...ids) {
+    assert.deepEqual([...doc.querySelectorAll('[data-inline-modal]:not([hidden]), dialog[open]')].map(dialog => dialog.id), ids);
+    for (const id of ['project-view', 'sidebar', 'workspace-status-bar']) {
+      assert.equal(h.element(id).hasAttribute('inert'), ids.includes(settings.id), id);
+    }
+    for (const id of ids) {
+      const dialog = h.element(id);
+      assert.ok(dialog.querySelector('#' + dialog.getAttribute('aria-labelledby')).textContent);
+      assert.equal(dialog.getAttribute('aria-hidden'), null);
+      assert.equal(dialog.hasAttribute('inert'), dialog === settings && ids.at(-1) !== id);
     }
   }
   await h.ready;
   h.element('choose-folder').click(); await flush();
-  checkModal(null);
+  checkOpenDialogs();
   h.element('project-settings-button').click(); await flush();
-  checkModal('project-settings-dialog');
+  checkOpenDialogs('project-settings-dialog');
+  assert.equal(settings.getAttribute('role'), 'dialog');
+  assert.equal(settings.tagName, 'SECTION');
+  assert.equal(settings.closest('main')?.tagName, 'MAIN');
+  assert.equal(h.element('project-settings-heading').textContent, 'Project settings');
+  assert.equal(doc.activeElement, h.element('close-project-settings'));
+  assert.equal(key('Tab', true), false);
+  assert.ok(settings.contains(doc.activeElement));
+  assert.notEqual(doc.activeElement, h.element('close-project-settings'));
+  assert.equal(key('Tab'), false);
+  assert.equal(doc.activeElement, h.element('close-project-settings'));
+  h.element('project-navigation').focus();
+  assert.equal(doc.activeElement, h.element('close-project-settings'));
   const preview = h.element('preview-removal');
   preview.closest('details').open = true;
   preview.click(); await flush();
-  checkModal('removal-dialog');
+  checkOpenDialogs('project-settings-dialog', 'removal-dialog');
   assert.equal(doc.activeElement, h.element('removal-confirmation'));
   h.element('removal-dialog').close();
-  checkModal('project-settings-dialog');
+  checkOpenDialogs('project-settings-dialog');
   assert.equal(doc.activeElement, preview);
-  h.element('close-project-settings').click();
+  assert.equal(key('Escape'), false);
+  checkOpenDialogs();
+  assert.equal(doc.activeElement, h.element('project-settings-button'));
   const usageButton = () => h.element('session-table-body').querySelector('[aria-label="Usage for QA chat, Codex"]');
   const original = usageButton();
   original.click(); await flush();
-  checkModal('session-usage-dialog');
+  checkOpenDialogs('session-usage-dialog');
   assert.equal(doc.activeElement, h.element('close-session-usage'));
   await publishUsage(h, [conversation]);
   assert.notEqual(usageButton(), original);
   h.element('close-session-usage').click();
-  checkModal(null);
+  checkOpenDialogs();
   assert.equal(doc.activeElement, usageButton());
 });
 
@@ -3254,7 +3567,8 @@ test('the next chat agent does not change the shared reference or home in projec
   harness.element('project-settings-button').click(); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
   assert.equal(harness.element('project-reference').textContent, reference);
-  assert.equal(harness.element('managed-environment').textContent, 'Shared Brig environment · ' + reference);
+  assert.equal(harness.element('managed-environment').textContent, reference);
+  assert.equal(harness.element('project-access-agent').textContent, 'Claude Code');
   assert.match(harness.element('sharing-plan-values').textContent, /\/fixture\/guest-home/);
   assert.equal(harness.calls.filter(call => ['prepare_project', 'preview_project', 'prepare_environment'].includes(call.command)).length, work);
 });
@@ -3307,11 +3621,12 @@ test('a pending chat launch does not reuse the previous agent logo', async () =>
   harness.element('hide-terminal').click(); await flush();
   chooseAgent(harness, 'claude-code'); await flush();
   harness.element('start-codex').click(); await flush();
-  assert.equal(harness.element('terminal-status').textContent, 'Opening New Chat…');
+  assert.equal(harness.element('terminal-status').textContent, 'Starting Claude Code…');
   assert.equal(harness.element('terminal-status').querySelector('.agent-logo'), null);
   assert.equal(harness.element('terminal-status').getAttribute('aria-label'), null);
   pending.resolve(); await flush();
   assert.equal(harness.element('terminal-status').querySelector('.agent-logo').dataset.agentKind, 'claude-code');
+  assert.equal(harness.element('terminal-status').getAttribute('aria-label'), 'Claude Code');
   for (const terminal of harness.terminals.values()) terminal.running = false;
   harness.handlers.terminal_start = () => {
     harness.setTerminal({ identifier: 80, projectId: project.id, purpose: 'local', running: true, exitCode: null });
@@ -3323,6 +3638,38 @@ test('a pending chat launch does not reuse the previous agent logo', async () =>
   assert.equal(harness.element('terminal-status').querySelector('.agent-logo'), null);
   assert.equal(harness.element('terminal-status').getAttribute('aria-label'), null);
   harness.dom.window.close();
+});
+
+test('temporary chat titles count only visible chats and keep focus when a saved title arrives', async t => {
+  let nextTerminal = 2;
+  const h = await interfaceHarness({
+    start_agent_session: ({ identifier, environmentId, agentKind }) => {
+      const terminal = nextTerminal++;
+      h.setTerminal({ identifier: terminal, projectId: identifier, environmentId, agentKind, purpose: 'claude', conversationId: null, running: true });
+      return terminal;
+    },
+  });
+  t.after(() => h.dom.window.close());
+  h.setTerminal({ identifier: 1, projectId: project.id, environmentId: project.environmentId, purpose: 'environment', running: false, exitCode: 0 });
+  await h.ready; h.element('choose-folder').click(); await flush();
+  chooseAgent(h, 'claude-code'); await flush();
+  const list = h.element('sidebar-session-list');
+  const title = identifier => list.querySelector('[data-terminal-id="' + identifier + '"]');
+  h.element('start-codex').click(); await flush();
+  assert.equal(title(2).textContent, 'New Claude Code chat');
+  assert.equal(list.children.length, 1);
+  h.element('hide-terminal').click(); await flush();
+  h.element('start-codex').click(); await flush();
+  assert.equal(title(3).textContent, 'New Claude Code chat 2');
+  title(2).focus();
+  const chat = conversationFixture({ id: 'recorded-a', agentKind: 'claude-code', title: 'Read the test command', updatedAt: 20 });
+  await publishUsage(h, [chat]);
+  h.setTerminal({ ...h.terminals.get(2), conversationId: chat.id });
+  await h.listeners.get('terminal-sessions-changed')({ payload: project.id }); await flush();
+  assert.equal(title(2).textContent, chat.title);
+  assert.equal(h.dom.window.document.activeElement, title(2));
+  assert.equal(title(3).textContent, 'New Claude Code chat');
+  assert.equal(list.children.length, 2);
 });
 
 test('shared Claude sign-in and two chats keep the Codex terminal and environment selection', async () => {
@@ -3535,7 +3882,7 @@ test('Claude missing usage shows known subtotals plus unknown and keeps details 
   assert.doesNotMatch(harness.element('project-usage').textContent, /%/);
   assert.equal(harness.element('project-usage').querySelectorAll('dd')[4].textContent, '$0.0557 + unknown');
   row.querySelector('[aria-label="Usage for Partial Claude chat, Claude Code"]').click(); await flush();
-  assert.match(harness.element('session-usage-details').textContent, /Agent turn 6.*No request usage was recorded.*Token counts and API cost are unknown/s);
+  assert.match(harness.element('session-usage-details').textContent, /Agent turn 6.*No request usage was recorded.*Token counts and the estimated API equivalent are unknown/s);
   assert.match(harness.element('session-usage-status').textContent, /1 agent turn\(s\) have unknown token counts/);
   harness.element('close-session-usage').click(); await flush();
   const unknown = { ...emptyUsage, unmeasuredTurns: 1 };

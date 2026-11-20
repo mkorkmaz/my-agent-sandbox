@@ -5,6 +5,7 @@ import { createStore } from 'zustand/vanilla';
 
 type InspectionPhase = 'idle' | 'checking' | 'cancelling';
 type BrigStatus = 'missing' | 'incompatible' | 'installed' | 'error' | 'cancelled' | 'timed-out' | 'invalid-response';
+export type HostReadiness = 'checking' | 'ready' | 'needs-attention';
 
 interface HostStatus {
   architecture: string;
@@ -17,7 +18,7 @@ interface HostStatus {
   message: string | null;
 }
 
-export async function initializeHost(): Promise<void> {
+export async function initializeHost(changed: (readiness: HostReadiness) => void): Promise<void> {
   const check = document.getElementById('check-host') as HTMLButtonElement;
   const cancel = document.getElementById('cancel-host') as HTMLButtonElement;
   const status = document.getElementById('host-status') as HTMLElement;
@@ -29,6 +30,7 @@ export async function initializeHost(): Promise<void> {
   async function inspect(): Promise<void> {
     if (inspectionPhase !== 'idle') return;
     inspectionPhase = 'checking';
+    changed('checking');
     check.disabled = true;
     setBusy(check, true);
     cancel.hidden = false;
@@ -36,6 +38,7 @@ export async function initializeHost(): Promise<void> {
     status.textContent = 'Checking this Mac…';
     status.hidden = true;
     setWorkspaceStatus('host-check', status.textContent, 'settings-panel-system-checks');
+    let readiness: HostReadiness = 'needs-attention';
     try {
       const cliPath = path.value.trim() || null;
       const checked = await invoke<HostStatus>('inspect_host', { cliPath });
@@ -46,6 +49,7 @@ export async function initializeHost(): Promise<void> {
       if (!interrupted) data.setState({ previous: { cliPath, result: checked } });
       data.setState({ visible: retained ?? checked });
       const result = data.getState().visible!;
+      if (result.brigStatus === 'installed') readiness = 'ready';
       const sources = { bundled: 'Bundled Brig', development: 'Development Brig', custom: 'Custom Brig' };
       const description = [labels[result.brigStatus], sources[result.brigSource], result.version?.data.version, 'macOS ' + result.osVersion, result.architecture].filter(Boolean).join(' · ');
       status.textContent = retained ? labels[checked.brigStatus] + '. Showing the previous completed check: ' + description : description;
@@ -76,6 +80,7 @@ export async function initializeHost(): Promise<void> {
       setWorkspaceStatus('host-check', null, 'settings-panel-system-checks');
       check.disabled = false;
       cancel.hidden = true;
+      changed(readiness);
     }
   }
   check.addEventListener('click', () => { void inspect(); });

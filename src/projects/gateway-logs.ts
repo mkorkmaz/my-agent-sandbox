@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { sameProjectView, type ProjectContext } from './projects';
 import { RequestState } from '../ui/request-state';
+import { dialogOpen } from '../ui/dialogs';
 import { setBusy } from '../ui/loading';
 
 const messages = {
@@ -15,7 +16,7 @@ const messages = {
 type GatewayLogs = { status: 'available'; text: string } | { status: keyof typeof messages };
 
 export function initializeGatewayLogs(current: () => (ProjectContext & { reference: string }) | null): () => void {
-  const dialog = document.getElementById('project-settings-dialog') as HTMLDialogElement;
+  const dialog = document.getElementById('project-settings-dialog')!;
   const read = document.getElementById('read-project-gateway-logs') as HTMLButtonElement;
   const copy = document.getElementById('copy-project-gateway-logs') as HTMLButtonElement;
   const view = document.getElementById('project-gateway-log')!;
@@ -33,9 +34,9 @@ export function initializeGatewayLogs(current: () => (ProjectContext & { referen
 
   read.addEventListener('click', async () => {
     const context = current();
-    if (!context || !dialog.open || read.disabled) return;
+    if (!context || !dialogOpen(dialog) || read.disabled) return;
     const request = requests.begin();
-    const active = () => dialog.open && requests.accepts(request)
+    const active = () => dialogOpen(dialog) && requests.accepts(request)
       && sameProjectView(current(), context) && current()?.reference === context.reference;
     clearLog();
     read.disabled = true;

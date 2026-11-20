@@ -86,43 +86,20 @@ pub(in crate::projects) fn verify_sandbox(
     sandbox: &str,
     home: &std::path::Path,
 ) -> Result<Option<bool>, String> {
-    const UNAVAILABLE: &str =
-        "Could not verify the project's Brig guest. Check the environment and retry.";
     const WRONG_TARGET: &str =
         "The Brig guest does not match the selected project. Review the session before continuing.";
-    let inventory = brig
-        .json(&["--json".into(), "ls".into()], "SandboxList", None)
-        .map_err(|_| UNAVAILABLE)?;
-    let runtime = &inventory["data"]["runtime"];
-    if runtime["kind"] != "hull" || runtime["available"] != true {
-        return Err(UNAVAILABLE.into());
-    }
-    let inventory = inventory["data"]["sandboxes"]
-        .as_array()
-        .ok_or(UNAVAILABLE)?;
-    let reference = project.reference();
-    let mut targets = inventory
-        .iter()
-        .filter(|row| row["ref"] == reference || row["sandbox"] == sandbox);
-    let Some(target) = targets.next() else {
+    let inventory =
+        crate::projects::operations::inventory::SandboxInventory::read(brig).map_err(|_| {
+            "Could not verify the project's Brig guest. Check the environment and retry."
+        })?;
+    let Some(running) = inventory.running(project, sandbox, home)? else {
         return Ok(None);
     };
-    if targets.next().is_some()
-        || target["ref"] != reference
-        || target["sandbox"] != sandbox
-        || target["workspace"].as_str() != home.to_str()
-    {
-        return Err(WRONG_TARGET.into());
-    }
     let info = super::super::operations::verify_target(brig, project).map_err(|_| WRONG_TARGET)?;
     if info["data"]["workspace"].as_str() != home.to_str() {
         return Err(WRONG_TARGET.into());
     }
-    match target["state"].as_str() {
-        Some("running") => Ok(Some(true)),
-        Some("stopped") => Ok(Some(false)),
-        _ => Err(UNAVAILABLE.into()),
-    }
+    Ok(Some(running))
 }
 
 pub(super) fn publish(brig: &Brig, project: &Project, mapping: Mapping) -> Result<(), String> {

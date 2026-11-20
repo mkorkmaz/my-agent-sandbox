@@ -95,6 +95,25 @@
     <section id="projects" aria-labelledby="projects-heading">
       <h2 id="projects-heading">Projects and environments</h2>
 
+      <article id="adr-024">
+        <h3>ADR-024 · Stop registered project environments before the app exits</h3>
+        <p>Closing the main window, quitting from the app or Dock, and restarting use the same shutdown path. AppKit waits for the outcome before closing the application. A Brig guest can continue running after its terminal exits. Tugboat therefore stops its registered project guests after it saves final usage. It verifies each target against the project folder, Brig reference, sandbox name, and persistent guest home.</p>
+        <p>Only the shutdown worker can issue host commands during this step. A failed stop keeps the app open. A retry checks the live inventory and completes outstanding stops. Saved files and chats remain available when the project reopens.</p>
+        <p class="source"><a href="../src-tauri/src/desktop/lifecycle/mod.rs">Desktop shutdown</a> · <a href="../src-tauri/src/projects/operations/shutdown.rs">Project environment shutdown</a></p>
+      </article>
+
+      <article id="adr-023">
+        <h3>ADR-023 · Prepare the guest automatically for a connected provider</h3>
+        <dl>
+          <dt>Decision</dt>
+          <dd>The user connects the provider account. Tugboat checks the project policy, starts or reuses the shared guest, and verifies both agents automatically.</dd>
+          <dt>Reason</dt>
+          <dd>New Chat specifies the project and the agent. The saved project settings provide the inputs for guest setup.</dd>
+          <dt>Consequence</dt>
+          <dd>A chat requested during startup opens once verification and account setup succeed. A failed check displays its error. Project settings provides access to the checked plan and diagnostic output.</dd>
+        </dl>
+      </article>
+
       <article id="adr-022">
         <h3>ADR-022 · Give each project one shared Brig environment</h3>
         <p>This decision replaces the per-agent environment model in <a href="#adr-004">ADR-004</a> and the historical import in <a href="#adr-015">ADR-015</a>.</p>
@@ -285,7 +304,7 @@
           <dt>Recorded reason</dt>
           <dd>A workflow can fail, finish late, or receive a second request while work is still pending. Its current state determines which transition can succeed.</dd>
           <dt>Consequence</dt>
-          <dd>Shutdown requests confirmation when a process is running. After approval, the app drains processes, waits for account writes, records final usage, and closes storage before exit or restart. A failed final scan or database close interrupts shutdown. Implementations must handle the partial effects, including a process that already exited.</dd>
+          <dd>Shutdown requests confirmation when a process is running. After approval, the app drains processes, waits for account writes, records final usage, stops its registered project environments under <a href="#adr-024">ADR-024</a>, and closes storage before exit or restart. A failed final scan or database close interrupts shutdown. Implementations must handle the partial effects, including a process that already exited.</dd>
         </dl>
         <p class="source">Source files · <a href="../AGENTS.md">Repository workflow rules</a> · <a href="../src/dashboard/dashboard-state.ts">Dashboard updates</a> · <a href="../src/ui/request-state.ts">Request revisions</a> · <a href="../src-tauri/src/environment/gate.rs">Environment operation ownership</a> · <a href="../src-tauri/src/desktop/lifecycle/mod.rs">Shutdown ordering</a> · <a href="../src-tauri/src/desktop/lifecycle/state.rs">Exit permission</a></p>
       </article>

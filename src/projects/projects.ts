@@ -74,10 +74,12 @@ function preserveListFocus(list: HTMLElement, key: 'sessionId' | 'terminalId' | 
   const active = document.activeElement;
   const index = buttons.findIndex(button => button === active);
   const identity = index < 0 ? null : buttons[index].dataset[key];
+  const terminal = key === 'sessionId' && index >= 0 ? buttons[index].dataset.terminalId : undefined;
   return () => {
     if (index < 0 || (document.activeElement !== document.body && document.activeElement !== active && !list.contains(document.activeElement))) return;
     const candidates = [...list.querySelectorAll<HTMLButtonElement>('button')];
     const replacement = candidates.find(button => button.dataset[key] === identity && !button.disabled)
+      ?? (terminal === undefined ? undefined : candidates.find(button => button.dataset.terminalId === terminal && !button.disabled))
       ?? candidates.slice(index).find(button => !button.disabled)
       ?? candidates.slice(0, index).reverse().find(button => !button.disabled)
       ?? document.getElementById(key === 'projectId' ? 'choose-folder' : 'refresh-sessions');
@@ -232,6 +234,7 @@ export function renderConversations(conversations: Conversation[], selectedId: s
     }
     if (conversationKey(conversation) === selectedId) button.setAttribute('aria-current', 'true');
     button.dataset.sessionId = conversationKey(conversation);
+    if (conversation.terminalId !== undefined) button.dataset.terminalId = String(conversation.terminalId);
     const title = document.createElement('span');
     title.className = 'sidebar-session-title';
     title.textContent = conversation.title;

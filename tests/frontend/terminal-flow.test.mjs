@@ -478,7 +478,7 @@ test('local and guest actions explain a conflicting process without entering the
     harness.element('project-settings-button').click(); await flush();
     const focusCalls = harness.calls.filter(call => call.command === 'terminal_focus').length;
     harness.element(button).focus(); harness.element(button).click(); await flush();
-    assert.equal(harness.element('project-settings-dialog').open, true);
+    assert.equal(harness.element('project-settings-dialog').hidden, false);
     assert.match(harness.element(status).textContent, /End the running chat before opening/);
     assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').length, focusCalls);
     assert.equal(harness.calls.filter(call => call.command === 'terminal_start').length, 0);
@@ -509,7 +509,7 @@ for (const action of ['new-chat', 'resume']) {
 
     const chat = action === 'resume' ? 'chat “Saved Claude chat”' : 'chat';
     assert.equal(harness.element('guest-terminal-status').textContent, `End the running ${chat} before opening Guest terminal.`);
-    assert.equal(harness.element('project-settings-dialog').open, true);
+    assert.equal(harness.element('project-settings-dialog').hidden, false);
     assert.equal(harness.dom.window.document.activeElement, guestShell);
     assert.deepEqual(harness.calls.filter(call => call.command === 'start_agent_session').map(call => call.args.action), [action]);
 
@@ -518,7 +518,7 @@ for (const action of ['new-chat', 'resume']) {
     harness.element('close-terminal').click(); await flush();
     harness.element('project-settings-button').click(); await flush();
     guestShell.click(); await flush();
-    assert.equal(harness.element('project-settings-dialog').open, false);
+    assert.equal(harness.element('project-settings-dialog').hidden, true);
     assert.deepEqual(harness.calls.filter(call => call.command === 'start_agent_session').map(call => call.args.action), [action, 'shell']);
   });
 }
@@ -531,7 +531,7 @@ test('matching local and guest actions restore their own terminal only', async (
     await harness.listeners.get('terminal-sessions-changed')({ payload: project.id });
     harness.element('project-settings-button').click(); await flush();
     harness.element(button).click(); await flush();
-    assert.equal(harness.element('project-settings-dialog').open, false);
+    assert.equal(harness.element('project-settings-dialog').hidden, true);
     assert.equal(harness.calls.filter(call => call.command === 'terminal_focus').at(-1).args.identifier, 70);
     assert.equal(harness.calls.filter(call => ['terminal_start', 'start_agent_session'].includes(call.command)).length, 0);
     harness.dom.window.close();

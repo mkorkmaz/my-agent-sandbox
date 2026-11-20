@@ -28,6 +28,11 @@ export function renderPlan(plan: Plan): void {
   const container = document.getElementById('sharing-plan')!;
   const list = document.getElementById('sharing-plan-values')!;
   const data = plan.data;
+  const destinations = data.egress.allow?.map(rule => rule.host ?? rule.cidr).filter(Boolean).join(', ') || 'None';
+  document.getElementById('project-access-folder')!.textContent = data.project.host;
+  document.getElementById('managed-environment')!.textContent = data.profile + '@' + data.session;
+  document.getElementById('project-access-network')!.textContent = data.posture === 'offline' ? 'Offline for guest commands' : destinations;
+  document.getElementById('project-access-verification')!.textContent = data.verify.mode === 'require' ? 'Required' : data.verify.mode;
   const values: [string, string][] = [
     ['Brig profile and session', data.profile + '@' + data.session],
     ['Runtime', data.runtime.kind + ' / ' + data.runtime.backend], ['Isolation', data.isolation],
@@ -36,7 +41,7 @@ export function renderPlan(plan: Plan): void {
     ['Guest network', data.posture === 'offline' ? 'Offline for guest commands' : 'Guest command traffic allowed by Brig policy'],
     ['Image', data.image.ref], ['Signature verification', data.verify.mode],
     ['Policies', data.policies.join(', ')],
-    ['Allowed guest destinations', data.egress.allow?.map(rule => rule.host ?? rule.cidr ?? '').join(', ') || 'None'],
+    ['Allowed guest destinations', destinations],
     ['Hosted agent tools', 'Separate from the guest network policy'],
     ['Agent web search', 'Mode not read or managed by Tugboat'],
     ['Host credentials', data.credentials.map(credential => credential.name + ' (' + credential.state + ')').join(', ') || 'None'],
