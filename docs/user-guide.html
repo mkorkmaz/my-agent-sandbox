@@ -22,7 +22,7 @@
   </header>
   <main id="main">
     <h1>Tugboat user guide</h1>
-    <p class="lead">Run a coding agent on a local project, review what it changed, and return to the same chat later. This guide describes Tugboat 0.4.0 for macOS.</p>
+    <p class="lead">Run a coding agent on a local project, review what it changed, and return to the same chat later.</p>
     <p>Open <strong>Tugboat → About Tugboat</strong> to see the app version and <strong>HGM | reformo</strong> company details, including both website addresses.</p>
     <p>Select <strong>Help</strong> above <strong>Settings</strong> at the bottom of the sidebar to read this guide inside Tugboat. The guide is available offline. Select a topic in the contents to jump to that section.</p>
     <nav class="contents" aria-label="On this page">
@@ -32,6 +32,7 @@
         <li><a href="#projects">Choose a project and environment</a></li>
         <li><a href="#sessions">Work with chats and terminals</a></li>
         <li><a href="#settings">Set resources and network access</a></li>
+        <li><a href="#app-update">Update Tugboat</a></li>
         <li><a href="#image-update">Update the guest image</a></li>
         <li><a href="#review">Review changes and run tests</a></li>
         <li><a href="#usage">Read usage and cost</a></li>
@@ -189,6 +190,21 @@
       <h2>Open an existing project after the shared environment update</h2>
       <p>Tugboat keeps your project registration, working folder, and provider accounts. It removes the former Tugboat-owned environment and its saved chat history and usage. The shared environment starts with empty history.</p>
       <p>Stop an active former Brig guest and restart Tugboat to resume its reset. If the records drive is unavailable, reconnect the original records folder first. A reset removes only reviewed Tugboat-owned files and startup confirms the original folder before it resumes.</p>
+    </section>
+
+    <section id="app-update">
+      <h2>Update Tugboat</h2>
+      <p>If you use Tugboat 0.4.0, install 0.4.1 or later from its signed disk image once. Quit Tugboat. Drag the new copy to Applications and open it there. Keep your existing records folder. <a href="https://github.com/reformo/tugboat/releases/latest">Latest signed installer</a>.</p>
+      <p>Tugboat can check for updates with its guests stopped and without a provider account. It checks in the background at most once every 24 hours. To check now, select <strong>Tugboat → Check for Updates…</strong> or <strong>Settings → General → Check for Updates…</strong>.</p>
+      <ol class="steps">
+        <li>Review the installed version, the new version, and its release notes.</li>
+        <li>Select <strong>Later</strong> to keep working. Tugboat waits 24 hours before another automatic offer. Open <strong>Review Update…</strong> in General to see the offer again.</li>
+        <li>Select <strong>Update and Restart</strong> to download, verify, and install the update. If sessions are open, review the list and select <strong>End Sessions, Update and Restart</strong>.</li>
+        <li>Review the list again if another session starts during the download. Tugboat keeps the verified download while it waits for your approval.</li>
+        <li>After restart, open a project and select a saved chat. The restart ends live sessions and stops the Brig guests. Project files, records, and guest homes stay in place.</li>
+      </ol>
+      <p>If the download or signature check fails, your sessions keep running. Select <strong>Check Again</strong> to get fresh release information. Review the version before you approve another download.</p>
+      <p>If you opened Tugboat from a read-only disk image, use <strong>Get Signed Installer</strong> and install the app in Applications. If shutdown fails, read the failed step and retry the update. If installation or restart fails, use <strong>Reopen Tugboat</strong> when the dialog offers it. The signed disk image also supports recovery.</p>
     </section>
 
     <section id="image-update">

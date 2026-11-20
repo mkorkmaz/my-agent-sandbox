@@ -331,7 +331,7 @@
           <dt>Recorded reason</dt>
           <dd>The release commit must explicitly request a build signed with an Apple Developer ID certificate and notarized by Apple. Routine pushes must not publish installers.</dd>
           <dt>Consequence</dt>
-          <dd>Tests and package verification must succeed before the publication job can run. Missing signing credentials, rejected notarization, invalid signatures, or failed Gatekeeper checks stop publication. A push without the marker skips both release jobs. Pull request checks retain their existing behavior.</dd>
+          <dd>Tests and package verification must succeed before the publication job can run. Missing signing credentials, rejected notarization, invalid signatures, or failed Gatekeeper checks stop publication. A push without the marker skips both release jobs. Pull request checks retain their existing behavior. <a href="#adr-025">ADR-025</a> adds updater assets and signing.</dd>
         </dl>
         <p class="source">Source files · <a href="../.github/workflows/macos-release.yml">Release condition and publication dependency</a> · <a href="../scripts/build-macos-release.sh">Signing and notarization</a> · <a href="../scripts/release/verify-macos-release.mjs">Apple distribution checks</a> · <a href="developer-guide.html#signed-release">Ordered secret setup</a></p>
       </article>
@@ -340,6 +340,17 @@
         <p>Tauri development runs use the name <strong>Tugboat Dev</strong>, the identifier <code>sh.brig.desktop.dev</code>, and their own default records folder. Only packaged builds can migrate the installed app’s legacy records. Brig commands in development use a separate home for telemetry settings, policies, and guest data.</p>
         <p>Both apps can run at the same time. Each owns its records lock and can select a custom records folder independently.</p>
         <p class="source"><a href="../src-tauri/build.rs">Development identity</a> · <a href="../src-tauri/src/storage/data_location/mod.rs">Records startup</a> · <a href="../src-tauri/src/platform/command.rs">Brig command environment</a></p>
+      </article>
+      <article id="adr-025">
+        <h3>ADR-025 · Verify the app update before starting the approved shutdown</h3>
+        <p>The production Mac app owns the feed, public key, package, and approval. The interface shows release information and active sessions. A check reads only the manifest. Approval binds the selected release and displayed sessions.</p>
+        <dl>
+          <dt>Recorded reason</dt>
+          <dd>Users can check without interrupting work. A failed transfer or signature check leaves active sessions available.</dd>
+          <dt>Consequence</dt>
+          <dd>After verification, Tugboat checks active sessions while it blocks new terminal starts. It asks again if a new session started. The existing shutdown sequence runs before replacement. The restart process waits for the old app to release its records lock. It checks that the approved version opens its window and the original records. It can show recovery if the new app fails to start. Publication checks that the signed disk image and update archive contain the same app.</dd>
+        </dl>
+        <p class="source"><a href="../src-tauri/src/desktop/update/mod.rs">Update checks</a> · <a href="../src-tauri/src/desktop/lifecycle/update.rs">Update shutdown</a> · <a href="../.github/workflows/macos-release.yml">Signed publication</a></p>
       </article>
     </section>
 

@@ -1,12 +1,16 @@
+use super::install_location::InstallLocation;
 use std::thread::ThreadId;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub(super) enum ShutdownState {
     Open,
     Confirming,
     Draining,
     StoppingEnvironments(ThreadId),
     ClosingStorage,
+    InstallingUpdate,
+    UpdateRecovery(Option<InstallLocation>),
+    RelaunchingUpdate,
     ReportingFailure,
     WindowCloseAllowed,
     ExitAllowed,
@@ -42,6 +46,14 @@ impl ShutdownState {
         true
     }
 
+    pub fn begin_update(&mut self) -> bool {
+        if *self != Self::Open {
+            return false;
+        }
+        *self = Self::Draining;
+        true
+    }
+
     pub fn stop_environments(&mut self, worker: ThreadId) -> Result<(), String> {
         if *self != Self::Draining {
             return Err(
@@ -60,9 +72,9 @@ impl ShutdownState {
         Ok(())
     }
 
-    pub fn blocks_commands(self, caller: ThreadId) -> bool {
+    pub fn blocks_commands(&self, caller: ThreadId) -> bool {
         match self {
-            Self::StoppingEnvironments(worker) => worker != caller,
+            Self::StoppingEnvironments(worker) => *worker != caller,
             state => state.is_closing(),
         }
     }
@@ -84,6 +96,45 @@ impl ShutdownState {
         Ok(())
     }
 
+    pub fn install_update(&mut self) -> Result<(), String> {
+        if *self != Self::ClosingStorage {
+            return Err("The app must close usage storage before installing an update.".into());
+        }
+        *self = Self::InstallingUpdate;
+        Ok(())
+    }
+
+    pub fn report_update_recovery(&mut self, location: Option<InstallLocation>) {
+        if matches!(self, Self::InstallingUpdate | Self::RelaunchingUpdate) {
+            *self = Self::UpdateRecovery(location);
+        }
+    }
+
+    pub fn reopen_update(&mut self) -> Result<InstallLocation, String> {
+        let Self::UpdateRecovery(Some(location)) = self else {
+            return Err("There is no app update to reopen.".into());
+        };
+        let location = location.clone();
+        *self = Self::RelaunchingUpdate;
+        Ok(location)
+    }
+
+    pub fn allow_update_exit(&mut self) -> Result<(), String> {
+        if !matches!(self, Self::InstallingUpdate | Self::RelaunchingUpdate) {
+            return Err("The app update state changed before restart.".into());
+        }
+        *self = Self::ExitAllowed;
+        Ok(())
+    }
+
+    pub fn close_after_update_failure(&mut self) -> bool {
+        if !matches!(self, Self::UpdateRecovery(_)) {
+            return false;
+        }
+        *self = Self::WindowCloseAllowed;
+        true
+    }
+
     pub fn consume_window_close(&mut self) -> bool {
         if *self != Self::WindowCloseAllowed {
             return false;
@@ -92,16 +143,19 @@ impl ShutdownState {
         true
     }
 
-    pub fn allows_exit(self) -> bool {
+    pub fn allows_exit(&self) -> bool {
         matches!(self, Self::WindowCloseAllowed | Self::ExitAllowed)
     }
 
-    pub fn is_closing(self) -> bool {
+    pub fn is_closing(&self) -> bool {
         matches!(
             self,
             Self::Draining
                 | Self::StoppingEnvironments(_)
                 | Self::ClosingStorage
+                | Self::InstallingUpdate
+                | Self::UpdateRecovery(_)
+                | Self::RelaunchingUpdate
                 | Self::WindowCloseAllowed
                 | Self::ExitAllowed
         )
@@ -192,5 +246,47 @@ mod tests {
         assert!(state.consume_window_close());
         assert!(!state.consume_window_close());
         assert!(state.allows_exit());
+    }
+
+    #[test]
+    fn an_update_blocks_new_work_until_the_approved_app_can_reopen() {
+        let worker = std::thread::current().id();
+        let mut state = ShutdownState::Open;
+        assert!(state.begin_update());
+        assert!(!state.begin_update());
+        assert!(state.is_closing());
+        assert!(state.install_update().is_err());
+        assert!(state.allow_update_exit().is_err());
+
+        state.stop_environments(worker).unwrap();
+        assert!(state.install_update().is_err());
+        state.environments_stopped(worker).unwrap();
+        state.install_update().unwrap();
+        assert!(!state.allows_exit());
+
+        let location = InstallLocation::for_executable(
+            "/Applications/Tugboat (previous version).app/Contents/MacOS/tugboat".into(),
+        )
+        .unwrap();
+        state.report_update_recovery(Some(location.clone()));
+        assert!(state.is_closing());
+        assert!(!state.request());
+        assert!(state.allow_update_exit().is_err());
+        assert_eq!(state.reopen_update().unwrap(), location);
+        assert!(state.reopen_update().is_err());
+        state.report_update_recovery(Some(location.clone()));
+        assert_eq!(state.reopen_update().unwrap(), location);
+        state.allow_update_exit().unwrap();
+        assert!(state.allows_exit());
+    }
+
+    #[test]
+    fn the_app_can_close_after_reporting_a_failed_update() {
+        let mut state = ShutdownState::InstallingUpdate;
+        assert!(!state.close_after_update_failure());
+        state.report_update_recovery(None);
+        assert!(state.reopen_update().is_err());
+        assert!(state.close_after_update_failure());
+        assert!(state.consume_window_close());
     }
 }

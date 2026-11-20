@@ -8,6 +8,6 @@ export function initializeHelp(): void {
   heading.id = 'help-heading';
   heading.tabIndex = -1;
   // Repository files are not available in the packaged app.
-  for (const link of guide.querySelectorAll('a[href^="../"]')) link.replaceWith(...link.childNodes);
+  for (const link of guide.querySelectorAll('a:not([href^="#"])')) link.replaceWith(...link.childNodes);
   document.getElementById('help-view')!.replaceChildren(...guide.childNodes);
 }

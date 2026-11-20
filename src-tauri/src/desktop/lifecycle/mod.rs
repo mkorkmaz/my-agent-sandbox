@@ -4,9 +4,16 @@ use std::time::Duration;
 use tauri::{AppHandle, Manager, RunEvent, Window, WindowEvent};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
+mod install_location;
 mod native_quit;
+mod relaunch;
 mod state;
+mod update;
+pub(crate) use relaunch::{run_relaunch_supervisor, RelaunchConfirmation};
 use state::ShutdownState;
+pub(crate) use update::{
+    begin_update, check_update_location, reopen_after_update, InstallFailure, UpdateFailure,
+};
 static SHUTDOWN: Mutex<ShutdownState> = Mutex::new(ShutdownState::Open);
 
 const MESSAGE: &str = "An agent or terminal is still running. Tugboat will end these processes, save final usage, and stop its project environments. Your project files and saved chats will stay available.";
@@ -57,62 +64,21 @@ fn begin(app: AppHandle, target: Target) {
     {
         return;
     }
-    crate::providers::provider_login::cancel_all(&app);
     // Keep AppKit responsive while PTY readers drain output and child.wait reaps processes.
     std::thread::spawn(move || {
-        let mut errors = Vec::new();
-        if let Err(error) = terminal::shutdown() {
-            errors.push(error);
-        }
-        if let Err(error) = command::wait_for_idle(Duration::from_secs(4)) {
-            errors.push(error);
-        }
-        if let Err(error) =
-            crate::environment::EnvironmentOperation::wait_for_idle(Duration::from_secs(4))
-        {
-            errors.push(error);
-        }
-        if errors.is_empty() {
-            if let Err(error) = crate::storage::data_location::reconnect_for_shutdown(&app) {
-                errors.push(error);
-            }
-        }
-        if let Err(error) = crate::providers::provider_login::flush(&app) {
-            errors.push(error);
-        }
-        if let Err(error) = crate::providers::shared_chatgpt::flush(&app) {
-            errors.push(error);
-        }
-        if let Err(error) = crate::providers::shared_claude::flush(&app) {
-            errors.push(error);
-        }
-        if errors.is_empty() {
-            // Writers have exited; the last usage event cannot race the final scan.
-            if let Err(error) = flush_and_stop(
-                || conversations::flush(&app),
-                || stop_before_exit(|| shutdown::stop_environments(&app)),
-            ) {
-                errors.push(error);
-            }
-        }
+        let result = drain(&app);
         let complete = app.clone();
         let native_request = matches!(target, Target::NativeQuit);
         let dispatched = app.run_on_main_thread(move || {
-            if errors.is_empty() {
-                if let Err(error) = complete.state::<crate::usage_store::Runtime>().close() {
-                    errors.push(format!("Could not close usage storage: {error}"));
-                }
-            }
-            if errors.is_empty() {
-                if let Err(error) = SHUTDOWN
-                    .lock()
-                    .unwrap_or_else(|error| error.into_inner())
-                    .approve()
-                {
-                    errors.push(error);
-                }
-            }
-            if !errors.is_empty() {
+            let result = result
+                .and_then(|()| close_storage(&complete))
+                .and_then(|()| {
+                    SHUTDOWN
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner())
+                        .approve()
+                });
+            if let Err(error) = result {
                 SHUTDOWN
                     .lock()
                     .unwrap_or_else(|error| error.into_inner())
@@ -122,7 +88,7 @@ fn begin(app: AppHandle, target: Target) {
                 }
                 let mut alert = complete
                     .dialog()
-                    .message(errors.join("\n"))
+                    .message(error)
                     .title("Could not close the app")
                     .kind(MessageDialogKind::Error);
                 if let Some(window) = complete.get_webview_window("main") {
@@ -136,20 +102,7 @@ fn begin(app: AppHandle, target: Target) {
                 });
                 return;
             }
-            match target {
-                Target::App => complete.exit(0),
-                Target::NativeQuit => native_quit::reply(true),
-                Target::Restart => complete.restart(),
-                Target::Window(window) => {
-                    if let Err(error) = window.close() {
-                        SHUTDOWN
-                            .lock()
-                            .unwrap_or_else(|error| error.into_inner())
-                            .abort();
-                        eprintln!("Could not close the window: {error}");
-                    }
-                }
-            }
+            finish(&complete, target);
         });
         if let Err(error) = dispatched {
             SHUTDOWN
@@ -164,17 +117,120 @@ fn begin(app: AppHandle, target: Target) {
     });
 }
 
-fn request(app: &AppHandle, target: Target) -> bool {
-    if !SHUTDOWN
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .request()
-    {
-        return false;
+fn drain(app: &AppHandle) -> Result<(), String> {
+    crate::providers::provider_login::cancel_all(app);
+    let mut errors = Vec::new();
+    let mut collect = |step: &str, result: Result<(), String>| {
+        if let Err(error) = result {
+            errors.push(format!("{step} {error}"));
+        }
+    };
+    collect("Could not end terminal processes.", terminal::shutdown());
+    collect(
+        "Could not finish background commands.",
+        command::wait_for_idle(Duration::from_secs(4)),
+    );
+    collect(
+        "Could not finish environment operations.",
+        crate::environment::EnvironmentOperation::wait_for_idle(Duration::from_secs(4)),
+    );
+    if errors.is_empty() {
+        if let Err(error) = crate::storage::data_location::reconnect_for_shutdown(app) {
+            errors.push(format!("Could not reconnect saved records. {error}"));
+        }
+    }
+    for (step, result) in [
+        (
+            "Could not save provider sign-in.",
+            crate::providers::provider_login::flush(app),
+        ),
+        (
+            "Could not save the ChatGPT account.",
+            crate::providers::shared_chatgpt::flush(app),
+        ),
+        (
+            "Could not save the Claude account.",
+            crate::providers::shared_claude::flush(app),
+        ),
+    ] {
+        if let Err(error) = result {
+            errors.push(format!("{step} {error}"));
+        }
+    }
+    if !errors.is_empty() {
+        return Err(errors.join("\n"));
+    }
+    // Writers have exited; the last usage event cannot race the final scan.
+    flush_and_stop(
+        || conversations::flush(app),
+        || {
+            stop_before_exit(|| shutdown::stop_environments(app))
+                .map_err(|error| format!("Could not stop and verify project guests. {error}"))
+        },
+    )
+}
+
+fn close_storage(app: &AppHandle) -> Result<(), String> {
+    app.state::<crate::usage_store::Runtime>()
+        .close()
+        .map_err(|error| format!("Could not close usage storage. {error}"))
+}
+
+fn finish(app: &AppHandle, target: Target) {
+    match target {
+        Target::App => app.exit(0),
+        Target::NativeQuit => native_quit::reply(true),
+        Target::Restart => app.restart(),
+        Target::Window(window) => {
+            if let Err(error) = window.close() {
+                SHUTDOWN
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .abort();
+                eprintln!("Could not close the window: {error}");
+            }
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum ShutdownRequest {
+    Rejected,
+    Immediate,
+    Deferred,
+}
+
+fn admit_request(state: &mut ShutdownState, target: &Target) -> ShutdownRequest {
+    if matches!(target, Target::NativeQuit) && state.allows_exit() {
+        return ShutdownRequest::Immediate;
+    }
+    if !matches!(target, Target::Restart) && state.close_after_update_failure() {
+        return ShutdownRequest::Immediate;
+    }
+    if state.request() {
+        return ShutdownRequest::Deferred;
+    }
+    ShutdownRequest::Rejected
+}
+
+fn request(app: &AppHandle, target: Target) -> ShutdownRequest {
+    let decision = admit_request(
+        &mut SHUTDOWN.lock().unwrap_or_else(|error| error.into_inner()),
+        &target,
+    );
+    match decision {
+        ShutdownRequest::Immediate => {
+            if !matches!(target, Target::NativeQuit) {
+                finish(app, target);
+            }
+            return decision;
+        }
+        ShutdownRequest::Rejected => return decision,
+        ShutdownRequest::Deferred => {}
     }
     if !terminal::any_running() {
         begin(app.clone(), target);
-        return true;
+        return decision;
     }
     let mut dialog = app
         .dialog()
@@ -209,7 +265,7 @@ fn request(app: &AppHandle, target: Target) -> bool {
             }
         }
     });
-    true
+    decision
 }
 
 pub fn window_event(window: &Window, event: &WindowEvent) {
@@ -271,6 +327,25 @@ fn flush_and_stop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_quit_can_exit_update_recovery_without_a_second_drain() {
+        let mut state = ShutdownState::InstallingUpdate;
+        assert_eq!(
+            admit_request(&mut state, &Target::NativeQuit),
+            ShutdownRequest::Rejected
+        );
+        state.report_update_recovery(None);
+        assert_eq!(
+            admit_request(&mut state, &Target::NativeQuit),
+            ShutdownRequest::Immediate
+        );
+        assert!(state.allows_exit());
+        assert_eq!(
+            admit_request(&mut ShutdownState::Open, &Target::NativeQuit),
+            ShutdownRequest::Deferred
+        );
+    }
 
     #[test]
     fn final_scan_failure_prevents_environment_shutdown() {

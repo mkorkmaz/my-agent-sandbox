@@ -1071,7 +1071,9 @@ pub fn initialize(config_directory: &Path, legacy_directory: PathBuf) -> DataLoc
     DataLocation::open(config_directory.join("Tugboat"), legacy_directory)
 }
 
-pub fn records_directory(app: &AppHandle) -> Result<RecordsDirectory, String> {
+pub fn records_directory<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+) -> Result<RecordsDirectory, String> {
     let state = app.state::<DataLocation>();
     if state._lease.is_none() {
         return Err(

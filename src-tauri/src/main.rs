@@ -14,7 +14,7 @@ mod terminal;
 mod usage;
 mod usage_store;
 
-use crate::desktop::{lifecycle, menu, settings, startup};
+use crate::desktop::{lifecycle, menu, settings, startup, update};
 use crate::environment::{boundaries, preparation};
 use crate::platform::host;
 use crate::projects::{operations, project_policy};
@@ -29,7 +29,11 @@ unsafe extern "C" {
 
 #[tauri::command]
 fn frontend_ready(window: WebviewWindow) -> Result<(), String> {
-    startup::ready(window)
+    let app = window.app_handle().clone();
+    startup::ready(window)?;
+    app.state::<lifecycle::RelaunchConfirmation>().confirm(&app);
+    update::start(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -63,8 +67,28 @@ async fn choose_project_folder(window: WebviewWindow) -> Result<Option<String>, 
 fn main() {
     let context = tauri::generate_context!();
     let arguments: Vec<_> = std::env::args_os().skip(1).collect();
+    let version = context.package_info().version.to_string();
+    if lifecycle::run_relaunch_supervisor(&arguments, &version)
+        .expect("Tugboat could not supervise the update restart")
+    {
+        return;
+    }
+    let relaunch = lifecycle::RelaunchConfirmation::from_arguments(&arguments, &version)
+        .expect("Tugboat could not start the installed version");
     if arguments.len() == 1 && arguments[0] == "--package-version" {
-        println!("{}", context.package_info().version);
+        println!("{version}");
+        return;
+    }
+    if arguments.len() == 1 && arguments[0] == "--package-update-config" {
+        let config = context.config().plugins.0.get("updater");
+        println!(
+            "{}",
+            serde_json::json!({
+                "pubkey": config.and_then(|config| config.get("pubkey")),
+                "endpoints": config.and_then(|config| config.get("endpoints")),
+                "requireSignedVersion": config.and_then(|config| config.get("requireSignedVersion")),
+            })
+        );
         return;
     }
     if arguments.len() == 1 && arguments[0] == "--runtime-check" {
@@ -84,6 +108,7 @@ fn main() {
     }
     tauri::Builder::default()
         .manage(startup::Startup::default())
+        .manage(relaunch)
         .manage(host::Inspection::default())
         .manage(projects::Projects::default())
         .manage(conversations::History::default())
@@ -98,6 +123,12 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             frontend_ready,
             application_version,
+            update::app_update_status,
+            update::app_update_check,
+            update::app_update_later,
+            update::consent::app_update_approve,
+            update::consent::app_update_reopen,
+            update::consent::app_update_open_installer,
             choose_project_folder,
             data_location::storage_location,
             data_location::choose_storage_folder,
@@ -164,6 +195,7 @@ fn main() {
             terminal::terminal_snapshot
         ])
         .setup(|app| {
+            update::configure(app.handle())?;
             lifecycle::install_native_quit(app.handle()).map_err(std::io::Error::other)?;
             app.manage(data_location::initialize(
                 &app.path().config_dir()?,

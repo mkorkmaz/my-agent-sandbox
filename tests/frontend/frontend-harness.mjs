@@ -77,7 +77,8 @@ async function interfaceHarness(overrides = {}, configureDom = () => {}) {
   let nextTerminal = 1;
   const handlers = {
     frontend_ready: () => null, update_menu_state: () => null,
-    application_version: () => '0.4.0',
+    application_version: () => '0.4.1',
+    app_update_status: () => ({ revision: 0, phase: 'disabled', installedVersion: '0.4.1' }),
     storage_location: () => recordsLocation,
     shared_chatgpt_status: () => sharedAccount,
     sync_project_chatgpt: () => sharedAccount,

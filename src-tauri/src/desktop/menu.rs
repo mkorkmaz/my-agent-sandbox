@@ -40,6 +40,12 @@ pub fn create(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             )?,
         ],
     )?;
+    if crate::desktop::update::supported(app) {
+        application.insert(
+            &MenuItem::with_id(app, "app-update", "Check for Updates…", true, None::<&str>)?,
+            1,
+        )?;
+    }
     let file = Submenu::with_id_and_items(
         app,
         "file",
@@ -113,6 +119,10 @@ pub fn handle(app: &AppHandle, event: tauri::menu::MenuEvent) {
     let id = event.id().as_ref();
     if id == "quit" {
         crate::desktop::lifecycle::request_quit(app);
+        return;
+    }
+    if id == "app-update" {
+        let _ = app.emit("app-update-menu", ());
         return;
     }
     if ["choose-folder", "settings", "project", "return-terminal"].contains(&id) {

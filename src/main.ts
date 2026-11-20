@@ -5,6 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import './style.css';
 import { initializeHost, type HostReadiness } from './settings/host';
 import { initializeSettings, initializeSettingsTabs, selectSettingsTab } from './settings/settings';
+import { initializeAppUpdates } from './settings/app-updates';
 import { renderProjects, renderConversations, renderTerminals, isStandaloneConversation, standaloneConversations, terminalCaption, terminalNames, conversationKey, terminalMatches, agentName, isChat, sameProject, sameProjectView, type AgentKind, type Conversation, type Project, type ProjectContext, type TerminalStatus } from './projects/projects';
 import { createAgentLogo } from './providers/agent-logo';
 import { prepareProject, renderPlan, type Plan } from './projects/preparation';
@@ -453,6 +454,12 @@ function updateTerminalLayout(): Promise<void> {
     await updateTerminal('terminal_layout', { identifier, layout }, () => !layout.visible || !terminalUpdatesAllowed(identifier));
   }, error => { showFolderError(String(error)); });
 }
+
+const appUpdates = initializeAppUpdates(() => {
+  void updateTerminalLayout().then(() => {
+    if (terminalIdentifier !== null) return focusTerminal(terminalIdentifier);
+  }).catch(error => { showFolderError(String(error)); });
+});
 
 async function focusTerminal(identifier: number): Promise<void> {
   if (!terminalUpdatesAllowed(identifier) || terminalVisibility() !== 'visible' || environmentBoot.blocksFocus(identifier)) return;
@@ -1122,6 +1129,7 @@ function showView(view: 'project' | 'settings' | 'help'): void {
   const navigation = { project: appData.selectedProject ? element('sidebar-current-project') : projectNavigation, settings: settingsNavigation, help: helpNavigation };
   navigation[view].setAttribute('aria-current', 'page');
   element(view + '-heading').focus();
+  if (view === 'settings') void appUpdates.refresh();
   scheduleProjectRescan();
   sharedChatgpt?.updateAvailability();
   void updateTerminalLayout();

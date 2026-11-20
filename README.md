@@ -38,9 +38,9 @@ Brig response fixtures were captured with Brig v0.5.2 and the `brig.sh/v1alpha1`
 
 ## Build and install
 
-The `v0.1.0-build.1` and `v0.1.0-build.2` releases contain ad hoc signed applications. Gatekeeper rejected both the unsigned build 2 disk image and the application inside it. Once a Developer ID signed and Apple-notarized DMG is available on [GitHub Releases](https://github.com/mkorkmaz/tugboat/releases), open it and drag Tugboat into Applications. The source build instructions below also work for local development.
+Download the Developer ID signed and Apple-notarized disk image from [GitHub Releases](https://github.com/reformo/tugboat/releases/latest). Open the disk image and drag Tugboat to Applications. If you use 0.4.0, install 0.4.1 or later from its disk image once. For subsequent releases, select **Tugboat → Check for Updates…**. See the [update procedure](docs/user-guide.html#app-update).
 
-The trunk release workflow runs its build and publication jobs only when the latest commit message in the push contains `new-release` (case-insensitive). It uses the Developer ID release script with six repository secrets: `APPLE_CERTIFICATE` (base64 `.p12`), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (`Developer ID Application: …`), `APPLE_API_KEY`, `APPLE_API_ISSUER`, and `APPLE_API_KEY_CONTENT` (the complete App Store Connect `.p8` private key text). That script signs the owned helpers before recording their hashes, preserves the upstream runner signatures, and notarizes and staples the app and DMG. The release verifier checks the version, packaged runtime, signatures, tickets and Gatekeeper from a read-only mount before publication. Missing credentials or a failed check stop publication. Follow the [ordered secret setup](docs/developer-guide.html#signed-release) before pushing a release commit. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
+The trunk workflow uses the Developer ID release script to sign and notarize the app and disk image. It also signs the updater archive with a separate Tauri signing key. Follow the [release setup](docs/developer-guide.html#signed-release) for the Apple credentials, updater secrets, and public key.
 
 The workflow validates the notarization private key before installing dependencies or preparing native tools. If notarization reports `invalidP8`, follow the [private key recovery steps](docs/developer-guide.html#invalid-apple-api-key) to replace `APPLE_API_KEY_CONTENT` from the original `.p8` file.
 
@@ -65,7 +65,7 @@ You can also copy `Tugboat.app` to `/Applications`.
 
 ### Releases from trunk
 
-Every push to `trunk` runs the frontend, Rust, native terminal, and hull tests. After they pass, GitHub Actions builds the ARM64 DMG using the `version` in `src-tauri/tauri.conf.json` and attaches it to a release for the tested commit. Each push gets its own tag, such as `v0.2.0-build.42`. Rerunning the same workflow run keeps its original tag.
+The release workflow runs when the latest commit of a push to `trunk` contains `new-release`. It tests and publishes four assets for that commit. The disk image supports manual installation. The updater archive, its signature, and `latest.json` support in-app updates. Each public release advances the stable version in `src-tauri/tauri.conf.json`. The tag retains the build number, and a workflow retry uses the same tag. See the [signed upgrade check](docs/developer-guide.html#verify-app-update).
 
 ## Get started
 

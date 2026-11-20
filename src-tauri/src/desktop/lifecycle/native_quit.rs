@@ -1,4 +1,4 @@
-use super::{request, Target, SHUTDOWN};
+use super::{request, ShutdownRequest, Target};
 use std::sync::OnceLock;
 use tauri::AppHandle;
 
@@ -27,20 +27,14 @@ pub(super) fn install(app: &AppHandle) -> Result<(), String> {
 }
 
 extern "C" fn request_quit() -> Reply {
-    if SHUTDOWN
-        .lock()
-        .unwrap_or_else(|error| error.into_inner())
-        .allows_exit()
-    {
-        return Reply::Now;
+    let Some(app) = APP.get() else {
+        return Reply::Cancel;
+    };
+    match request(app, Target::NativeQuit) {
+        ShutdownRequest::Rejected => Reply::Cancel,
+        ShutdownRequest::Immediate => Reply::Now,
+        ShutdownRequest::Deferred => Reply::Later,
     }
-    if APP
-        .get()
-        .is_some_and(|app| request(app, Target::NativeQuit))
-    {
-        return Reply::Later;
-    }
-    Reply::Cancel
 }
 
 pub(super) fn reply(approved: bool) {

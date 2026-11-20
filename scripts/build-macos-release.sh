@@ -9,6 +9,8 @@ set -euo pipefail
 : "${APPLE_API_KEY_CONTENT:?Set the App Store Connect private key contents.}"
 [[ "$APPLE_SIGNING_IDENTITY" == 'Developer ID Application: '* ]] || { echo 'A Developer ID Application identity is required.' >&2; exit 1; }
 node "$(dirname "$0")/release/validate-apple-api-key.mjs"
+: "${TAURI_UPDATER_PUBLIC_KEY:?Set the Tauri updater public key.}"
+: "${TAURI_SIGNING_PRIVATE_KEY:?Set the Tauri updater private key.}"
 
 work=$(mktemp -d)
 keychain="$work/release.keychain-db"
@@ -49,9 +51,16 @@ unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_API_KEY_CONTENT
 npm run native:prepare
 node --input-type=module - "$work/config.json" <<'JS'
 import fs from 'node:fs';
-fs.writeFileSync(process.argv[2], JSON.stringify({ bundle: { macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY, hardenedRuntime: true } } }));
+fs.writeFileSync(process.argv[2], JSON.stringify({
+  bundle: {
+    createUpdaterArtifacts: true,
+    macOS: { signingIdentity: process.env.APPLE_SIGNING_IDENTITY, hardenedRuntime: true },
+  },
+  plugins: { updater: { pubkey: process.env.TAURI_UPDATER_PUBLIC_KEY.trim() } },
+}));
 JS
 npm run tauri -- build --ci --target aarch64-apple-darwin --bundles app,dmg --config "$work/config.json" -- --locked
+unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 version=$(node -p "JSON.parse(require('fs').readFileSync('src-tauri/tauri.conf.json')).version")
 installer="src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Tugboat_${version}_aarch64.dmg"
 xcrun notarytool submit "$installer" --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" --wait --timeout 30m --output-format json > "$work/notarization.json"

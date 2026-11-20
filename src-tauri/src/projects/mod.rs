@@ -728,7 +728,7 @@ fn volume_uuid(path: &Path) -> Option<[u8; 16]> {
 fn volume_uuid(_path: &Path) -> Option<[u8; 16]> {
     None
 }
-pub fn file(app: &AppHandle) -> Result<PathBuf, String> {
+pub fn file<R: tauri::Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
     let records = crate::storage::data_location::records_directory(app)?;
     Ok(records.path().join("projects.json"))
 }

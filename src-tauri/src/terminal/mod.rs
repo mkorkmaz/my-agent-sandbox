@@ -986,6 +986,19 @@ pub fn any_running() -> bool {
         .is_ok_and(|sessions| sessions.values().any(|session| session.process.running()))
 }
 
+pub(crate) fn with_active_update_sessions<T>(
+    verify: impl FnOnce(Vec<TerminalStatus>) -> T,
+) -> Result<T, String> {
+    let states = sessions().lock().map_err(|error| error.to_string())?;
+    let mut active: Vec<_> = states
+        .iter()
+        .filter(|(_, session)| session.process.running())
+        .map(|(identifier, session)| session.status(*identifier))
+        .collect();
+    active.sort_by_key(|session| session.identifier);
+    Ok(verify(active))
+}
+
 pub fn chatgpt_in_use(skip_finished_login: bool) -> bool {
     sessions().lock().is_ok_and(|states| {
         states.values().any(|session| {

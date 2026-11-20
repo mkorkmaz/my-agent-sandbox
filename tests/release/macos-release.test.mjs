@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { verifyDeveloperId, verifyPackagedHull } from '../../scripts/release/verify-macos-release.mjs';
+import { verifyDeveloperId, verifyMatchingBundles, verifyPackagedHull } from '../../scripts/release/verify-macos-release.mjs';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, generateKeyPairSync } from 'node:crypto';
@@ -19,6 +19,36 @@ test('codesign evaluates the Developer ID requirement against an ad hoc signatur
   execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', binary], {stdio: 'pipe'});
   execFileSync('/usr/bin/codesign', ['--verify', '--strict', binary]);
   assert.throws(() => verifyDeveloperId(binary), error => error.status === 3);
+});
+
+test('both release packages must contain the same signed app build', {skip: process.platform !== 'darwin'}, async t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'tugboat-bundle-match-'));
+  t.after(() => fs.rmSync(temp, {recursive: true, force: true}));
+  const makeApp = (directory, payload) => {
+    const app = path.join(temp, directory, 'Tugboat.app');
+    const contents = path.join(app, 'Contents');
+    const binary = path.join(contents, 'MacOS', 'tugboat');
+    fs.mkdirSync(path.dirname(binary), {recursive: true});
+    fs.mkdirSync(path.join(contents, 'Resources'));
+    fs.copyFileSync('/usr/bin/true', binary);
+    fs.writeFileSync(path.join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>sh.brig.desktop</string>
+<key>CFBundleExecutable</key><string>tugboat</string>
+<key>CFBundleShortVersionString</key><string>0.4.2</string>
+</dict></plist>`);
+    fs.writeFileSync(path.join(contents, 'Resources', 'fixture.txt'), payload);
+    fs.symlinkSync('fixture.txt', path.join(contents, 'Resources', 'linked.txt'));
+    execFileSync('/usr/bin/codesign', ['--force', '--sign', '-', app], {stdio: 'pipe'});
+    execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', app]);
+    return app;
+  };
+  const installed = makeApp('installer', 'build one');
+  const updated = path.join(temp, 'update', 'Tugboat.app');
+  fs.cpSync(installed, updated, {recursive: true, verbatimSymlinks: true});
+  await verifyMatchingBundles(installed, updated);
+  const otherBuild = makeApp('other-update', 'build two');
+  await assert.rejects(verifyMatchingBundles(installed, otherBuild), /must contain the same Tugboat app build/);
 });
 
 test('release restores the original keychain list on success and at each failure stage', {skip: process.platform !== 'darwin'}, t => {
@@ -42,8 +72,10 @@ test('release restores the original keychain list on success and at each failure
     if [[ "$2" == tauri ]]; then
       [[ -z "\${APPLE_CERTIFICATE+x}" && -z "\${APPLE_CERTIFICATE_PASSWORD+x}" && -z "\${APPLE_API_KEY_CONTENT+x}" ]] || { echo 'Tauri would import the certificate again.' >&2; exit 1; }
       [[ "$APPLE_SIGNING_IDENTITY" == 'Developer ID Application: Test' && -s "$APPLE_API_KEY_PATH" ]] || exit 1
+      [[ "$TAURI_SIGNING_PRIVATE_KEY" == fixture-updater-private-key && "\${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" == "$EXPECTED_UPDATER_PASSWORD" ]]
+      node -e 'const config = require(process.argv[1]); if (!config.bundle.createUpdaterArtifacts || config.plugins.updater.pubkey !== "fixture-updater-public-key") process.exit(1);' "\${11}"
     fi`);
-  stub('xcrun', '[[ "$FAIL_STAGE" != "$1" ]] && echo \'{"status":"Accepted"}\'');
+  stub('xcrun', '[[ -z "${TAURI_SIGNING_PRIVATE_KEY+x}" && -z "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD+x}" && "$FAIL_STAGE" != "$1" ]] && echo \'{"status":"Accepted"}\'');
   fs.mkdirSync(path.join(temp, 'src-tauri'));
   fs.writeFileSync(path.join(temp, 'src-tauri/tauri.conf.json'), '{"version":"1"}');
   const runtime = path.join(temp,'.build/brig-runtime');
@@ -54,16 +86,23 @@ test('release restores the original keychain list on success and at each failure
   const state = path.join(temp, 'original');
   const original = '/fixtures/Team Signing.keychain-db\n/fixtures/personal.keychain-db\n';
   const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1', privateKeyEncoding: { type: 'pkcs8', format: 'pem' } });
-  for (const stage of ['import','native:prepare','tauri','notarytool','success']) {
+  const runRelease = (stage, password) => {
     fs.writeFileSync(state, original);
     const result = spawnSync('/bin/bash', [path.join(root,'scripts/build-macos-release.sh')], {cwd:temp,encoding:'utf8',env:{
       PATH:bin+':'+process.env.PATH, TMPDIR:temp, KEYCHAIN_STATE:state, FAIL_STAGE:stage,
       APPLE_CERTIFICATE:'Zml4dHVyZQ==', APPLE_CERTIFICATE_PASSWORD:'fixture', APPLE_SIGNING_IDENTITY:'Developer ID Application: Test',
       APPLE_API_KEY:'fixture', APPLE_API_ISSUER:'fixture', APPLE_API_KEY_CONTENT:privateKey,
+      TAURI_UPDATER_PUBLIC_KEY:'fixture-updater-public-key', TAURI_SIGNING_PRIVATE_KEY:'fixture-updater-private-key',
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:password, EXPECTED_UPDATER_PASSWORD:password ?? '',
     }});
     assert.equal(result.status === 0, stage === 'success', stage + ': ' + result.stderr);
     assert.equal(fs.readFileSync(state,'utf8'),original,stage);
+  };
+  for (const stage of ['import','native:prepare','tauri','notarytool','success']) {
+    runRelease(stage, 'fixture-updater-password');
   }
+  runRelease('success', '');
+  runRelease('success');
   const resources = path.join(temp, 'Tugboat.app/Contents/Resources');
   fs.mkdirSync(resources,{recursive:true});
   fs.cpSync(runtime,path.join(resources,'runtime'),{recursive:true});
