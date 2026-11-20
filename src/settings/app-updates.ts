@@ -14,6 +14,7 @@ interface UpdateStatus {
   revision: number;
   phase: 'disabled' | 'idle' | 'checking' | 'current' | 'available' | 'downloading' | 'ready' | 'shuttingDown' | 'failed' | 'recovery';
   installedVersion: string;
+  installedBuildNumber?: string | null;
   offer?: UpdateOffer | null;
   progress?: { downloaded: number; total?: number | null } | null;
   message?: string | null;
@@ -40,7 +41,6 @@ type Action = 'app_update_check' | 'app_update_approve' | 'app_update_later' | '
 export function initializeAppUpdates(layoutChanged: () => void): { refresh: () => Promise<void> } {
   const section = document.querySelector<HTMLElement>('#app-updates')!;
   const dialog = document.querySelector<HTMLDialogElement>('#app-update-dialog')!;
-  const heading = dialog.querySelector<HTMLElement>('h2')!;
   const check = section.querySelector<HTMLButtonElement>('#check-app-updates')!;
   const recheck = dialog.querySelector<HTMLButtonElement>('#recheck-app-update')!;
   const review = section.querySelector<HTMLButtonElement>('#review-app-update')!;
@@ -52,6 +52,7 @@ export function initializeAppUpdates(layoutChanged: () => void): { refresh: () =
   const sessions = dialog.querySelector<HTMLUListElement>('#app-update-sessions')!;
   const progress = dialog.querySelector<HTMLProgressElement>('progress')!;
   const status = dialog.querySelector<HTMLElement>('#app-update-status')!;
+  const installed = dialog.querySelector<HTMLElement>('#app-update-installed')!;
   const settingsStatus = section.querySelector<HTMLElement>('#app-updates-status')!;
   let state: UpdateStatus | null = null;
   let action: Action | null = null;
@@ -64,14 +65,20 @@ export function initializeAppUpdates(layoutChanged: () => void): { refresh: () =
     return state.offer ?? undefined;
   }
 
+  function focusDialog(): void {
+    const target = dismiss.hidden || dismiss.disabled ? status : dismiss;
+    if (document.activeElement !== target) target.focus({ preventScroll: true });
+  }
+
   function show(returnFocusId?: string): void {
     if (dialog.open) return;
     showDialog(dialog, returnFocusId);
-    heading.focus();
+    focusDialog();
     layoutChanged();
   }
 
   function render(): void {
+    const focus = document.activeElement;
     const phase = state?.phase ?? 'idle';
     const offer = phase === 'recovery' ? null : state?.offer;
     const active = phase === 'shuttingDown' || phase === 'downloading';
@@ -94,7 +101,6 @@ export function initializeAppUpdates(layoutChanged: () => void): { refresh: () =
     reopen.disabled = !!action;
     release.hidden = !offer;
     if (offer) {
-      dialog.querySelector('#app-update-installed')!.textContent = state!.installedVersion;
       dialog.querySelector('#app-update-version')!.textContent = offer.version;
       dialog.querySelector('#app-update-notes')!.textContent = offer.notes || 'This release has no release notes.';
       dialog.querySelector('#app-update-impact')!.textContent = (offer.sessions.length ? 'Tugboat will end the sessions listed below. ' : '') + 'Tugboat will stop its Brig guests and restart. Your projects and saved chats stay in place.';
@@ -118,10 +124,14 @@ export function initializeAppUpdates(layoutChanged: () => void): { refresh: () =
       ? (state.installedVersion === 'Unknown' ? 'Could not determine the installed version. ' : 'Tugboat ' + state.installedVersion + ' is installed. ') : '';
     const message = actionError ?? (action === 'app_update_check' && !active && phase !== 'checking'
       ? phaseMessages.checking : (state?.message ?? phaseMessages[phase]) + download);
-    if (status.textContent !== recovery + message) status.textContent = recovery + message;
+    const version = state?.installedVersion;
+    const buildNumber = state?.installedBuildNumber;
+    installed.hidden = !version || version === 'Unknown';
+    installed.textContent = installed.hidden ? '' : `Installed version ${version}${buildNumber ? ` (build ${buildNumber})` : ''}`;
+    const dialogMessage = installed.hidden ? recovery + message : message;
+    if (status.textContent !== dialogMessage) status.textContent = dialogMessage;
     if (settingsStatus.textContent !== recovery + message) settingsStatus.textContent = recovery + message;
-    const focus = document.activeElement;
-    if (dialog.open && focus instanceof document.defaultView!.HTMLButtonElement && dialog.contains(focus) && (focus.hidden || focus.disabled)) heading.focus();
+    if (dialog.open && focus && dialog.contains(focus) && (focus.closest('[hidden]') || focus.matches(':disabled'))) focusDialog();
   }
 
   function accept(next: UpdateStatus): void {

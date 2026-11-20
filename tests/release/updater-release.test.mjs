@@ -132,8 +132,9 @@ test('publication checks the commit and complete draft assets, and verifies a pu
     }
     assert.fail('Unexpected GitHub command ' + command.join(' '));
   };
-  const verifyPackage = (installer, archive, version) => {
+  const verifyPackage = (installer, archive, version, buildNumber) => {
     assert.equal(version, fixtureVersion);
+    assert.equal(buildNumber, '18');
     assert.equal(fs.readFileSync(installer, 'utf8'), names[0]);
     assert.equal(fs.readFileSync(archive, 'utf8'), names[1]);
   };

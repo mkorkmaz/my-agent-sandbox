@@ -343,26 +343,24 @@
       <div class="action-row"><button id="cancel-forget-project" class="secondary-button">Cancel</button><button id="confirm-forget-project" class="secondary-button destructive-button">Forget record</button></div>
     </dialog>
     <dialog id="app-update-dialog" aria-labelledby="app-update-heading">
-      <h2 id="app-update-heading" tabindex="-1">Tugboat Update</h2>
+      <h2 id="app-update-heading">Tugboat Update</h2>
+      <p id="app-update-status" class="support-text" role="status" tabindex="-1"></p>
       <div id="app-update-release" hidden>
-        <dl class="settings-group">
-          <div><dt>Installed version</dt><dd id="app-update-installed"></dd></div>
-          <div><dt>New version</dt><dd id="app-update-version"></dd></div>
-        </dl>
+        <p>New version <strong id="app-update-version"></strong></p>
         <h3 id="app-update-notes-heading">Release notes</h3>
         <pre id="app-update-notes" aria-labelledby="app-update-notes-heading" tabindex="0"></pre>
         <p id="app-update-impact" class="support-text"></p>
         <ul id="app-update-sessions" class="support-text"></ul>
       </div>
-      <p id="app-update-status" class="support-text" role="status"></p>
       <progress id="app-update-progress" aria-label="Update download progress" hidden></progress>
       <div class="action-row">
-        <button class="secondary-button" id="dismiss-app-update">Close</button>
+        <button class="secondary-button" id="dismiss-app-update" autofocus>Close</button>
         <button class="secondary-button" id="open-app-update-installer" hidden>Get Signed Installer</button>
         <button class="primary-button" id="recheck-app-update" hidden>Check Again</button>
         <button class="primary-button" id="reopen-app" hidden>Reopen Tugboat</button>
         <button class="primary-button" id="approve-app-update" hidden>Update and Restart</button>
       </div>
+      <p id="app-update-installed" class="support-text" hidden></p>
     </dialog>
     <dialog id="session-usage-dialog" class="session-usage-dialog" aria-labelledby="session-usage-heading">
       <header class="dialog-header"><h2 id="session-usage-heading">Session usage</h2><button id="close-session-usage" class="icon-button" aria-label="Close session usage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg></button></header>
