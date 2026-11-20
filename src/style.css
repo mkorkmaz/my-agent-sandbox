@@ -205,12 +205,27 @@ dialog { width: min(560px, calc(100vw - 48px)); max-height: calc(100vh - 48px); 
 dialog::backdrop { background: #00000045; }
 dialog h2 { margin: 0 0 18px; font-size: 20px; }
 dialog pre { font: inherit; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; padding: 12px; background: var(--surface); border-radius: 5px; }
+#app-update-dialog {
+  color-scheme: dark;
+  --control-background: var(--sidebar);
+  --text: var(--sidebar-text);
+  --secondary: #bcbcbc;
+  --line: #414141;
+  --surface: #292929;
+  --selection: #3a3a3a;
+  --on-accent: var(--terminal-background);
+  text-align: center;
+}
+#app-update-dialog h2 { margin-bottom: 10px; }
 #app-update-dialog h3 { margin: 18px 0 8px; font-size: 14px; }
 #app-update-dialog pre { max-height: 12em; overflow: auto; margin: 0; }
-#app-update-dialog ul { padding-left: 20px; }
+#app-update-dialog ul { padding: 0; list-style-position: inside; }
 #app-update-dialog progress { width: 100%; accent-color: var(--accent); }
+#app-update-dialog .action-row { justify-content: center; margin-bottom: 0; }
 #app-update-dialog .secondary-button { background: var(--surface); }
 #app-update-dialog .secondary-button:hover, #app-update-dialog .secondary-button:focus-visible { background: var(--selection); }
+#app-update-dialog :is(button, pre):focus-visible { outline: 2px solid var(--workspace-dot); outline-offset: 2px; }
+#app-update-installed { margin: 16px 0 0; font-size: 12px; }
 #project-gateway-log { max-height: 260px; overflow: auto; }
 .policy-document { font: inherit; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
 .project-view:has(.terminal-panel:not([hidden])) { height: 100%; min-height: 0; overflow: hidden; }

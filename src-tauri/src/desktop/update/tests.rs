@@ -1,5 +1,30 @@
 use super::*;
 use serde_json::json;
+use tauri::test::{mock_builder, mock_context, noop_assets};
+
+#[test]
+fn status_reports_the_running_build_only_with_its_version() {
+    let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+    let mut state = State::new(true);
+    let status = serde_json::to_value(state.snapshot(app.handle(), false)).unwrap();
+    assert_eq!(
+        status.get("installedBuildNumber"),
+        Some(&json!(RELEASE_BUILD_NUMBER))
+    );
+    assert_eq!(
+        status["installedVersion"],
+        app.package_info().version.to_string()
+    );
+
+    state.phase = Phase::Recovery {
+        message: "Fixture failed to reopen".into(),
+        version: Some("5.0.0".into()),
+        can_reopen: true,
+    };
+    let recovery = serde_json::to_value(state.snapshot(app.handle(), false)).unwrap();
+    assert_eq!(recovery["installedVersion"], "5.0.0");
+    assert_eq!(recovery.get("installedBuildNumber"), Some(&Value::Null));
+}
 
 #[test]
 fn only_production_identity_can_enable_the_updater() {

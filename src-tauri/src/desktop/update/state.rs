@@ -46,6 +46,7 @@ pub(super) struct Offer {
 pub(crate) struct Status {
     revision: u64,
     installed_version: String,
+    installed_build_number: Option<&'static str>,
     phase: &'static str,
     offer: Option<OfferStatus>,
     progress: Option<Progress>,
@@ -166,14 +167,18 @@ impl State {
             } else {
                 None
             };
-        let installed_version = if phase == "recovery" {
-            version.unwrap_or_else(|| "Unknown".into())
+        let (installed_version, installed_build_number) = if phase == "recovery" {
+            (version.unwrap_or_else(|| "Unknown".into()), None)
         } else {
-            app.package_info().version.to_string()
+            (
+                app.package_info().version.to_string(),
+                super::RELEASE_BUILD_NUMBER,
+            )
         };
         Status {
             revision: self.revision,
             installed_version,
+            installed_build_number,
             phase,
             offer: self.offer.as_ref().map(|offer| OfferStatus {
                 id: offer.id,

@@ -16,7 +16,21 @@ fn configure_development_identity() {
     println!("cargo:rustc-env=TAURI_CONFIG={config}");
 }
 
+fn configure_release_build_number() {
+    const NAME: &str = "TUGBOAT_RELEASE_BUILD_NUMBER";
+    println!("cargo:rerun-if-env-changed={NAME}");
+    let Some(number) = std::env::var_os(NAME) else {
+        return;
+    };
+    let number = number.as_encoded_bytes();
+    if !matches!(number.first(), Some(b'1'..=b'9')) || !number.iter().all(u8::is_ascii_digit) {
+        eprintln!("{NAME} must be a positive decimal number");
+        std::process::exit(1);
+    }
+}
+
 fn main() {
+    configure_release_build_number();
     let install = std::path::Path::new("../.build/libghostty/install");
     assert!(
         install.join("lib/libghostty-vt.a").exists(),

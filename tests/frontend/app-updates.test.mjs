@@ -9,7 +9,7 @@ const offer = {
   id: 42, version: '0.4.2', notes: 'Release notes with <b>literal text</b>.',
   sessionRevision: 1, sessions: [chat],
 };
-const idle = { revision: 0, phase: 'idle', installedVersion };
+const idle = { revision: 0, phase: 'idle', installedVersion, installedBuildNumber: '17' };
 
 async function setup(t, handlers) {
   const harness = await interfaceHarness({ app_update_status: () => idle, ...handlers });
@@ -65,7 +65,7 @@ test('an automatic offer shows the release and sessions, and Later keeps it in S
   const dialog = harness.element('app-update-dialog');
   assert.equal(dialog.open, true);
   assert.equal(layout(), false);
-  assert.equal(harness.element('app-update-installed').textContent, installedVersion);
+  assert.equal(harness.element('app-update-installed').textContent, 'Installed version 0.4.1 (build 17)');
   assert.equal(harness.element('app-update-version').textContent, offer.version);
   assert.equal(harness.element('app-update-notes').textContent, offer.notes);
   assert.equal(harness.element('app-update-notes').querySelector('b'), null);
@@ -100,20 +100,29 @@ test('a manual check shows progress and reports current or offline from Settings
       ...idle, revision: 2, phase: 'failed', message: 'Could not check for updates. Check the Mac connection.',
     },
   });
+  const assertDismissFocusAndBuild = () => {
+    assert.equal(harness.dom.window.document.activeElement.id, 'dismiss-app-update');
+    const installed = harness.element('app-update-installed');
+    assert.equal(installed.hidden, false);
+    assert.equal(installed.textContent, 'Installed version 0.4.1 (build 17)');
+  };
   await click(harness, 'settings-navigation');
   await click(harness, 'check-app-updates');
   assert.equal(harness.element('app-update-dialog').open, true);
+  assertDismissFocusAndBuild();
   assert.equal(harness.element('app-update-status').textContent, 'Checking for updates…');
   assert.equal(harness.element('approve-app-update').hidden, true);
   pending.resolve({ ...idle, revision: 1, phase: 'current' });
   await flush();
   assert.equal(harness.element('app-update-status').textContent, 'Tugboat is up to date.');
+  assertDismissFocusAndBuild();
   await click(harness, 'dismiss-app-update');
   assert.equal(harness.dom.window.document.activeElement.id, 'check-app-updates');
 
   await harness.listeners.get('app-update-menu')({});
   await flush();
   assert.equal(harness.element('app-update-dialog').open, true);
+  assertDismissFocusAndBuild();
   assert.match(harness.element('app-updates-status').textContent, /Could not check.*Mac connection/);
   assert.equal(harness.element('approve-app-update').hidden, true);
   assert.equal(actions(harness, 'app_update_check').length, 2);
@@ -205,8 +214,10 @@ test('read-only, shutdown, and relaunch failures offer their matching recovery a
   await click(harness, 'approve-app-update');
   assert.deepEqual(actions(harness, 'app_update_approve'), [{ offerId: offer.id, sessionRevision: 1 }]);
 
-  await update(harness, { revision: 5, phase: 'recovery', installedVersion: offer.version, canReopen: true, message: 'Could not restart Tugboat.' });
-  assert.match(harness.element('app-update-status').textContent, /0\.4\.2 is installed/);
+  await update(harness, { revision: 5, phase: 'recovery', installedVersion: offer.version, installedBuildNumber: null, canReopen: true, message: 'Could not restart Tugboat.' });
+  assert.equal(harness.element('app-update-installed').textContent, 'Installed version 0.4.2');
+  assert.equal(harness.element('app-update-status').textContent, 'Could not restart Tugboat.');
+  assert.match(harness.element('app-updates-status').textContent, /0\.4\.2 is installed/);
   assert.equal(harness.element('approve-app-update').hidden, true);
   await click(harness, 'reopen-app');
   assert.match(harness.element('app-update-status').textContent, /Could not reopen Tugboat 0\.4\.2/);

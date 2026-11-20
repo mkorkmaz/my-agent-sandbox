@@ -24,7 +24,7 @@ export function verifyPackagedHull(app) {
   if (digest !== manifest.tools.hull.sha256) throw new Error('Packaged hull does not match the SHA-256 in runtime/build.json.');
 }
 
-export function verifyPackagedVersion(app, version, publicKey) {
+export function verifyPackagedVersion(app, version, publicKey, buildNumber) {
   const plist = path.join(app, 'Contents/Info.plist');
   const actual = run('/usr/bin/plutil', ['-extract', 'CFBundleShortVersionString', 'raw', plist]).trim();
   if (actual !== version) throw new Error(`Bundle version ${actual} does not match config version ${version}.`);
@@ -34,18 +34,21 @@ export function verifyPackagedVersion(app, version, publicKey) {
   if (run('/usr/bin/lipo', ['-archs', binary]).trim() !== 'arm64') throw new Error('The Tugboat executable must be arm64.');
   const metadata = execFileSync(binary, ['--package-version'], { encoding: 'utf8', timeout: 10_000 }).trim();
   if (metadata !== version) throw new Error(`Settings/About metadata ${metadata} does not match config version ${version}.`);
-  if (publicKey) {
+  if (publicKey || buildNumber !== undefined) {
     const updater = JSON.parse(run(binary, ['--package-update-config']));
     const endpoint = 'https://github.com/reformo/tugboat/releases/latest/download/latest.json';
-    if (updater.pubkey !== publicKey || updater.requireSignedVersion !== true ||
-        !Array.isArray(updater.endpoints) || updater.endpoints.length !== 1 || updater.endpoints[0] !== endpoint) {
+    if (publicKey && (updater.pubkey !== publicKey || updater.requireSignedVersion !== true ||
+        !Array.isArray(updater.endpoints) || updater.endpoints.length !== 1 || updater.endpoints[0] !== endpoint)) {
       throw new Error('The app must embed the release updater key, signed-version check, and production feed.');
+    }
+    if (buildNumber !== undefined && updater.buildNumber !== buildNumber) {
+      throw new Error(`The app must embed release build number ${buildNumber}.`);
     }
   }
   return metadata;
 }
 
-function verifyApp(app, version, team, publicKey) {
+function verifyApp(app, version, team, publicKey, buildNumber) {
   const plist = path.join(app, 'Contents/Info.plist');
   if (run('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', plist]).trim() !== 'sh.brig.desktop') {
     throw new Error('Expected the production Tugboat bundle identifier.');
@@ -61,7 +64,7 @@ function verifyApp(app, version, team, publicKey) {
   run('/usr/bin/xcrun', ['stapler', 'validate', app]);
   run('/usr/sbin/spctl', ['--assess', '--type', 'execute', '--verbose=4', app]);
   verifyPackagedHull(app);
-  verifyPackagedVersion(app, version, publicKey);
+  verifyPackagedVersion(app, version, publicKey, buildNumber);
 }
 
 async function bundleHash(app) {
@@ -93,7 +96,7 @@ export async function verifyMatchingBundles(installedApp, updatedApp) {
   }
 }
 
-export async function verifyMacosRelease(installerPath, archivePath, version) {
+export async function verifyMacosRelease(installerPath, archivePath, version, buildNumber) {
   const team = /^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/.exec(process.env.APPLE_SIGNING_IDENTITY ?? '')?.[1];
   if (!team) throw new Error('Set APPLE_SIGNING_IDENTITY to a Developer ID Application identity with its Team ID.');
   const publicKey = process.env.TAURI_UPDATER_PUBLIC_KEY?.trim();
@@ -111,12 +114,12 @@ export async function verifyMacosRelease(installerPath, archivePath, version) {
     run('/usr/bin/hdiutil', ['attach', '-readonly', '-nobrowse', '-mountpoint', mount, installer]);
     mounted = true;
     const installedApp = path.join(mount, 'Tugboat.app');
-    verifyApp(installedApp, version, team, publicKey);
+    verifyApp(installedApp, version, team, publicKey, buildNumber);
     const extracted = fs.mkdtempSync(path.join(os.tmpdir(), 'tugboat-updater-'));
     try {
       run('/usr/bin/tar', ['-xpzf', archive, '-C', extracted]);
       const updatedApp = path.join(extracted, 'Tugboat.app');
-      verifyApp(updatedApp, version, team, publicKey);
+      verifyApp(updatedApp, version, team, publicKey, buildNumber);
       await verifyMatchingBundles(installedApp, updatedApp);
     } finally {
       fs.rmSync(extracted, { recursive: true, force: true });
@@ -129,7 +132,7 @@ export async function verifyMacosRelease(installerPath, archivePath, version) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  const [installer, archive, version] = process.argv.slice(2);
-  if (!installer || !archive || !version) throw new Error('Usage: node scripts/release/verify-macos-release.mjs <dmg> <app.tar.gz> <version>');
-  await verifyMacosRelease(installer, archive, version);
+  const [installer, archive, version, buildNumber] = process.argv.slice(2);
+  if (!installer || !archive || !version) throw new Error('Usage: node scripts/release/verify-macos-release.mjs <dmg> <app.tar.gz> <version> [build number]');
+  await verifyMacosRelease(installer, archive, version, buildNumber);
 }

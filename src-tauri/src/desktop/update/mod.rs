@@ -16,6 +16,7 @@ use tauri::{AppHandle, Manager, Runtime, Url};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
 pub(super) const INSTALLER: &str = "https://github.com/reformo/tugboat/releases/latest";
+pub(crate) const RELEASE_BUILD_NUMBER: Option<&str> = option_env!("TUGBOAT_RELEASE_BUILD_NUMBER");
 const STABLE_FEED: &str = "https://github.com/reformo/tugboat/releases/latest/download/latest.json";
 const TARGET: &str = "darwin-aarch64";
 

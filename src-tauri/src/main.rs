@@ -87,6 +87,7 @@ fn main() {
                 "pubkey": config.and_then(|config| config.get("pubkey")),
                 "endpoints": config.and_then(|config| config.get("endpoints")),
                 "requireSignedVersion": config.and_then(|config| config.get("requireSignedVersion")),
+                "buildNumber": update::RELEASE_BUILD_NUMBER,
             })
         );
         return;

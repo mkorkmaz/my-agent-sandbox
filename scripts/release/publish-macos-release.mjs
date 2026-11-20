@@ -26,7 +26,7 @@ export async function publishMacosRelease(
   const api = (...args) => JSON.parse(github(['api', ...args]));
   const verifyFiles = async files => {
     verifyReleaseManifest(files, version, tag);
-    await verifyRelease(path.join(files, installer), path.join(files, archive), version);
+    await verifyRelease(path.join(files, installer), path.join(files, archive), version, buildNumber);
   };
   const verifyTagCommit = tagRequired => {
     const refs = api(`${apiRoot}/git/matching-refs/tags/${tag}`);
