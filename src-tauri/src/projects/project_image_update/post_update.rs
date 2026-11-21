@@ -7,7 +7,7 @@ use crate::{
     platform::brig,
     projects::{
         project_preview::{self, tests::live::image_update_witness as preview_witness},
-        EnvironmentId, Registry, DEFAULT_ENVIRONMENT_IMAGE,
+        EnvironmentId, Registry, PREVIOUS_ENVIRONMENT_IMAGE,
     },
     storage::data_location::RecordsDirectory,
     usage,
@@ -151,7 +151,7 @@ pub(super) fn before(
     checked: &CheckedProject,
 ) -> Result<Retained, String> {
     private_fixture(root, file, checked)?;
-    let scope = scope(file, checked, DEFAULT_ENVIRONMENT_IMAGE)?;
+    let scope = scope(file, checked, PREVIOUS_ENVIRONMENT_IMAGE)?;
     guest_markers(checked)?;
     let records = RecordsDirectory::fixture(&root.join("records"));
     let transcripts = transcripts::Fixture::load()?;

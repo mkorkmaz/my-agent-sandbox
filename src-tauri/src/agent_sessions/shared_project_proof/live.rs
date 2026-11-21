@@ -18,7 +18,7 @@ mod chat;
 const PROFILE: &[u8] = include_bytes!("../../../../scripts/acceptance/shared-project-profile.yaml");
 const POLICY: &[u8] = include_bytes!("../../../../scripts/acceptance/shared-project-policy.yaml");
 const CLAUDE_CREDENTIALS: &str = include_str!("../../providers/shared_claude/guest_credentials.py");
-const CODEX_DIGEST: &str = "2fe94d848540ff2a6868c7ebcc494126a974aa409711676d14fa0379e49e6143";
+const CODEX_DIGEST: &str = "9ba12ec7712e2905b2ea00791f4ebddc9528629cc955d11d25272de445e10643";
 const SANDBOX: &str = "brig-tugboat-project-proof-proof";
 
 fn image_reference() -> &'static str {
@@ -313,7 +313,7 @@ fn missing_image_or_modified_policy_cannot_authorize_live_access() {
             {"host":"api.anthropic.com"}, {"host":"api.openai.com"}, {"host":"auth.openai.com"},
             {"host":"chatgpt.com"}, {"host":"claude.ai"}, {"host":"platform.claude.com"}
         ], "deny":[]}, "ports":[], "credentials":[],
-        "image":{"ref":"ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce"},
+        "image":{"ref":crate::projects::DEFAULT_ENVIRONMENT_IMAGE},
         "project":{"host":root.join("sample project"),"guest":"/work/sample project","mode":"read-write"},
         "home":{"host":root.join(format!("state/homes/{SANDBOX}")),"guest":"/root","mode":"read-write"},
     });

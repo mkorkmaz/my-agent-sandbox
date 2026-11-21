@@ -3320,6 +3320,7 @@ test('a supported unknown-relation child refreshes its legacy parent detail whil
   const parent = legacy.conversations[0];
   const child = family.conversations[1];
   const childAgent = family.details.agents[1];
+  child.lineage.sourceVersion = '0.171.0';
   child.lineage.parentSessionId = parent.id; child.relationStatus = 'unknown'; child.rootSessionId = null; child.subagentCount = 0; child.familyUsage = child.usage; child.coverage = 'unknown';
   childAgent.lineage = structuredClone(child.lineage); childAgent.relationStatus = 'unknown'; childAgent.coverage = 'unknown';
   for (const turn of childAgent.turns) {

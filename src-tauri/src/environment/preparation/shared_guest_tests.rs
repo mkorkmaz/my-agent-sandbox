@@ -197,10 +197,10 @@ fn production_shared_guest_boot_and_reopen() {
     let bwrap = checked
         .paths
         .host_home
-        .join(".tugboat-codex-0.167.0/codex-resources/bwrap");
+        .join(".tugboat-codex-0.171.0/codex-resources/bwrap");
     fs::write(&bwrap, b"synthetic-corruption").unwrap();
     let archive = root.join(
-        "state/tugboat-codex-0.167.0/verified/codex-package-aarch64-unknown-linux-musl.tar.gz",
+        "state/tugboat-codex-0.171.0/verified/codex-package-aarch64-unknown-linux-musl.tar.gz",
     );
     fs::write(archive, b"synthetic-corruption").unwrap();
     assert!(shared_runtime::verify_codex(&checked).is_err());

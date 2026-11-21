@@ -707,7 +707,8 @@ function selectedUsageFingerprint(sessionId: string, environmentId: string, agen
   const nodesById = new Map(scoped.map(conversation => [conversation.id, conversation]));
   for (const conversation of scoped) {
     const parent = conversation.lineage.parentSessionId;
-    if (!parent || conversation.lineage.kind !== 'subagent' || conversation.lineage.lineageVersion !== 1 || conversation.lineage.sourceVersion !== '0.167.0' || conversation.relationStatus === 'invalid') continue;
+    const version = conversation.lineage.sourceVersion;
+    if (!parent || conversation.lineage.kind !== 'subagent' || conversation.lineage.lineageVersion !== 1 || (version !== '0.167.0' && version !== '0.171.0') || conversation.relationStatus === 'invalid') continue;
     const parentNode = nodesById.get(parent);
     if (!parentNode || parentNode.relationStatus === 'invalid') continue;
     if (parentNode.rootSessionId && conversation.rootSessionId !== parentNode.rootSessionId) continue;

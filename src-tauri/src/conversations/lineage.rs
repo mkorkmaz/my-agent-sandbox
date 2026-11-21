@@ -97,7 +97,7 @@ pub fn parse(payload: &Value) -> (Lineage, Option<Problem>) {
             .map(|_| Problem::MissingSource);
         return (result, problem);
     }
-    if result.source_version.as_deref() != Some("0.167.0") {
+    if !crate::usage::supports_codex_history(result.source_version.as_deref()) {
         return (result, Some(Problem::UnsupportedVersion));
     }
     if let Some(source) = source.as_str() {

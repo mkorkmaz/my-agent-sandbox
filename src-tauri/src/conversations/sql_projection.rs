@@ -46,7 +46,7 @@ fn coverage(id: &str, record: &SessionRecord, value: &Rollup, graph: &Graph) -> 
         };
     }
     if record.lineage.kind == lineage::Kind::Unknown
-        || record.lineage.source_version.as_deref() != Some("0.167.0")
+        || !usage::supports_codex_history(record.lineage.source_version.as_deref())
         || value.has_ownership_problem
     {
         return usage::Coverage::Unknown;

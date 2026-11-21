@@ -35,7 +35,8 @@ pub use removal::RemovalStep;
 pub use stage::ProjectStage;
 
 pub(crate) const ENVIRONMENT_PROFILE: &str = "tugboat-project";
-pub(crate) const DEFAULT_ENVIRONMENT_IMAGE: &str = "ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce";
+pub(crate) const PREVIOUS_ENVIRONMENT_IMAGE: &str = "ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce";
+pub(crate) const DEFAULT_ENVIRONMENT_IMAGE: &str = "ghcr.io/brig-sh/claude-code-stock@sha256:f4a80cbac021d6c8cdbad51d3b52f66a2a6e2f0ede2c1144aa73453fae60430a";
 
 static NEXT_PROBE: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
@@ -282,7 +283,7 @@ impl Project {
         }
         if !matches!(
             self.image_ref.as_str(),
-            DEFAULT_ENVIRONMENT_IMAGE | project_image_update::CANDIDATE_IMAGE
+            PREVIOUS_ENVIRONMENT_IMAGE | DEFAULT_ENVIRONMENT_IMAGE
         ) {
             return Err(
                 "The project guest image must have an approved signed stock image digest.".into(),

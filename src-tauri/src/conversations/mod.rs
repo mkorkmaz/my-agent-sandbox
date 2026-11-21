@@ -1110,7 +1110,7 @@ fn own_coverage(id: &str, record: &SessionRecord, graph: &Graph) -> usage::Cover
         .filter(|request| request.source.is_some())
         .count();
     if record.lineage.kind == lineage::Kind::Unknown
-        || record.lineage.source_version.as_deref() != Some("0.167.0")
+        || !usage::supports_codex_history(record.lineage.source_version.as_deref())
         || record
             .cursors
             .values()

@@ -231,7 +231,7 @@ fn same_guest(nodes: &BTreeMap<String, Node>, first: &str, second: &str) -> bool
 
 fn supported_source(node: &Node) -> bool {
     node.agent_kind == Some(crate::agents::AgentKind::ClaudeCode)
-        || node.lineage.source_version.as_deref() == Some("0.167.0")
+        || crate::usage::supports_codex_history(node.lineage.source_version.as_deref())
 }
 
 fn trusted_link(node: &Node) -> bool {

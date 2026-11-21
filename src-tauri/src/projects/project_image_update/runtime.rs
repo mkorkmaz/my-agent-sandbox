@@ -240,6 +240,7 @@ impl Runtime<'_> {
             self.brig.runtime_home()?,
             &self.sandbox(),
         )?;
+        shared_runtime::install_codex(checked)?;
         let mut brig = checked.brig.clone();
         if restore {
             let (_, digest) = checked

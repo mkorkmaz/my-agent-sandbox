@@ -1,12 +1,10 @@
-use crate::projects::{Project, DEFAULT_ENVIRONMENT_IMAGE};
+use crate::projects::{Project, PREVIOUS_ENVIRONMENT_IMAGE};
 use serde::{Deserialize, Serialize};
 use std::{
     fs,
     os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
 };
-
-pub(crate) const CANDIDATE_IMAGE: &str = "ghcr.io/brig-sh/claude-code-stock@sha256:f4a80cbac021d6c8cdbad51d3b52f66a2a6e2f0ede2c1144aa73453fae60430a";
 
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -152,7 +150,7 @@ impl Pending {
         };
         scope.verify(project)?;
         if !matches!(self, Self::Finalizing { .. })
-            && project.image_ref != DEFAULT_ENVIRONMENT_IMAGE
+            && project.image_ref != PREVIOUS_ENVIRONMENT_IMAGE
         {
             return Err("The guest image recovery record has an invalid source image.".into());
         }
