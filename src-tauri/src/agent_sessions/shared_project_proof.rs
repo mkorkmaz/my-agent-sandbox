@@ -309,7 +309,7 @@ fn observe_replay(
     while Instant::now() < end {
         if agent == AgentKind::Codex && composer_visible {
             if !view_requested && (selected_ready || started.elapsed() >= Duration::from_secs(45)) {
-                // Codex 0.167.0 Ctrl+T opens the read-only transcript.
+                // Ctrl+T opens the Codex read-only transcript.
                 terminal
                     .input
                     .0
@@ -502,7 +502,7 @@ fn two_guest_commands_keep_their_native_terminal_input_targets() {
     );
     assert!(codex
         .receive("phase1-pty-ready")
-        .contains("codex-cli 0.167.0"));
+        .contains("codex-cli 0.171.0"));
     let mut claude = Terminal::open(
         &runner,
         &[

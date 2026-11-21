@@ -1,15 +1,16 @@
 use super::{codex_package, CheckedProject};
 use crate::{
     agents::{AgentCommand, AgentKind, GuestCommand},
-    projects::{project_image_update::CANDIDATE_IMAGE, Project, DEFAULT_ENVIRONMENT_IMAGE},
+    projects::{Project, DEFAULT_ENVIRONMENT_IMAGE, PREVIOUS_ENVIRONMENT_IMAGE},
 };
 
 use serde::Serialize;
 
 const CLAUDE_PROGRAM: &str = "/usr/local/bin/claude";
-const CLAUDE_BASE_SHA256: &str = "53a0d7e219d7b0804ecba5dbc002745e89f786cc946d2de85a6470d5b2d1fb06";
+const PREVIOUS_CLAUDE_SHA256: &str =
+    "53a0d7e219d7b0804ecba5dbc002745e89f786cc946d2de85a6470d5b2d1fb06";
 
-const CLAUDE_CANDIDATE_SHA256: &str =
+const DEFAULT_CLAUDE_SHA256: &str =
     "98d56f6ffe53469767a74864a38eaf359d62ef557a8de1b1ad524d61a66ec119";
 
 #[derive(Debug, Eq, PartialEq, Serialize)]
@@ -55,8 +56,8 @@ pub(crate) fn verify_codex(checked: &CheckedProject) -> Result<(), String> {
 
 pub(crate) fn pinned_versions(image: &str) -> Result<Versions, String> {
     let claude_code = match image {
-        DEFAULT_ENVIRONMENT_IMAGE => "2.1.318 (Claude Code)",
-        CANDIDATE_IMAGE => "2.1.326 (Claude Code)",
+        PREVIOUS_ENVIRONMENT_IMAGE => "2.1.318 (Claude Code)",
+        DEFAULT_ENVIRONMENT_IMAGE => "2.1.326 (Claude Code)",
         _ => return Err("The guest image has no approved Claude Code release.".into()),
     };
     Ok(Versions {
@@ -100,8 +101,8 @@ pub(crate) fn verify_claude(checked: &CheckedProject) -> Result<(), String> {
         return Err("The guest Claude access directory is not mounted on temporary memory.".into());
     }
     let expected = match checked.project.image_ref.as_str() {
-        DEFAULT_ENVIRONMENT_IMAGE => CLAUDE_BASE_SHA256,
-        CANDIDATE_IMAGE => CLAUDE_CANDIDATE_SHA256,
+        PREVIOUS_ENVIRONMENT_IMAGE => PREVIOUS_CLAUDE_SHA256,
+        DEFAULT_ENVIRONMENT_IMAGE => DEFAULT_CLAUDE_SHA256,
         _ => return Err("The guest image has no approved Claude executable.".into()),
     };
     let executable = checked.brig.checked(

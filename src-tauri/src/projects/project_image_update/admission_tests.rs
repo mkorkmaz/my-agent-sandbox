@@ -32,6 +32,7 @@ impl Fixture {
         }
         let mut registry = Registry::default();
         let mut project = registry.register(&root.join("project")).unwrap();
+        project.image_ref = PREVIOUS_ENVIRONMENT_IMAGE.into();
         let sibling = registry.register(&root.join("sibling")).unwrap();
         let policy = json!({
             "apiVersion": "brig.sh/v1alpha1",
@@ -80,7 +81,7 @@ impl Fixture {
         plan["data"]["project"]["guest"] = json!("/work/project");
         plan["data"]["session"] = json!(fixture.project.label);
         plan["data"]["sandbox"] = json!(sandbox);
-        plan["data"]["image"]["ref"] = json!(DEFAULT_ENVIRONMENT_IMAGE);
+        plan["data"]["image"]["ref"] = json!(PREVIOUS_ENVIRONMENT_IMAGE);
         fixture.write_json("previous.json", &plan);
         plan["data"]["image"]["ref"] = json!(CANDIDATE_IMAGE);
         fixture.write_json("candidate.json", &plan);
@@ -101,7 +102,7 @@ impl Fixture {
             "instance.json",
             &json!({
                 "id": sandbox,
-                "imageDigest": DEFAULT_ENVIRONMENT_IMAGE.split_once('@').unwrap().1,
+                "imageDigest": PREVIOUS_ENVIRONMENT_IMAGE.split_once('@').unwrap().1,
                 "status": "running",
                 "backend": "hvi",
                 "bundleDir": fixture.root.join("bundle"),
@@ -283,7 +284,7 @@ fn expect_preflight_failure(failure: &str, message: &str, pulls: bool) {
         .environment(&fixture.project.id, &fixture.project.environment_id)
         .unwrap();
     assert_eq!(saved.stage, ProjectStage::Ready);
-    assert_eq!(saved.image_ref, DEFAULT_ENVIRONMENT_IMAGE);
+    assert_eq!(saved.image_ref, PREVIOUS_ENVIRONMENT_IMAGE);
     assert!(saved.image_update.is_none());
 }
 

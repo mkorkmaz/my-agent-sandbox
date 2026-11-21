@@ -87,6 +87,8 @@ fn both_agents_reopen_the_same_environment_and_only_one_record_is_written() {
     let file = fixture.0.join("projects.json");
     let mut registry = Registry::default();
     let first = fixture.register(&mut registry, "first");
+    assert_eq!(first.image_ref, DEFAULT_ENVIRONMENT_IMAGE);
+    assert_ne!(first.image_ref, PREVIOUS_ENVIRONMENT_IMAGE);
     let second = fixture.register(&mut registry, "second");
     let claude = registry
         .agent_environment(&first.id, &first.environment_id, AgentKind::ClaudeCode)
@@ -158,6 +160,7 @@ fn a_stopped_environment_preserves_the_exact_approved_plan_across_reopen() {
     let file = fixture.0.join("projects.json");
     let mut registry = Registry::default();
     let mut project = fixture.register(&mut registry, "first");
+    project.image_ref = PREVIOUS_ENVIRONMENT_IMAGE.into();
     project.stage = ProjectStage::Ready;
     project
         .begin_environment(EnvironmentAttempt::pending(
@@ -172,6 +175,7 @@ fn a_stopped_environment_preserves_the_exact_approved_plan_across_reopen() {
     storage::write(&file, &registry).unwrap();
     let reopened = Registry::load(&file).unwrap();
     for agent in reopened.agent_views(&project.id).unwrap() {
+        assert_eq!(agent.image_ref, PREVIOUS_ENVIRONMENT_IMAGE);
         assert_eq!(agent.approved_plan.as_deref(), Some("approved-plan"));
         assert!(agent.environment_attempt.is_none());
     }
@@ -190,6 +194,7 @@ fn version_one_source_preserves_the_folder_and_exact_retired_reference() {
         .unwrap();
     let retired = &planned.retired[0].environments[0];
     assert_eq!(retired.reference(), "codex@former-codex");
+    assert_eq!(retired.image_ref, PREVIOUS_ENVIRONMENT_IMAGE);
     assert_eq!(
         retired.environment_id,
         EnvironmentId::for_agent(&project.id, AgentKind::Codex)
@@ -197,6 +202,7 @@ fn version_one_source_preserves_the_folder_and_exact_retired_reference() {
     let shared = planned.registry.project(&project.id).unwrap();
     assert_eq!(shared.path, project.path);
     assert_eq!(shared.reference(), project.reference());
+    assert_eq!(shared.image_ref, DEFAULT_ENVIRONMENT_IMAGE);
     assert_eq!(shared.approved_plan, None);
     assert_eq!(fs::read(file).unwrap(), bytes);
 }

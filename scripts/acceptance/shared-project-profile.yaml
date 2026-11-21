@@ -4,7 +4,7 @@ desc: Disposable shared Tugboat project guest
 # Brig 0.5.2 accepts a session policy only on an agent profile.
 kind: agent
 binary: bash
-image: ghcr.io/brig-sh/claude-code-stock@sha256:f5b733fbce5aaf38edcdcfe7021993e65625c0f064334a96089e9f1fb5e8d0ce
+image: ghcr.io/brig-sh/claude-code-stock@sha256:f4a80cbac021d6c8cdbad51d3b52f66a2a6e2f0ede2c1144aa73453fae60430a
 guestHome: /root
 hypervisor: hvi
 network: isolated

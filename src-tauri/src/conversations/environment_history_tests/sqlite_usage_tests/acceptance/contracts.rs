@@ -26,6 +26,75 @@ fn native_codex_family(watch: &Watch) {
 }
 
 #[test]
+fn codex_package_upgrade_preserves_saved_usage_and_counts_new_subagents_once() {
+    const PREVIOUS: &str = "70000000-0000-4000-8000-000000000001";
+    const PRIMARY: &str = "70000000-0000-4000-8000-000000000002";
+    const CHILD: &str = "70000000-0000-4000-8000-000000000003";
+    let fixture = Fixture::new("codex-package-upgrade");
+    let mut watch = fixture.watch(AgentKind::Codex);
+    watch.project = "/work/fixture-project".into();
+    let directory = watch.home.join(".codex/sessions");
+    fs::create_dir_all(&directory).unwrap();
+    let source =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/codex-subagents/v0.171.0");
+    let previous = directory.join("rollout-legacy.jsonl");
+    fs::copy(source.join("legacy-root.jsonl"), &previous).unwrap();
+    let (sql, _) = seeded(&fixture, &watch, &Ledger::default());
+    let baseline = synchronize(&sql).unwrap().0;
+    assert_eq!((baseline.usage.requests, baseline.usage.total), (1, 22));
+
+    let append = fs::read(source.join("legacy-resumed-turn.jsonl")).unwrap();
+    OpenOptions::new()
+        .append(true)
+        .open(previous)
+        .unwrap()
+        .write_all(&append)
+        .unwrap();
+    for name in ["primary.jsonl", "child.jsonl"] {
+        fs::copy(source.join(name), directory.join(format!("rollout-{name}"))).unwrap();
+    }
+    let (after, _) = synchronize(&sql).unwrap();
+    assert_eq!((after.usage.requests, after.usage.total), (5, 110));
+    let saved = after
+        .conversations
+        .iter()
+        .find(|row| row.id == PREVIOUS)
+        .unwrap();
+    assert_eq!(saved.lineage.source_version.as_deref(), Some("0.167.0"));
+    assert_eq!((saved.usage.requests, saved.usage.total), (2, 44));
+    let child = after
+        .conversations
+        .iter()
+        .find(|row| row.id == CHILD)
+        .unwrap();
+    assert_eq!(child.lineage.source_version.as_deref(), Some("0.171.0"));
+    assert_eq!(child.relation_status, graph::Status::Resolved);
+    assert_eq!(child.root_session_id.as_deref(), Some(PRIMARY));
+    let details = sql_backend::details(
+        sql.target.as_ref().unwrap(),
+        sql.store.as_ref().unwrap(),
+        PRIMARY,
+        |_| Ok(Some(sql.namespace())),
+    )
+    .unwrap();
+    assert_eq!(details.coverage, usage::Coverage::Complete);
+    assert_eq!(
+        (
+            details.own_usage.requests,
+            details.descendants_usage.requests
+        ),
+        (2, 1)
+    );
+    assert_eq!(details.combined_usage.total, 66);
+    assert!(resume_dashboard(&sql, PREVIOUS).is_ok());
+    assert!(resume_dashboard(&sql, PRIMARY).is_ok());
+    assert!(resume_dashboard(&sql, CHILD).is_err());
+    let (repeated, changed) = synchronize(&sql).unwrap();
+    assert!(!changed);
+    assert_eq!(repeated.usage, after.usage);
+}
+
+#[test]
 fn full_api_event_resume_and_quiet_contracts_match_on_both_agents_native_families() {
     for name in [
         "codex-family",

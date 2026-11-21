@@ -12,10 +12,10 @@ import { cleanSharedProject } from './shared-project-cleanup.mjs';
 const workspace = fileURLToPath(new URL('../../', import.meta.url));
 const runtime = path.join(workspace, '.build/brig-runtime/bin');
 const archive = 'codex-package-aarch64-unknown-linux-musl.tar.gz';
-const release = 'rust-v0.167.0';
+const release = 'rust-v0.171.0';
 const releaseUrl = `https://github.com/openai/codex/releases/download/${release}`;
-const archiveDigest = '0de261ecf1e7f3028a7952f03fca2093f749277d38590b78bb32f8567756bbb7';
-const bundleDigest = '295debf718a18557e83c3f96d3f1c5332013ae2df5f6ba03ee91b73dc28bd8b0';
+const archiveDigest = 'd8c43bee6cf11b01eb18b95f4d7961092bc40228180808859e70dabb7784c1c9';
+const bundleDigest = 'ad7a3d4d1703a6c664c222d77c462a3932072bba5dfced64677d148cbbe640ff';
 const profile = 'tugboat-project-proof';
 const reference = `${profile}@proof`;
 const sandbox = `brig-${profile}-proof`;
@@ -137,7 +137,7 @@ try {
   assert.equal((await guest('sha256sum', codex)).stdout.split(' ')[0], localDigest);
   const codexVersion = (await guest(codex, '--version')).stdout.trim();
   const claudeVersion = (await guest('claude', '--version')).stdout.trim();
-  assert.equal(codexVersion, 'codex-cli 0.167.0');
+  assert.equal(codexVersion, 'codex-cli 0.171.0');
   assert.match(claudeVersion, /^\d+\.\d+\.\d+ \(Claude Code\)$/);
   check('Both verified executables run on one guest', { codexVersion, claudeVersion, codexDigest: localDigest });
 

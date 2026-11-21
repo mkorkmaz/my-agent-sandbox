@@ -1,6 +1,6 @@
 use super::{
     EnvironmentAttempt, EnvironmentId, Policy, Project, ProjectOptions, ProjectStage, Registry,
-    Removal, DEFAULT_ENVIRONMENT_IMAGE, ENVIRONMENT_PROFILE,
+    Removal, DEFAULT_ENVIRONMENT_IMAGE, ENVIRONMENT_PROFILE, PREVIOUS_ENVIRONMENT_IMAGE,
 };
 use crate::{
     agents::AgentKind,
@@ -145,6 +145,7 @@ impl FormerProject {
                 return Err("The saved project repeats an agent environment.".into());
             }
             let mut project = shared.clone();
+            project.image_ref = PREVIOUS_ENVIRONMENT_IMAGE.into();
             project.environment_id = former.environment_id;
             project.agent_kind = former.agent_kind;
             project.profile = former.profile;
@@ -205,7 +206,7 @@ fn v1(mut value: Value, defaults: &Settings) -> Result<(Project, Vec<Project>), 
     fields.insert("network".into(), network);
     fields.insert(
         "imageRef".into(),
-        serde_json::json!(DEFAULT_ENVIRONMENT_IMAGE),
+        serde_json::json!(PREVIOUS_ENVIRONMENT_IMAGE),
     );
     if let Some(removal) = fields
         .get_mut("removal")
@@ -219,6 +220,7 @@ fn v1(mut value: Value, defaults: &Settings) -> Result<(Project, Vec<Project>), 
     let mut shared = old.clone();
     shared.environment_id = EnvironmentId::for_project(&id);
     shared.profile = ENVIRONMENT_PROFILE.into();
+    shared.image_ref = DEFAULT_ENVIRONMENT_IMAGE.into();
     shared.label = super::project_label(&id);
     shared.policy = None;
     shared.stage = ProjectStage::Selected;

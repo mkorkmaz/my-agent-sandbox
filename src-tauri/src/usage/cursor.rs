@@ -379,7 +379,7 @@ impl Cursor {
         serde_json::json!({"offset":self.offset,"pendingBytes":self.pending_bytes,"inode":self.inode,"device":self.device,"namespace":self.namespace,"owner":self.owner,"activeOwner":self.active_owner,"version":self.version,"header":self.header_fingerprint,"ownershipProblem":self.ownership_problem,"provenanceProblem":self.provenance_problem,"turn":self.turn_id,"model":self.model,"tier":self.tier,"threadTier":self.thread_tier,"bindings":self.matched_counters.len(),"pendingExact":self.pending_exact.len(),"pendingCounters":self.pending_counters.len()})
     }
     fn supported(&self) -> bool {
-        self.version.as_deref() == Some("0.167.0") && self.namespace.is_some()
+        super::supports_codex_history(self.version.as_deref()) && self.namespace.is_some()
     }
     fn lifecycle_allowed(&self) -> bool {
         self.ownership_phase() != OwnershipPhase::Blocked

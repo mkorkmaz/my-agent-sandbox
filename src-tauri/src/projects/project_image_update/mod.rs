@@ -8,7 +8,7 @@ use crate::{
     platform::runtime as tools,
     projects::{
         self, EnvironmentAttempt, EnvironmentId, Project, ProjectStage, Registry,
-        DEFAULT_ENVIRONMENT_IMAGE,
+        PREVIOUS_ENVIRONMENT_IMAGE,
     },
     storage::{self, data_location},
     terminal,
@@ -30,9 +30,10 @@ mod root;
 mod runtime;
 mod state;
 
+pub(crate) use super::DEFAULT_ENVIRONMENT_IMAGE as CANDIDATE_IMAGE;
 use runtime::{scope, Runtime};
+pub(crate) use state::Pending;
 use state::{Change, Review, RootEvidence, Scope};
-pub(crate) use state::{Pending, CANDIDATE_IMAGE};
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
@@ -146,7 +147,7 @@ fn runtime<'a>(app: &AppHandle, project: &'a Project) -> Result<Runtime<'a>, Str
 }
 
 fn current_scope(runtime: &Runtime<'_>) -> Result<(environment::CheckedProject, Scope), String> {
-    let (previous, home) = runtime.plan(DEFAULT_ENVIRONMENT_IMAGE)?;
+    let (previous, home) = runtime.plan(PREVIOUS_ENVIRONMENT_IMAGE)?;
     let (candidate, new_home) = runtime.plan(CANDIDATE_IMAGE)?;
     let plan_fingerprint = scope(&previous.plan)?;
     if home != new_home || plan_fingerprint != scope(&candidate.plan)? {
@@ -210,11 +211,11 @@ fn review_view(
     let replay = runtime.replay(false)?;
     let changes = root::inventory(&runtime.debugfs, &replay, &runtime.brig.environment)?;
     Ok(Status::Review {
-        previous: DEFAULT_ENVIRONMENT_IMAGE,
+        previous: PREVIOUS_ENVIRONMENT_IMAGE,
         candidate: CANDIDATE_IMAGE,
         changes,
         token: review.token()?,
-        previous_versions: pinned_versions(DEFAULT_ENVIRONMENT_IMAGE)?,
+        previous_versions: pinned_versions(PREVIOUS_ENVIRONMENT_IMAGE)?,
         candidate_versions: pinned_versions(CANDIDATE_IMAGE)?,
     })
 }
@@ -308,7 +309,7 @@ fn restore(
             "The previous system disk backup changed. Recovery stopped before using it.".into(),
         );
     }
-    let (checked, current_home) = runtime.plan(DEFAULT_ENVIRONMENT_IMAGE)?;
+    let (checked, current_home) = runtime.plan(PREVIOUS_ENVIRONMENT_IMAGE)?;
     if current_home != review.scope.home || scope(&checked.plan)? != review.scope.plan_fingerprint {
         return Err(
             "Restore the reviewed home, mount, policy, and preview before retrying recovery."
@@ -317,11 +318,11 @@ fn restore(
     }
     let replay = runtime.replay(true)?;
     runtime.stop()?;
-    let (checked, versions) = boot_target(runtime, review, DEFAULT_ENVIRONMENT_IMAGE, true)?;
+    let (checked, versions) = boot_target(runtime, review, PREVIOUS_ENVIRONMENT_IMAGE, true)?;
     drop(replay);
     finalize(file, runtime, pending, &checked)?;
     Ok(Status::Restored {
-        image: DEFAULT_ENVIRONMENT_IMAGE,
+        image: PREVIOUS_ENVIRONMENT_IMAGE,
         versions,
         message,
     })
@@ -385,7 +386,7 @@ fn replace(
     match candidate(runtime, review) {
         Ok((checked, versions)) => {
             finalize(file, runtime, &pending, &checked)?;
-            Ok(Status::Updated { previous: DEFAULT_ENVIRONMENT_IMAGE, candidate: CANDIDATE_IMAGE, versions })
+            Ok(Status::Updated { previous: PREVIOUS_ENVIRONMENT_IMAGE, candidate: CANDIDATE_IMAGE, versions })
         }
         Err(message) => restore(file, runtime, &pending, message).map_err(|error| {
             format!("The new image did not start successfully. Retry recovery from Project settings. {error}")
@@ -451,7 +452,7 @@ fn pending_action(
 
 fn recovery(message: String) -> Status {
     Status::Recovery {
-        previous: DEFAULT_ENVIRONMENT_IMAGE,
+        previous: PREVIOUS_ENVIRONMENT_IMAGE,
         candidate: CANDIDATE_IMAGE,
         message,
     }
@@ -472,9 +473,9 @@ fn change(file: &Path, runtime: &Runtime<'_>, action: Action) -> Result<Status, 
     }
     match action {
         Action::Read => Ok(Status::Available {
-            previous: DEFAULT_ENVIRONMENT_IMAGE,
+            previous: PREVIOUS_ENVIRONMENT_IMAGE,
             candidate: CANDIDATE_IMAGE,
-            previous_versions: pinned_versions(DEFAULT_ENVIRONMENT_IMAGE)?,
+            previous_versions: pinned_versions(PREVIOUS_ENVIRONMENT_IMAGE)?,
             candidate_versions: pinned_versions(CANDIDATE_IMAGE)?,
         }),
         Action::Review => {

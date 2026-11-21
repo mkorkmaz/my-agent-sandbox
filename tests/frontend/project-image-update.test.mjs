@@ -4,8 +4,8 @@ import { deferred, flush, interfaceHarness, plan, project } from './frontend-har
 
 const sibling = { ...project, id: 'image-sibling', environmentId: 'b'.repeat(32), label: 'image-sibling', name: 'Sibling project' };
 const candidate = 'ghcr.io/brig-sh/claude-code-stock@sha256:f4a80cbac021d6c8cdbad51d3b52f66a2a6e2f0ede2c1144aa73453fae60430a';
-const previousVersions = { codex: '0.167.0', claudeCode: '2.1.318' };
-const candidateVersions = { codex: '0.167.0', claudeCode: '2.1.326' };
+const previousVersions = { codex: '0.171.0', claudeCode: '2.1.318' };
+const candidateVersions = { codex: '0.171.0', claudeCode: '2.1.326' };
 const images = { previous: project.imageRef, candidate, previousVersions, candidateVersions };
 const available = { status: 'available', ...images };
 const reviewed = { status: 'review', ...images, token: 'review-token', changes: [
@@ -70,7 +70,7 @@ test('reviews exact guest paths and verifies the selected candidate before launc
   assert.equal(calls(harness)[0].args.action.kind, 'read');
   const imageRows = harness.element('project-image-update-images');
   assert.ok(imageRows.textContent.includes(project.imageRef) && imageRows.textContent.includes(candidate));
-  assert.match(imageRows.textContent, /Codex 0\.167\.0 · Claude Code 2\.1\.318.*Codex 0\.167\.0 · Claude Code 2\.1\.326/s);
+  assert.match(imageRows.textContent, /Codex 0\.171\.0 · Claude Code 2\.1\.318.*Codex 0\.171\.0 · Claude Code 2\.1\.326/s);
   assert.equal(harness.element('apply-project-image').disabled, true);
   harness.element('review-project-image').click(); await flush();
   assert.match(status(harness), /guest is stopped/);

@@ -108,11 +108,13 @@ The private renewable record is `<records folder>/claude/session.json`, with dir
 
 Stopping an environment clears its memory copy. The shared account remains connected. Starting a chat restores the copy after checking the account and network policy. Transcripts remain in that environment's guest home. **Check connection** renews the shared account. **Sign out of Tugboat** requires Claude chats and guest terminals to end. It clears managed copies and reports unconfirmed remote revocation. Removing one environment preserves the shared account.
 
-Claude uses the Brig boundary and manual permission requests. The Codex sandbox option does not apply to Claude. Provider authorization follows the Codex 0.167.0 and Claude Code 2.1.318 protocols. Retest browser authorization and access copies when updating guest agents.
+Claude uses the Brig boundary and manual permission requests. The Codex sandbox option does not apply to Claude. The Mac manages provider authorization. Retest browser authorization and access copies when updating guest agents.
 
 ### Chats and environments
 
 Configured projects show saved chats and measured usage while Tugboat checks the shared environment. Tugboat checks the current plan and starts a stopped environment automatically. It reuses a verified running guest. You can inspect the plan in **Project settings**. Startup failures offer **Retry environment**. **Stop Brig environment** ends both agents’ chats and other guest processes. The persistent guest home and chat history stay available.
+
+Tugboat installs the signed Codex 0.171.0 package during the first preparation for that release. Its versioned install directory is separate from the Codex settings and saved chats.
 
 **New Chat** starts a process for the chosen agent inside the project environment. Selecting an open chat restores its terminal and scrollback. Claude new chats receive a UUID from Tugboat. Resume uses the saved agent and native ID. Two agents can use the same native ID and keep distinct chats.
 
@@ -126,7 +128,7 @@ Tugboat reads Codex token events and Claude message usage from their own directo
 
 The usage icon opens **Session usage**. For a root chat with subagents, **Main agent**, **Subagents**, and **Combined** separate the root's own usage from delegated work. Expand a subagent to inspect its own agent turns and requests. User prompt counts and agent turn counts are separate. Proven prompt attribution links to the source request or unmeasured turn. Work without proven attribution stays under **Unassigned to a user prompt** and remains in the selected total. A selected child's details cover that child and its descendants only; ancestors and siblings are excluded. While the dialog is open, changes in the selected subtree refresh its details and preserve open disclosures, focus, and scroll position.
 
-Exact source ownership and parent relationships are supported for the observed guest Codex 0.167.0 format. A physical request uses the verified guest-home namespace, model provider, origin thread ID, and response ID. Different guest homes stay separate. Matching titles, token amounts, or project paths do not establish request identity. Legacy counter records retain their saved usage with unknown source coverage until reliable evidence resolves ownership; they are not reset or deduplicated by equal amounts.
+Exact source ownership and parent relationships are supported for the Codex 0.167.0 and 0.171.0 record formats. A physical request uses the verified guest-home namespace, model provider, origin thread ID, and response ID. Different guest homes stay separate. Matching titles, token amounts, or project paths do not establish request identity. Legacy counter records retain their saved usage with unknown source coverage until reliable evidence resolves ownership; they are not reset or deduplicated by equal amounts.
 
 The OpenAI catalogue was checked on 2026-11-17 against [OpenAI API pricing](https://developers.openai.com/api/docs/pricing). It covers GPT-6.2 Astra and Sol, GPT-6.1 Sol and Terra, and GPT-6 Astra, Sol, and Luna. Prompts above 272,000 input tokens use long-context prices for the full request. Missing tiers use Standard and carry an assumption label. GPT-6.2 Ultrafast pricing uses the request timestamp to apply the published change on March 1, 2027, Pacific time. Unverified models and tiers remain unpriced.
 

@@ -16,29 +16,33 @@ use std::{
     time::Duration,
 };
 
-pub(super) const VERSION: &str = "codex-cli 0.167.0";
-pub(crate) const PROGRAM: &str = "/root/.tugboat-codex-0.167.0/bin/codex";
-const DIRECTORY: &str = ".tugboat-codex-0.167.0";
-const RELEASE: &str = "https://github.com/openai/codex/releases/download/rust-v0.167.0";
+pub(super) const VERSION: &str = "codex-cli 0.171.0";
+pub(crate) const PROGRAM: &str = "/root/.tugboat-codex-0.171.0/bin/codex";
+const DIRECTORY: &str = ".tugboat-codex-0.171.0";
+const RELEASE: &str = "https://github.com/openai/codex/releases/download/rust-v0.171.0";
 const SIGNER: &str =
-    "https://github.com/openai/codex/.github/workflows/rust-release.yml@refs/tags/rust-v0.167.0";
+    "https://github.com/openai/codex/.github/workflows/rust-release.yml@refs/tags/rust-v0.171.0";
 const ISSUER: &str = "https://token.actions.githubusercontent.com";
 const ARCHIVE: &str = "codex-package-aarch64-unknown-linux-musl.tar.gz";
 const BUNDLE: &str = "codex-package-aarch64-unknown-linux-musl.tar.gz.sigstore";
-const ARCHIVE_SHA256: &str = "0de261ecf1e7f3028a7952f03fca2093f749277d38590b78bb32f8567756bbb7";
-const BUNDLE_SHA256: &str = "295debf718a18557e83c3f96d3f1c5332013ae2df5f6ba03ee91b73dc28bd8b0";
-const MANIFEST: &str = include_str!("../../profiles/codex-0.167.0.manifest");
+const ARCHIVE_SIZE: u64 = 199_315_347;
+const BUNDLE_SIZE: u64 = 8_489;
+const ARCHIVE_SHA256: &str = "d8c43bee6cf11b01eb18b95f4d7961092bc40228180808859e70dabb7784c1c9";
+const BUNDLE_SHA256: &str = "ad7a3d4d1703a6c664c222d77c462a3932072bba5dfced64677d148cbbe640ff";
+const MANIFEST: &str = include_str!("../../profiles/codex-0.171.0.manifest");
 
 pub(super) fn install(brig: &Brig, home: &Path, running: bool) -> Result<(), String> {
     if verify(home).is_ok() {
         return Ok(());
     }
     if running {
-        return Err("Stop the project guest before repairing its Codex package.".into());
+        return Err(
+            "Stop the project guest before installing or repairing its Codex package.".into(),
+        );
     }
     private_directory(home.parent().ok_or("The project guest home is invalid.")?)?;
     private_directory(home)?;
-    let cache = brig.state_directory()?.join("tugboat-codex-0.167.0");
+    let cache = brig.state_directory()?.join("tugboat-codex-0.171.0");
     private_directory(&cache)?;
     let _guard = storage::lock(&cache.join("package"))?;
     // A second preparation may have completed while this attempt waited for the cache.
@@ -53,8 +57,8 @@ pub(super) fn install(brig: &Brig, home: &Path, running: bool) -> Result<(), Str
     if verify_archive(&archive, &bundle).is_err() {
         let existing_cache = owned_tree(&sources)?;
         let staged = Staging::new(&cache)?;
-        download(brig, &staged.0, ARCHIVE, 187_844_332)?;
-        download(brig, &staged.0, BUNDLE, 8_509)?;
+        download(brig, &staged.0, ARCHIVE, ARCHIVE_SIZE)?;
+        download(brig, &staged.0, BUNDLE, BUNDLE_SIZE)?;
         verify_archive(&staged.0.join(ARCHIVE), &staged.0.join(BUNDLE))?;
         verify_signature(brig, &staged.0.join(ARCHIVE), &staged.0.join(BUNDLE))?;
         publish_directory(&staged.0, &sources, existing_cache)?;
@@ -193,8 +197,8 @@ fn verify_directory<'a>(
 }
 
 fn verify_archive(archive: &Path, bundle: &Path) -> Result<(), String> {
-    verify_file(archive, ARCHIVE_SHA256, 187_844_332, false)?;
-    verify_file(bundle, BUNDLE_SHA256, 8_509, false)
+    verify_file(archive, ARCHIVE_SHA256, ARCHIVE_SIZE, false)?;
+    verify_file(bundle, BUNDLE_SHA256, BUNDLE_SIZE, false)
 }
 
 fn verify_signature(brig: &Brig, archive: &Path, bundle: &Path) -> Result<(), String> {

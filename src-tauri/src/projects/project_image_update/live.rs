@@ -92,7 +92,7 @@ impl Fixture {
         let brig = proof_brig(&hull, &settings, |name| directory(name));
         let cached = root.join("cache/verified");
         if cached.is_dir() {
-            let target = PathBuf::from(directory("state/tugboat-codex-0.167.0/verified"));
+            let target = PathBuf::from(directory("state/tugboat-codex-0.171.0/verified"));
             for file in [
                 "codex-package-aarch64-unknown-linux-musl.tar.gz",
                 "codex-package-aarch64-unknown-linux-musl.tar.gz.sigstore",
@@ -104,7 +104,12 @@ impl Fixture {
         let mut registry = Registry::default();
         let projects = ["project-a/sample project", "project-b"]
             .into_iter()
-            .map(|name| registry.register(Path::new(&directory(name))).unwrap())
+            .map(|name| {
+                let mut project = registry.register(Path::new(&directory(name))).unwrap();
+                project.image_ref = PREVIOUS_ENVIRONMENT_IMAGE.into();
+                registry.update(project.clone()).unwrap();
+                project
+            })
             .collect();
         storage::write(&file, &registry).unwrap();
         Self {
@@ -156,7 +161,7 @@ impl Fixture {
         shared_runtime::install_codex(&checked).unwrap();
         let project = self.project(index);
         let runtime = self.runtime(&project);
-        let (checked, _) = runtime.plan(DEFAULT_ENVIRONMENT_IMAGE).unwrap();
+        let (checked, _) = runtime.plan(PREVIOUS_ENVIRONMENT_IMAGE).unwrap();
         runtime.boot(&checked, false).unwrap();
     }
 
@@ -220,7 +225,10 @@ fn updates_and_restores_the_real_disposable_writable_guest_disk() {
         .command(&b, "cat /proc/sys/kernel/random/boot_id")
         .unwrap();
     let retained = if std::env::var_os("TUGBOAT_IMAGE_TEST_TRANSCRIPT_MANIFEST").is_some() {
-        let (checked, _) = fixture.runtime(&a).plan(DEFAULT_ENVIRONMENT_IMAGE).unwrap();
+        let (checked, _) = fixture
+            .runtime(&a)
+            .plan(PREVIOUS_ENVIRONMENT_IMAGE)
+            .unwrap();
         Some(super::post_update::before(&fixture.root, &fixture.file, &checked).unwrap())
     } else {
         None
@@ -233,6 +241,9 @@ fn updates_and_restores_the_real_disposable_writable_guest_disk() {
     let runtime = fixture.runtime(&a);
     let resumed = change(&fixture.file, &runtime, Action::Read).unwrap();
     assert!(matches!(resumed, Status::Review { token: recovered, .. } if token == recovered));
+    let (checked, _) = runtime.plan(PREVIOUS_ENVIRONMENT_IMAGE).unwrap();
+    // A newer Tugboat build can reopen a review before its package is installed in this home.
+    fs::remove_dir_all(checked.paths.host_home.join(".tugboat-codex-0.171.0")).unwrap();
     let kept = change(&fixture.file, &runtime, Action::KeepCurrent { token }).unwrap();
     assert!(matches!(kept, Status::Restored { .. }));
     assert_eq!(
@@ -260,7 +271,7 @@ fn updates_and_restores_the_real_disposable_writable_guest_disk() {
     assert!(matches!(
         restored,
         Status::Restored {
-            image: DEFAULT_ENVIRONMENT_IMAGE,
+            image: PREVIOUS_ENVIRONMENT_IMAGE,
             ..
         }
     ));
@@ -303,11 +314,11 @@ fn updates_and_restores_the_real_disposable_writable_guest_disk() {
     );
     let b_runtime = fixture.runtime(&b);
     b_runtime.stop().unwrap();
-    let (b_checked, _) = b_runtime.plan(DEFAULT_ENVIRONMENT_IMAGE).unwrap();
+    let (b_checked, _) = b_runtime.plan(PREVIOUS_ENVIRONMENT_IMAGE).unwrap();
     let versions = b_runtime.boot(&b_checked, false).unwrap();
     assert_eq!(
         versions,
-        pinned_versions(DEFAULT_ENVIRONMENT_IMAGE).unwrap()
+        pinned_versions(PREVIOUS_ENVIRONMENT_IMAGE).unwrap()
     );
     assert_ne!(
         fixture
@@ -315,7 +326,7 @@ fn updates_and_restores_the_real_disposable_writable_guest_disk() {
             .unwrap(),
         b_boot
     );
-    assert!(fixture.project(1).image_ref == DEFAULT_ENVIRONMENT_IMAGE);
+    assert!(fixture.project(1).image_ref == PREVIOUS_ENVIRONMENT_IMAGE);
     println!(
         "Updated {} and restarted sibling {} on its original signed digest.",
         a.reference(),

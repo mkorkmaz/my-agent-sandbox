@@ -1,5 +1,5 @@
 use crate::{
-    projects::{EnvironmentId, Project, DEFAULT_ENVIRONMENT_IMAGE, ENVIRONMENT_PROFILE},
+    projects::{EnvironmentId, Project, ENVIRONMENT_PROFILE, PREVIOUS_ENVIRONMENT_IMAGE},
     storage,
 };
 use serde_json::{json, Value};
@@ -41,9 +41,10 @@ pub fn shared(project: &Project) -> bool {
 }
 
 pub(crate) fn expected_definition() -> Value {
+    // The profile is part of approved plan fingerprints. The project pin overrides its image.
     json!({
         "name": ENVIRONMENT_PROFILE, "desc": "Shared Tugboat project guest",
-        "kind": "agent", "binary": "bash", "image": DEFAULT_ENVIRONMENT_IMAGE,
+        "kind": "agent", "binary": "bash", "image": PREVIOUS_ENVIRONMENT_IMAGE,
         "guestHome": "/root", "headless": true, "genericBoot": true,
         "hypervisor": "hvi", "network": "isolated", "mem": 4096, "cpus": 4,
         "env": [
